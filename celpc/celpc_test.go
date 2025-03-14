@@ -6,6 +6,7 @@ import (
 
 	"github.com/sp301415/rlwe-piop/bigring"
 	"github.com/sp301415/rlwe-piop/celpc"
+	"github.com/stretchr/testify/assert"
 )
 
 var (
@@ -25,21 +26,13 @@ func TestEncoder(t *testing.T) {
 	t.Run("Encode", func(t *testing.T) {
 		pOut := ecd.EncodeChunk(v)
 		vOut := ecd.DecodeChunk(pOut)
-		for i := 0; i < len(v); i++ {
-			if v[i].Cmp(vOut[i]) != 0 {
-				t.Errorf("Value not equal in index %d: %v != %v", i, v[i], vOut[i])
-			}
-		}
+		assert.Equal(t, v, vOut)
 	})
 
 	t.Run("RandomEncode", func(t *testing.T) {
 		pOut := ecd.RandomEncodeChunk(v, params.BlindRandStdDev())
 		vOut := ecd.DecodeChunk(pOut)
-		for i := 0; i < len(v); i++ {
-			if v[i].Cmp(vOut[i]) != 0 {
-				t.Errorf("Value not equal in index %d: %v != %v", i, v[i], vOut[i])
-			}
-		}
+		assert.Equal(t, v, vOut)
 	})
 }
 
@@ -59,18 +52,14 @@ func TestCommitment(t *testing.T) {
 		com, open := prover.Commit(v)
 		openPf := prover.ProveOpening([]celpc.Commitment{com}, []celpc.Opening{open})
 
-		if !verifier.VerifyOpeningProof([]celpc.Commitment{com}, openPf) {
-			t.Errorf("Opening proof verification failed")
-		}
+		assert.True(t, verifier.VerifyOpeningProof([]celpc.Commitment{com}, openPf))
 	})
 
 	t.Run("CommitParallel", func(t *testing.T) {
 		com, open := prover.CommitParallel(v)
 		openPf := prover.ProveOpeningParallel([]celpc.Commitment{com}, []celpc.Opening{open})
 
-		if !verifier.VerifyOpeningProof([]celpc.Commitment{com}, openPf) {
-			t.Errorf("Opening proof verification failed")
-		}
+		assert.True(t, verifier.VerifyOpeningProof([]celpc.Commitment{com}, openPf))
 	})
 
 	t.Run("Evaluate", func(t *testing.T) {
@@ -80,9 +69,7 @@ func TestCommitment(t *testing.T) {
 		com, open := prover.Commit(v)
 		evalPf := prover.Evaluate(x, open)
 
-		if !verifier.VerifyEvaluation(x, com, evalPf) {
-			t.Errorf("Evaluation verification failed")
-		}
+		assert.True(t, verifier.VerifyEvaluation(x, com, evalPf))
 
 		valueReal := big.NewInt(0)
 		for i := v.Degree() - 1; i >= 0; i-- {
@@ -91,9 +78,7 @@ func TestCommitment(t *testing.T) {
 			valueReal.Mod(valueReal, params.Modulus())
 		}
 
-		if valueReal.Cmp(evalPf.Value) != 0 {
-			t.Errorf("Evaluation value not equal: %v != %v", valueReal, evalPf.Value)
-		}
+		assert.Equal(t, valueReal, evalPf.Value)
 	})
 
 	t.Run("EvaluateParallel", func(t *testing.T) {
@@ -114,8 +99,6 @@ func TestCommitment(t *testing.T) {
 			valueReal.Mod(valueReal, params.Modulus())
 		}
 
-		if valueReal.Cmp(evalPf.Value) != 0 {
-			t.Errorf("Evaluation value not equal: %v != %v", valueReal, evalPf.Value)
-		}
+		assert.Equal(t, valueReal, evalPf.Value)
 	})
 }

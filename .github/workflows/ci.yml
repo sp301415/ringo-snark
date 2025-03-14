@@ -1,0 +1,23 @@
+name: CI Tests
+on:
+  push:
+
+jobs:
+  tests:
+    name: Run Go ${{ matrix.go }} Tests
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        go: [ '1.18', '1.24' ]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ matrix.go }}
+
+      - name: Test CELPC
+        run: |
+          go test ./celpc -timeout=0 -count=1
