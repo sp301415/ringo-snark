@@ -113,7 +113,7 @@ func (v *Verifier) VerifyOpeningProof(comVec []Commitment, openPf OpeningProof) 
 	return true
 }
 
-// VerifyEvalProof verifies the evaluation proof.
+// VerifyevalPf verifies the evaluation proof.
 func (v *Verifier) VerifyEvaluation(x *big.Int, com Commitment, evalPf EvaluationProof) bool {
 	coeffs := make([]*big.Int, v.Parameters.ringQ.N())
 	for i := 0; i < v.Parameters.ringQ.N(); i++ {
@@ -151,7 +151,7 @@ func (v *Verifier) VerifyEvaluation(x *big.Int, com Commitment, evalPf Evaluatio
 		xPowBuf.Mod(xPowBuf, v.Parameters.modulus)
 	}
 
-	commitEvalProof := v.Commiter.Commit(evalPf.Mask, evalPf.Rand)
+	commitevalPf := v.Commiter.Commit(evalPf.Mask, evalPf.Rand)
 	commitCombine := NewAjtaiCommitment(v.Parameters)
 	commitCombine.CopyFrom(com.Value[commitCount+1])
 	for j := 0; j < v.Parameters.ajtaiSize; j++ {
@@ -163,7 +163,7 @@ func (v *Verifier) VerifyEvaluation(x *big.Int, com Commitment, evalPf Evaluatio
 		}
 	}
 
-	if !commitEvalProof.Equals(commitCombine) {
+	if !commitevalPf.Equals(commitCombine) {
 		return false
 	}
 

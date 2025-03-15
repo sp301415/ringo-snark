@@ -61,9 +61,9 @@ func (p *Prover) ShallowCopy() *Prover {
 // Commit commits pBig.
 func (p *Prover) Commit(pBig bigring.BigPoly) (Commitment, Opening) {
 	comOut := NewCommitment(p.Parameters, pBig.Degree())
-	openProofOut := NewOpening(p.Parameters, pBig.Degree())
-	p.CommitAssign(pBig, comOut, openProofOut)
-	return comOut, openProofOut
+	openPfOut := NewOpening(p.Parameters, pBig.Degree())
+	p.CommitAssign(pBig, comOut, openPfOut)
+	return comOut, openPfOut
 }
 
 // CommitAssign commits pBig and assigns it to comOut and openOut.
@@ -346,13 +346,13 @@ func (p *Prover) ProveOpeningParallelAssign(comVec []Commitment, openVec []Openi
 
 // Evaluate evaluates pBig at x with proof.
 func (p *Prover) Evaluate(x *big.Int, open Opening) EvaluationProof {
-	evalProofOut := NewEvaluationProof(p.Parameters)
-	p.EvaluateAssign(x, open, evalProofOut)
-	return evalProofOut
+	evalPfOut := NewEvaluationProof(p.Parameters)
+	p.EvaluateAssign(x, open, evalPfOut)
+	return evalPfOut
 }
 
-// EvaluateAssign evaluates pBig at x with proof and assigns it to evalProofOut.
-func (p *Prover) EvaluateAssign(x *big.Int, open Opening, evalProofOut EvaluationProof) {
+// EvaluateAssign evaluates pBig at x with proof and assigns it to evalPfOut.
+func (p *Prover) EvaluateAssign(x *big.Int, open Opening, evalPfOut EvaluationProof) {
 	commitCount := len(open.Mask) - 2
 
 	xEcd := p.Encoder.Encode([]*big.Int{big.NewInt(0).Mod(x, p.Parameters.modulus)})
@@ -365,18 +365,18 @@ func (p *Prover) EvaluateAssign(x *big.Int, open Opening, evalProofOut Evaluatio
 	}
 
 	for i := 0; i < p.Parameters.polyCommitSize; i++ {
-		evalProofOut.Mask[i].Copy(open.Mask[commitCount+1][i])
-		p.Parameters.ringQ.MulCoeffsMontgomeryThenAdd(xEcd, open.Mask[commitCount][i], evalProofOut.Mask[i])
+		evalPfOut.Mask[i].Copy(open.Mask[commitCount+1][i])
+		p.Parameters.ringQ.MulCoeffsMontgomeryThenAdd(xEcd, open.Mask[commitCount][i], evalPfOut.Mask[i])
 		for j := 0; j < commitCount; j++ {
-			p.Parameters.ringQ.MulCoeffsMontgomeryThenAdd(xPowEcd[j], open.Mask[j][i], evalProofOut.Mask[i])
+			p.Parameters.ringQ.MulCoeffsMontgomeryThenAdd(xPowEcd[j], open.Mask[j][i], evalPfOut.Mask[i])
 		}
 	}
 
 	for i := 0; i < p.Parameters.ajtaiRandSize; i++ {
-		evalProofOut.Rand[i].Copy(open.Rand[commitCount+1][i])
-		p.Parameters.ringQ.MulCoeffsMontgomeryThenAdd(xEcd, open.Rand[commitCount][i], evalProofOut.Rand[i])
+		evalPfOut.Rand[i].Copy(open.Rand[commitCount+1][i])
+		p.Parameters.ringQ.MulCoeffsMontgomeryThenAdd(xEcd, open.Rand[commitCount][i], evalPfOut.Rand[i])
 		for j := 0; j < commitCount; j++ {
-			p.Parameters.ringQ.MulCoeffsMontgomeryThenAdd(xPowEcd[j], open.Rand[j][i], evalProofOut.Rand[i])
+			p.Parameters.ringQ.MulCoeffsMontgomeryThenAdd(xPowEcd[j], open.Rand[j][i], evalPfOut.Rand[i])
 		}
 	}
 
@@ -387,25 +387,25 @@ func (p *Prover) EvaluateAssign(x *big.Int, open Opening, evalProofOut Evaluatio
 		xPowBasis[i].Mod(xPowBasis[i], p.Parameters.modulus)
 	}
 
-	maskDcd := p.Encoder.DecodeChunk(evalProofOut.Mask)
-	evalProofOut.Value.SetInt64(0)
+	maskDcd := p.Encoder.DecodeChunk(evalPfOut.Mask)
+	evalPfOut.Value.SetInt64(0)
 	prodBuf := big.NewInt(0)
 	for i := 0; i < p.Parameters.bigIntCommitSize; i++ {
 		prodBuf.Mul(xPowBasis[i], maskDcd[i])
-		evalProofOut.Value.Add(evalProofOut.Value, prodBuf)
+		evalPfOut.Value.Add(evalPfOut.Value, prodBuf)
 	}
-	evalProofOut.Value.Mod(evalProofOut.Value, p.Parameters.modulus)
+	evalPfOut.Value.Mod(evalPfOut.Value, p.Parameters.modulus)
 }
 
 // EvaluateParallel evaluates pBig at x with proof in parallel.
 func (p *Prover) EvaluateParallel(x *big.Int, open Opening) EvaluationProof {
-	evalProofOut := NewEvaluationProof(p.Parameters)
-	p.EvaluateParallelAssign(x, open, evalProofOut)
-	return evalProofOut
+	evalPfOut := NewEvaluationProof(p.Parameters)
+	p.EvaluateParallelAssign(x, open, evalPfOut)
+	return evalPfOut
 }
 
-// EvaluateParallelAssign evaluates pBig at x with proof and assigns it to evalProofOut in parallel.
-func (p *Prover) EvaluateParallelAssign(x *big.Int, open Opening, evalProofOut EvaluationProof) {
+// EvaluateParallelAssign evaluates pBig at x with proof and assigns it to evalPfOut in parallel.
+func (p *Prover) EvaluateParallelAssign(x *big.Int, open Opening, evalPfOut EvaluationProof) {
 	commitCount := len(open.Mask) - 2
 
 	xEcd := p.Encoder.Encode([]*big.Int{big.NewInt(0).Mod(x, p.Parameters.modulus)})
@@ -422,10 +422,10 @@ func (p *Prover) EvaluateParallelAssign(x *big.Int, open Opening, evalProofOut E
 
 	for i := 0; i < p.Parameters.polyCommitSize; i++ {
 		go func(i int) {
-			evalProofOut.Mask[i].Copy(open.Mask[commitCount+1][i])
-			p.Parameters.ringQ.MulCoeffsMontgomeryThenAdd(xEcd, open.Mask[commitCount][i], evalProofOut.Mask[i])
+			evalPfOut.Mask[i].Copy(open.Mask[commitCount+1][i])
+			p.Parameters.ringQ.MulCoeffsMontgomeryThenAdd(xEcd, open.Mask[commitCount][i], evalPfOut.Mask[i])
 			for j := 0; j < commitCount; j++ {
-				p.Parameters.ringQ.MulCoeffsMontgomeryThenAdd(xPowEcd[j], open.Mask[j][i], evalProofOut.Mask[i])
+				p.Parameters.ringQ.MulCoeffsMontgomeryThenAdd(xPowEcd[j], open.Mask[j][i], evalPfOut.Mask[i])
 			}
 			wg.Done()
 		}(i)
@@ -433,10 +433,10 @@ func (p *Prover) EvaluateParallelAssign(x *big.Int, open Opening, evalProofOut E
 
 	for i := 0; i < p.Parameters.ajtaiRandSize; i++ {
 		go func(i int) {
-			evalProofOut.Rand[i].Copy(open.Rand[commitCount+1][i])
-			p.Parameters.ringQ.MulCoeffsMontgomeryThenAdd(xEcd, open.Rand[commitCount][i], evalProofOut.Rand[i])
+			evalPfOut.Rand[i].Copy(open.Rand[commitCount+1][i])
+			p.Parameters.ringQ.MulCoeffsMontgomeryThenAdd(xEcd, open.Rand[commitCount][i], evalPfOut.Rand[i])
 			for j := 0; j < commitCount; j++ {
-				p.Parameters.ringQ.MulCoeffsMontgomeryThenAdd(xPowEcd[j], open.Rand[j][i], evalProofOut.Rand[i])
+				p.Parameters.ringQ.MulCoeffsMontgomeryThenAdd(xPowEcd[j], open.Rand[j][i], evalPfOut.Rand[i])
 			}
 			wg.Done()
 		}(i)
@@ -449,12 +449,12 @@ func (p *Prover) EvaluateParallelAssign(x *big.Int, open Opening, evalProofOut E
 		xPowBasis[i].Mod(xPowBasis[i], p.Parameters.modulus)
 	}
 
-	maskDcd := p.Encoder.DecodeChunk(evalProofOut.Mask)
-	evalProofOut.Value.SetInt64(0)
+	maskDcd := p.Encoder.DecodeChunk(evalPfOut.Mask)
+	evalPfOut.Value.SetInt64(0)
 	prodBuf := big.NewInt(0)
 	for i := 0; i < p.Parameters.bigIntCommitSize; i++ {
 		prodBuf.Mul(xPowBasis[i], maskDcd[i])
-		evalProofOut.Value.Add(evalProofOut.Value, prodBuf)
+		evalPfOut.Value.Add(evalPfOut.Value, prodBuf)
 	}
-	evalProofOut.Value.Mod(evalProofOut.Value, p.Parameters.modulus)
+	evalPfOut.Value.Mod(evalPfOut.Value, p.Parameters.modulus)
 }
