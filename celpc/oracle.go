@@ -45,16 +45,13 @@ func (o *RandomOracle) WriteAjtaiCommitment(com AjtaiCommitment) {
 func (o *RandomOracle) SampleMonomialAssign(monoOut ring.Poly) {
 	monoOut.Zero()
 
-	d := int(o.SampleN(uint64(2 * o.Parameters.ringQ.N())))
-	if d >= o.Parameters.ringQ.N() {
-		d -= 2 * o.Parameters.ringQ.N()
-	}
+	d := o.SampleN(uint64(2 * o.Parameters.ringQ.N()))
 
 	for i := 0; i <= o.Parameters.ringQ.Level(); i++ {
-		if d < 0 {
-			monoOut.Coeffs[i][d+o.Parameters.ringQ.N()] = o.Parameters.ringQ.SubRings[i].Modulus - 1
+		if d&1 == 0 {
+			monoOut.Coeffs[i][d>>1] = 1
 		} else {
-			monoOut.Coeffs[i][d] = 1
+			monoOut.Coeffs[i][d>>1] = o.Parameters.ringQ.SubRings[i].Modulus - 1
 		}
 	}
 

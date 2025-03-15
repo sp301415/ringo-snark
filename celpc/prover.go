@@ -14,11 +14,14 @@ type Prover struct {
 	Parameters Parameters
 
 	UniformSampler  *UniformSampler
-	GaussianSampler *GaussianSampler
+	GaussianSampler *COSACSampler
+	Oracle          *RandomOracle
 
 	Encoder  *Encoder
 	Commiter *AjtaiCommiter
-	Oracle   *RandomOracle
+
+	CommitEncoder     *EncoderFixedStdDev
+	CommitRandSampler *TwinCDTSampler
 }
 
 // NewProver creates a new Prover.
@@ -27,11 +30,14 @@ func NewProver(params Parameters, ck AjtaiCommitKey) *Prover {
 		Parameters: params,
 
 		UniformSampler:  NewUniformSampler(params),
-		GaussianSampler: NewGaussianSampler(params),
+		GaussianSampler: NewCOSACSampler(params),
 		Oracle:          NewRandomOracle(params),
 
 		Encoder:  NewEncoder(params),
 		Commiter: NewAjtaiCommiter(params, ck),
+
+		CommitEncoder:     NewEncoderFixedStdDev(params, params.commitStdDev),
+		CommitRandSampler: NewTwinCDTSampler(params, params.commitRandStdDev),
 	}
 }
 
@@ -41,11 +47,14 @@ func (p *Prover) ShallowCopy() *Prover {
 		Parameters: p.Parameters,
 
 		UniformSampler:  NewUniformSampler(p.Parameters),
-		GaussianSampler: NewGaussianSampler(p.Parameters),
+		GaussianSampler: NewCOSACSampler(p.Parameters),
+		Oracle:          NewRandomOracle(p.Parameters),
 
 		Encoder:  p.Encoder.ShallowCopy(),
 		Commiter: p.Commiter,
-		Oracle:   NewRandomOracle(p.Parameters),
+
+		CommitEncoder:     p.CommitEncoder.ShallowCopy(),
+		CommitRandSampler: p.CommitRandSampler.ShallowCopy(),
 	}
 }
 
@@ -63,9 +72,9 @@ func (p *Prover) CommitAssign(pBig bigring.BigPoly, comOut Commitment, openOut O
 
 	for i := 0; i < commitCount; i++ {
 		pBigChunk := pBig.Coeffs[i*p.Parameters.bigIntCommitSize : (i+1)*p.Parameters.bigIntCommitSize]
-		p.Encoder.RandomEncodeChunkAssign(pBigChunk, p.Parameters.commitStdDev, openOut.Mask[i])
+		p.CommitEncoder.RandomEncodeChunkAssign(pBigChunk, openOut.Mask[i])
 		for j := 0; j < p.Parameters.ajtaiRandSize; j++ {
-			p.GaussianSampler.SamplePolyAssign(0, p.Parameters.commitRandStdDev, openOut.Rand[i][j])
+			p.CommitRandSampler.SamplePolyAssign(0, openOut.Rand[i][j])
 		}
 		p.Commiter.CommitAssign(openOut.Mask[i], openOut.Rand[i], comOut.Value[i])
 	}
@@ -81,9 +90,9 @@ func (p *Prover) CommitAssign(pBig bigring.BigPoly, comOut Commitment, openOut O
 		bigBlind1[i+1] = big.NewInt(0).Sub(p.Parameters.modulus, bigBlind0[i])
 	}
 
-	p.Encoder.RandomEncodeChunkAssign(bigBlind0, p.Parameters.commitStdDev, openOut.Mask[commitCount])
+	p.CommitEncoder.RandomEncodeChunkAssign(bigBlind0, openOut.Mask[commitCount])
 	for j := 0; j < p.Parameters.ajtaiRandSize; j++ {
-		p.GaussianSampler.SamplePolyAssign(0, p.Parameters.commitRandStdDev, openOut.Rand[commitCount][j])
+		p.CommitRandSampler.SamplePolyAssign(0, openOut.Rand[commitCount][j])
 	}
 	p.Commiter.CommitAssign(openOut.Mask[commitCount], openOut.Rand[commitCount], comOut.Value[commitCount])
 
@@ -132,9 +141,9 @@ func (p *Prover) CommitParallelAssign(pBig bigring.BigPoly, comOut Commitment, o
 			pIdx := proverPool[i]
 
 			pBigChunk := pBig.Coeffs[i*pIdx.Parameters.bigIntCommitSize : (i+1)*pIdx.Parameters.bigIntCommitSize]
-			pIdx.Encoder.RandomEncodeChunkAssign(pBigChunk, pIdx.Parameters.commitStdDev, openOut.Mask[i])
+			pIdx.CommitEncoder.RandomEncodeChunkAssign(pBigChunk, openOut.Mask[i])
 			for j := 0; j < pIdx.Parameters.ajtaiRandSize; j++ {
-				pIdx.GaussianSampler.SamplePolyAssign(0, pIdx.Parameters.commitRandStdDev, openOut.Rand[i][j])
+				pIdx.CommitRandSampler.SamplePolyAssign(0, openOut.Rand[i][j])
 			}
 			pIdx.Commiter.CommitAssign(openOut.Mask[i], openOut.Rand[i], comOut.Value[i])
 
@@ -145,9 +154,9 @@ func (p *Prover) CommitParallelAssign(pBig bigring.BigPoly, comOut Commitment, o
 	go func() {
 		pIdx := proverPool[commitCount]
 
-		pIdx.Encoder.RandomEncodeChunkAssign(bigBlind0, pIdx.Parameters.commitStdDev, openOut.Mask[commitCount])
+		pIdx.CommitEncoder.RandomEncodeChunkAssign(bigBlind0, openOut.Mask[commitCount])
 		for j := 0; j < p.Parameters.ajtaiRandSize; j++ {
-			pIdx.GaussianSampler.SamplePolyAssign(0, pIdx.Parameters.commitRandStdDev, openOut.Rand[commitCount][j])
+			pIdx.CommitRandSampler.SamplePolyAssign(0, openOut.Rand[commitCount][j])
 		}
 		pIdx.Commiter.CommitAssign(openOut.Mask[commitCount], openOut.Rand[commitCount], comOut.Value[commitCount])
 

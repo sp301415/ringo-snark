@@ -4,31 +4,23 @@ import (
 	"math"
 )
 
-// GaussianSampler samples from Discrete Gaussian Distribution.
-type GaussianSampler struct {
+// COSACSampler samples from Discrete Gaussian Distribution
+// with varying center and stdDev.
+type COSACSampler struct {
 	baseSampler *UniformSampler
 }
 
-// NewGaussianSampler creates a new GaussianSampler.
+// NewCOSACSampler creates a new COSACSampler.
 //
 // Panics when read from crypto/rand or blake2b initialization fails.
-func NewGaussianSampler() *GaussianSampler {
-	return &GaussianSampler{
+func NewCOSACSampler() *COSACSampler {
+	return &COSACSampler{
 		baseSampler: NewUniformSampler(),
 	}
 }
 
-// NewGaussianSamplerWithSeed creates a new GaussianSampler, with user supplied seed.
-//
-// Panics when blake2b initialization fails.
-func NewGaussianSamplerWithSeed(seed []byte, stdDev float64) *GaussianSampler {
-	return &GaussianSampler{
-		baseSampler: NewUniformSamplerWithSeed(seed),
-	}
-}
-
 // uniformFloat samples float32 (as float64) from uniform distribution in [0, 1).
-func (s *GaussianSampler) uniformFloat() float64 {
+func (s *COSACSampler) uniformFloat() float64 {
 	u := s.baseSampler.Sample() & ((1 << 52) - 1) // 0 <= u < 2^52
 	u += 1 << 52                                  // 2^52 <= u < 2^53
 
@@ -37,7 +29,7 @@ func (s *GaussianSampler) uniformFloat() float64 {
 }
 
 // normFloat samples float64 from normal distribution.
-func (s *GaussianSampler) normFloat() float64 {
+func (s *COSACSampler) normFloat() float64 {
 	for {
 		var x, y float64
 
@@ -78,7 +70,7 @@ func (s *GaussianSampler) normFloat() float64 {
 }
 
 // sampleRound samples a rounded Gaussian distribution.
-func (s *GaussianSampler) sampleRound(cFrac, stdDev float64) int64 {
+func (s *COSACSampler) sampleRound(cFrac, stdDev float64) int64 {
 	for {
 		y := stdDev * s.normFloat()
 		b := s.baseSampler.Sample() & 1
@@ -102,8 +94,8 @@ func (s *GaussianSampler) sampleRound(cFrac, stdDev float64) int64 {
 	}
 }
 
-// Sample samples from discrete Gaussain distrubtion D_{Z, c, sig}.
-func (s *GaussianSampler) Sample(center, stdDev float64) int64 {
+// Sample samples from Discrete Gaussain distrubtion.
+func (s *COSACSampler) Sample(center, stdDev float64) int64 {
 	cInt := math.Round(center)
 	cFrac := cInt - center
 
@@ -114,8 +106,8 @@ func (s *GaussianSampler) Sample(center, stdDev float64) int64 {
 	return s.sampleRound(cFrac, stdDev) + int64(cInt)
 }
 
-// SampleCoset samples from discrete Gaussian distribution D_{c + Z, 0, sig}.
-func (s *GaussianSampler) SampleCoset(center, stdDev float64) float64 {
+// SampleCoset samples from Discrete Gaussian distribution over a coset.
+func (s *COSACSampler) SampleCoset(center, stdDev float64) float64 {
 	return center + float64(s.Sample(-center, stdDev))
 }
 
