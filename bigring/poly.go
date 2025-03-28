@@ -24,6 +24,18 @@ func (p BigPoly) Degree() int {
 	return len(p.Coeffs)
 }
 
+// Copy copies the BigPoly.
+func (p BigPoly) Copy() BigPoly {
+	coeffs := make([]*big.Int, len(p.Coeffs))
+	for i := 0; i < len(p.Coeffs); i++ {
+		coeffs[i] = big.NewInt(0).Set(p.Coeffs[i])
+	}
+
+	return BigPoly{
+		Coeffs: coeffs,
+	}
+}
+
 // Clear clears the BigPoly.
 func (p *BigPoly) Clear() {
 	for i := 0; i < len(p.Coeffs); i++ {

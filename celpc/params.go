@@ -69,7 +69,7 @@ type ParametersLiteral struct {
 // Compile transforms ParametersLiteral to read-only Parameters.
 // If there is any invalid parameter in the literal, it panics.
 // Default parameters are guaranteed to be compiled without panics.
-func (p *ParametersLiteral) Compile() Parameters {
+func (p ParametersLiteral) Compile() Parameters {
 	switch {
 	case p.Degree%p.BigIntCommitSize != 0:
 		panic("Degree must divide BigIntCommitSize")
