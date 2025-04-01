@@ -13,7 +13,8 @@ const bufSize = 8192
 // UniformSampler samples values from uniform distribution.
 // This uses blake2b as a underlying prng.
 type UniformSampler struct {
-	prng blake2b.XOF
+	prngWriter blake2b.XOF
+	prngReader blake2b.XOF
 
 	buf [bufSize]byte
 	ptr int
@@ -44,7 +45,8 @@ func NewUniformSamplerWithSeed(seed []byte) *UniformSampler {
 	}
 
 	return &UniformSampler{
-		prng: prng,
+		prngWriter: prng,
+		prngReader: prng.Clone(),
 
 		buf: [bufSize]byte{},
 		ptr: bufSize,
@@ -53,24 +55,32 @@ func NewUniformSamplerWithSeed(seed []byte) *UniformSampler {
 
 // Read implements the [io.Reader] interface.
 func (s *UniformSampler) Read(p []byte) (n int, err error) {
-	return s.prng.Read(p)
+	return s.prngReader.Read(p)
 }
 
 // Write implements the [io.Writer] interface.
 func (s *UniformSampler) Write(p []byte) (n int, err error) {
-	return s.prng.Write(p)
+	return s.prngWriter.Write(p)
 }
 
 // Reset resets the UniformSampler.
 func (s *UniformSampler) Reset() {
-	s.prng.Reset()
+	s.prngWriter.Reset()
+	s.prngReader.Reset()
+	s.ptr = bufSize
+}
+
+// Finalize finalizes the UniformSampler,
+// So that it can read again.
+func (s *UniformSampler) Finalize() {
+	s.prngReader = s.prngWriter.Clone()
 	s.ptr = bufSize
 }
 
 // Sample uniformly samples a random integer of type T.
 func (s *UniformSampler) Sample() uint64 {
 	if s.ptr == bufSize {
-		if _, err := s.prng.Read(s.buf[:]); err != nil {
+		if _, err := s.prngReader.Read(s.buf[:]); err != nil {
 			panic(err)
 		}
 		s.ptr = 0

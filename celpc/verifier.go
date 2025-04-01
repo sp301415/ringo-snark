@@ -39,6 +39,14 @@ func (v *Verifier) ShallowCopy() *Verifier {
 // VerifyOpeningProof verifies the proof of opening.
 func (v *Verifier) VerifyOpeningProof(comVec []Commitment, openPf OpeningProof) bool {
 	v.Oracle.Reset()
+	for i := 0; i < v.Parameters.ajtaiSize; i++ {
+		for j := 0; j < v.Parameters.polyCommitSize; j++ {
+			v.Oracle.WritePoly(v.Commiter.CommitKey.A0[i][j])
+		}
+		for j := 0; j < v.Parameters.ajtaiRandSize-v.Parameters.ajtaiSize; j++ {
+			v.Oracle.WritePoly(v.Commiter.CommitKey.A1[i][j])
+		}
+	}
 	for i := 0; i < len(comVec); i++ {
 		for j := 0; j < len(comVec[i].Value)-1; j++ {
 			v.Oracle.WriteAjtaiCommitment(comVec[i].Value[j])

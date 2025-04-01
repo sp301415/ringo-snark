@@ -1,6 +1,8 @@
 package bigring
 
-import "math/big"
+import (
+	"math/big"
+)
 
 // Add returns pOut = p0 + p1.
 func (r *BigRing) Add(p0, p1 BigPoly) BigPoly {
@@ -83,4 +85,41 @@ func (r *BigRing) ScalarMulSubAssign(p BigPoly, c *big.Int, pOut BigPoly) {
 		pOut.Coeffs[i].Sub(pOut.Coeffs[i], tmp)
 		pOut.Coeffs[i].Mod(pOut.Coeffs[i], r.modulus)
 	}
+}
+
+// Evaluate evaluates the polynomial p at x.
+func (r *BigRing) Evaluate(p BigPoly, x *big.Int) *big.Int {
+	rOut := big.NewInt(0)
+	for i := r.degree - 1; i >= 0; i-- {
+		rOut.Mul(rOut, x)
+		rOut.Add(rOut, p.Coeffs[i])
+		rOut.Mod(rOut, r.modulus)
+	}
+	return rOut
+}
+
+// QuoRemByVanishing returns quotient and remainder of p by the polynomial x^N - 1.
+func (r *BigRing) QuoRemByVanishing(p BigPoly, N int) (BigPoly, BigPoly) {
+	quo := r.NewPoly()
+	rem := p.Copy()
+
+	c := big.NewInt(0)
+	for i := r.N() - 1; i >= N; i-- {
+		c.Set(rem.Coeffs[i])
+		quo.Coeffs[i-N].Add(quo.Coeffs[i-N], c)
+		if quo.Coeffs[i-N].Cmp(r.modulus) >= 0 {
+			quo.Coeffs[i-N].Sub(quo.Coeffs[i-N], r.modulus)
+		}
+
+		rem.Coeffs[i].Sub(rem.Coeffs[i], c)
+		if rem.Coeffs[i].Sign() < 0 {
+			rem.Coeffs[i].Add(rem.Coeffs[i], r.modulus)
+		}
+		rem.Coeffs[i-N].Add(rem.Coeffs[i-N], c)
+		if rem.Coeffs[i-N].Cmp(r.modulus) >= 0 {
+			rem.Coeffs[i-N].Sub(rem.Coeffs[i-N], r.modulus)
+		}
+	}
+
+	return quo, rem
 }

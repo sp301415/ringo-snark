@@ -28,7 +28,7 @@ func NewBigRing(N int, Q *big.Int) *BigRing {
 	for x := big.NewInt(2); x.Cmp(Q) < 0; x.Add(x, big.NewInt(1)) {
 		g.Exp(x, exp1, Q)
 		gPow := big.NewInt(0).Exp(g, exp2, Q)
-		if gPow.Cmp(big.NewInt(1)) == 0 {
+		if gPow.Cmp(big.NewInt(1)) != 0 {
 			break
 		}
 	}
@@ -108,6 +108,7 @@ func (r *BigRing) ToPolyAssign(p BigNTTPoly, pOut BigPoly) {
 		pOut.Coeffs[i].Set(p.Coeffs[i])
 	}
 	r.InvNTTInPlace(pOut.Coeffs)
+	r.NormalizeInPlace(pOut.Coeffs)
 }
 
 // NTTInPlace computes the NTT of a bigint vector in-place.
@@ -139,11 +140,15 @@ func (r *BigRing) NTTInPlace(coeffs []*big.Int) {
 			}
 		}
 	}
+
+	num.BitReverseInPlace(coeffs)
 }
 
 // InvNTTInPlace computes the inverse NTT of a bigint vector in-place,
 // without normalization.
 func (r *BigRing) InvNTTInPlace(coeffs []*big.Int) {
+	num.BitReverseInPlace(coeffs)
+
 	u, v := big.NewInt(0), big.NewInt(0)
 
 	t := 1
@@ -168,6 +173,10 @@ func (r *BigRing) InvNTTInPlace(coeffs []*big.Int) {
 		t <<= 1
 	}
 
+}
+
+// NormalizeInPlace normalizes a vector of bigints in-place.
+func (r *BigRing) NormalizeInPlace(coeffs []*big.Int) {
 	for i := 0; i < r.degree; i++ {
 		coeffs[i].Mul(coeffs[i], r.degreeInv)
 		coeffs[i].Mod(coeffs[i], r.modulus)

@@ -191,6 +191,14 @@ func (p *Prover) ProveOpening(comVec []Commitment, openVec []Opening) OpeningPro
 // ProveOpeningAssign proves the opening of commitments.
 func (p *Prover) ProveOpeningAssign(comVec []Commitment, openVec []Opening, openPfOut OpeningProof) {
 	p.Oracle.Reset()
+	for i := 0; i < p.Parameters.ajtaiSize; i++ {
+		for j := 0; j < p.Parameters.polyCommitSize; j++ {
+			p.Oracle.WritePoly(p.Commiter.CommitKey.A0[i][j])
+		}
+		for j := 0; j < p.Parameters.ajtaiRandSize-p.Parameters.ajtaiSize; j++ {
+			p.Oracle.WritePoly(p.Commiter.CommitKey.A1[i][j])
+		}
+	}
 	for i := 0; i < len(comVec); i++ {
 		for j := 0; j < len(comVec[i].Value)-1; j++ {
 			p.Oracle.WriteAjtaiCommitment(comVec[i].Value[j])
@@ -258,6 +266,14 @@ func (p *Prover) ProveOpeningParallel(comVec []Commitment, openVec []Opening) Op
 // ProveOpeningParallelAssign proves the opening of commitments in parallel.
 func (p *Prover) ProveOpeningParallelAssign(comVec []Commitment, openVec []Opening, openPfOut OpeningProof) {
 	p.Oracle.Reset()
+	for i := 0; i < p.Parameters.ajtaiSize; i++ {
+		for j := 0; j < p.Parameters.polyCommitSize; j++ {
+			p.Oracle.WritePoly(p.Commiter.CommitKey.A0[i][j])
+		}
+		for j := 0; j < p.Parameters.ajtaiRandSize-p.Parameters.ajtaiSize; j++ {
+			p.Oracle.WritePoly(p.Commiter.CommitKey.A1[i][j])
+		}
+	}
 	for i := 0; i < len(comVec); i++ {
 		for j := 0; j < len(comVec[i].Value)-1; j++ {
 			p.Oracle.WriteAjtaiCommitment(comVec[i].Value[j])
