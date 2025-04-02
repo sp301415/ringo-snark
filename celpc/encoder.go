@@ -267,7 +267,7 @@ func (e *EncoderFixedStdDev) ShallowCopy() *EncoderFixedStdDev {
 			baseBig:  e.baseBig,
 			deltaInv: e.deltaInv,
 		},
-		GaussianSampler: NewTwinCDTSampler(e.Parameters, e.GaussianSampler.StdDev()),
+		GaussianSampler: e.GaussianSampler.ShallowCopy(),
 	}
 }
 
