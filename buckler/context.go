@@ -61,8 +61,8 @@ func (ctx *Context) AddArithmeticConstraint(c ArithmeticConstraint) {
 func (ctx *Context) AddNormConstraint(w Witness, logBound uint64) {
 	if logBound == 0 {
 		var ternaryConstraint ArithmeticConstraint
-		ternaryConstraint.AddInt64Term(1, w, w, w)
-		ternaryConstraint.AddInt64Term(-1, w)
+		ternaryConstraint.AddTerm(1, nil, nil, w, w, w)
+		ternaryConstraint.AddTerm(-1, nil, nil, w)
 		ctx.AddArithmeticConstraint(ternaryConstraint)
 	}
 
@@ -76,16 +76,16 @@ func (ctx *Context) AddNormConstraint(w Witness, logBound uint64) {
 
 	for i := 0; i < len(wDecomposed); i++ {
 		var ternaryConstraint ArithmeticConstraint
-		ternaryConstraint.AddInt64Term(1, wDecomposed[i], wDecomposed[i], wDecomposed[i])
-		ternaryConstraint.AddInt64Term(-1, wDecomposed[i])
+		ternaryConstraint.AddTerm(1, nil, nil, wDecomposed[i], wDecomposed[i], wDecomposed[i])
+		ternaryConstraint.AddTerm(-1, nil, nil, wDecomposed[i])
 		ctx.AddArithmeticConstraint(ternaryConstraint)
 	}
 
 	var decomposeConstraint ArithmeticConstraint
-	decomposeConstraint.AddInt64Term(1, w)
-	decomposeConstraint.AddInt64Term(-1, wDecomposed[0])
+	decomposeConstraint.AddTerm(1, nil, nil, w)
+	decomposeConstraint.AddTerm(-1, nil, nil, wDecomposed[0])
 	for i := 1; i < len(wDecomposed); i++ {
-		decomposeConstraint.AddInt64Term(-(1 << (i - 1)), wDecomposed[i])
+		decomposeConstraint.AddTerm(-(1 << (i - 1)), nil, nil, wDecomposed[i])
 	}
 	ctx.AddArithmeticConstraint(decomposeConstraint)
 }

@@ -13,25 +13,17 @@ type ArithmeticConstraint struct {
 	witness             [][]int64
 }
 
-// AddInt64Term adds a int64 term to the constraint.
-func (c *ArithmeticConstraint) AddInt64Term(coeff int64, witness ...Witness) {
-	c.AddTerm(coeff, big.NewInt(1), nil, witness...)
-}
-
-// AddBigTerm adds a big.Int term to the constraint.
-func (c *ArithmeticConstraint) AddBigTerm(coeff *big.Int, witness ...Witness) {
-	c.AddTerm(1, coeff, nil, witness...)
-}
-
-// AddPublicWitnessTerm adds a public witness term to the constraint.
-func (c *ArithmeticConstraint) AddPublicWitnessTerm(coeff PublicWitness, witness ...Witness) {
-	c.AddTerm(1, big.NewInt(1), coeff, witness...)
-}
-
 // AddTerm adds a term to the constraint.
+// This adds coeffInt64 * coeffBig * coeff * witness[0] * witness[1] * ... * witness[n] to the constraint.
+// If coeffBig and coeff is nil, they are assumed to be 1.
 func (c *ArithmeticConstraint) AddTerm(coeffInt64 int64, coeffBig *big.Int, coeff PublicWitness, witness ...Witness) {
 	c.coeffsInt64 = append(c.coeffsInt64, coeffInt64)
-	c.coeffsBig = append(c.coeffsBig, coeffBig)
+
+	if coeffBig != nil {
+		c.coeffsBig = append(c.coeffsBig, coeffBig)
+	} else {
+		c.coeffsBig = append(c.coeffsBig, big.NewInt(1))
+	}
 
 	if coeff != nil {
 		c.coeffsPublicWitness = append(c.coeffsPublicWitness, coeff[0].Int64())
