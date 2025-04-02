@@ -18,12 +18,7 @@ type ArithmeticConstraint struct {
 // If coeffBig and coeff is nil, they are assumed to be 1.
 func (c *ArithmeticConstraint) AddTerm(coeffInt64 int64, coeffBig *big.Int, coeff PublicWitness, witness ...Witness) {
 	c.coeffsInt64 = append(c.coeffsInt64, coeffInt64)
-
-	if coeffBig != nil {
-		c.coeffsBig = append(c.coeffsBig, coeffBig)
-	} else {
-		c.coeffsBig = append(c.coeffsBig, big.NewInt(1))
-	}
+	c.coeffsBig = append(c.coeffsBig, coeffBig)
 
 	if coeff != nil {
 		c.coeffsPublicWitness = append(c.coeffsPublicWitness, coeff[0].Int64())

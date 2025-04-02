@@ -192,8 +192,13 @@ func (p *Prover) rowCheckFirstMove(batchConsts map[int]*big.Int, buf proverBuffe
 		for i := 0; i < len(constraint.witness); i++ {
 			for j := 0; j < p.ringQ.N(); j++ {
 				termNTT.Coeffs[j].SetInt64(constraint.coeffsInt64[i])
-				termNTT.Coeffs[j].Mul(termNTT.Coeffs[j], constraint.coeffsBig[i])
-				termNTT.Coeffs[j].Mod(termNTT.Coeffs[j], p.Parameters.Modulus())
+			}
+
+			if constraint.coeffsBig[i] != nil {
+				for j := 0; j < p.ringQ.N(); j++ {
+					termNTT.Coeffs[j].Mul(termNTT.Coeffs[j], constraint.coeffsBig[i])
+					termNTT.Coeffs[j].Mod(termNTT.Coeffs[j], p.Parameters.Modulus())
+				}
 			}
 
 			if constraint.coeffsPublicWitness[i] != -1 {

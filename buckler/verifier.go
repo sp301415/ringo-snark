@@ -137,8 +137,11 @@ func (v *Verifier) rowCheck(batchConsts map[int]*big.Int, buf verifierBuffer, pf
 		termEval := big.NewInt(0)
 		for i := 0; i < len(constraint.witness); i++ {
 			termEval.SetInt64(constraint.coeffsInt64[i])
-			termEval.Mul(termEval, constraint.coeffsBig[i])
-			termEval.Mod(termEval, v.Parameters.Modulus())
+
+			if constraint.coeffsBig[i] != nil {
+				termEval.Mul(termEval, constraint.coeffsBig[i])
+				termEval.Mod(termEval, v.Parameters.Modulus())
+			}
 
 			if constraint.coeffsPublicWitness[i] != -1 {
 				termEval.Mul(termEval, buf.publicWitnessEvals[constraint.coeffsPublicWitness[i]])
