@@ -3,149 +3,165 @@ package buckler
 import (
 	"math"
 	"math/big"
-	"reflect"
 
 	"github.com/sp301415/rlwe-piop/bigring"
 	"github.com/sp301415/rlwe-piop/celpc"
 )
 
-// Verify verifies the proof of the relation.
-func Verify(params celpc.Parameters, ck celpc.AjtaiCommitKey, c Circuit[VerifierWitness], pf Proof) bool {
-	ctx := newVerifierContext(params, pf)
-	c.Define(ctx)
+// Verifier verifies the given circuit.
+type Verifier struct {
+	Parameters celpc.Parameters
 
-	maxDegree := 2 * params.Degree()
-	for i := 0; i < len(ctx.aritmeticCircuits); i++ {
-		circuit := ctx.aritmeticCircuits[i].(*arithmeticCircuitVerify)
-		for j := 0; j < len(circuit.monomials); j++ {
-			degree := 0
-			if circuit.coeffPublicWitness[j] != nil {
-				degree += params.Degree() - 1
-			}
-			degree += len(circuit.monomials[j])*(2*params.Degree()-1) + 1
+	ringQ *bigring.BigRing
 
-			if degree > maxDegree {
-				maxDegree = degree
-			}
-		}
-	}
+	encoder      *Encoder
+	polyVerifier *celpc.Verifier
 
-	logEmbedDegree := int(math.Ceil(math.Log2(float64(maxDegree))))
+	oracle *celpc.RandomOracle
+
+	ctx *Context
+}
+
+type verifierBuffer struct {
+	evaluationPoint    *big.Int
+	vanishPoint        *big.Int
+	publicWitnessEvals []*big.Int
+}
+
+func newVerifier(params celpc.Parameters, ctx *Context) *Verifier {
+	logEmbedDegree := int(math.Ceil(math.Log2(float64(ctx.maxDegree))))
 	embedDegree := 1 << logEmbedDegree
 
-	ecd := NewEncoder(params, embedDegree)
-	verifier := celpc.NewVerifier(params, ck)
-	ringQ := bigring.NewBigRing(embedDegree, params.Modulus())
-	oracle := celpc.NewRandomOracle(params)
-	hash := celpc.NewRandomOracle(params)
+	return &Verifier{
+		Parameters: params,
 
-	encodes := make(map[**big.Int]bigring.BigPoly, 0)
-	commitments := make([]celpc.Commitment, 0)
+		ringQ: bigring.NewBigRing(embedDegree, params.Modulus()),
 
-	for i := 0; i < reflect.TypeOf(c).Elem().NumField(); i++ {
-		witnessValue := reflect.ValueOf(c).Elem().Field(i).Interface()
-		switch witnessValue := witnessValue.(type) {
-		case PublicWitness:
-			wEcd := ecd.Encode(witnessValue)
-			encodes[&witnessValue[:1][0]] = wEcd
-		case celpc.Commitment:
-			commitments = append(commitments, witnessValue)
+		encoder:      NewEncoder(params, embedDegree),
+		polyVerifier: celpc.NewVerifier(params, celpc.AjtaiCommitKey{}),
 
-			wHash := hashCommitment(witnessValue, hash)
-			if wDcmp, ok := pf.DecomposedWitness[wHash]; ok {
-				commitments = append(commitments, wDcmp...)
-			}
+		oracle: celpc.NewRandomOracle(params),
+
+		ctx: ctx,
+	}
+}
+
+func (v *Verifier) newBuffer() verifierBuffer {
+	return verifierBuffer{
+		evaluationPoint:    big.NewInt(0),
+		vanishPoint:        big.NewInt(0),
+		publicWitnessEvals: make([]*big.Int, v.ctx.publicWitnessCount),
+	}
+}
+
+// Verify verifies the circuit with the given proof.
+func (v *Verifier) Verify(ck celpc.AjtaiCommitKey, pf Proof) bool {
+	v.oracle.Reset()
+	v.polyVerifier.Commiter = celpc.NewAjtaiCommiter(v.Parameters, ck)
+	buf := v.newBuffer()
+
+	for i := 0; i < len(pf.Witness); i++ {
+		v.oracle.WriteCommitment(pf.Witness[i])
+	}
+	v.oracle.WriteOpeningProof(pf.OpeningProof)
+	v.oracle.Finalize()
+
+	batchArithConsts := make(map[int]*big.Int, len(v.ctx.constraints))
+	for _, constraint := range v.ctx.constraints {
+		if _, ok := batchArithConsts[constraint.degree]; !ok {
+			batchArithConsts[constraint.degree] = big.NewInt(0)
+			v.oracle.SampleModAssign(batchArithConsts[constraint.degree])
 		}
 	}
 
-	if !verifier.VerifyOpeningProof(commitments, pf.OpeningProof) {
+	v.oracle.WriteCommitment(pf.RowCheckCommit.QuoCommitment)
+	v.oracle.WriteCommitment(pf.RowCheckCommit.QuoShiftCommitment)
+	v.oracle.WriteOpeningProof(pf.RowCheckCommit.OpeningProof)
+	v.oracle.Finalize()
+
+	v.oracle.SampleModAssign(buf.evaluationPoint)
+	buf.vanishPoint.Exp(buf.evaluationPoint, big.NewInt(int64(v.Parameters.Degree())), v.Parameters.Modulus())
+	buf.vanishPoint.Sub(buf.vanishPoint, big.NewInt(1))
+
+	for i := 0; i < len(pf.PublicWitness); i++ {
+		pwEcd := v.encoder.Encode(pf.PublicWitness[i])
+		buf.publicWitnessEvals[i] = v.ringQ.Evaluate(pwEcd, buf.evaluationPoint)
+	}
+
+	if !v.polyVerifier.VerifyOpeningProof(pf.Witness, pf.OpeningProof) {
 		return false
 	}
-	if !verifier.VerifyOpeningProof([]celpc.Commitment{pf.RowCheckCommit.QuoCommitment, pf.RowCheckCommit.QuoShiftCommitment}, pf.RowCheckCommit.OpeningProof) {
-		return false
-	}
-
-	for i := 0; i < len(commitments); i++ {
-		oracle.WriteCommitment(commitments[i])
-	}
-	oracle.WriteOpeningProof(pf.OpeningProof)
-	oracle.Finalize()
-
-	batchConsts := make([]*big.Int, len(ctx.aritmeticCircuits))
-	for i := 0; i < len(ctx.aritmeticCircuits); i++ {
-		batchConsts[i] = big.NewInt(0)
-		oracle.SampleModAssign(batchConsts[i])
-	}
-
-	oracle.WriteCommitment(pf.RowCheckCommit.QuoCommitment)
-	oracle.WriteCommitment(pf.RowCheckCommit.QuoShiftCommitment)
-	oracle.WriteOpeningProof(pf.RowCheckCommit.OpeningProof)
-	oracle.Finalize()
-
-	evaluatePoint := big.NewInt(0)
-	oracle.SampleModAssign(evaluatePoint)
-
-	vanishPoint := big.NewInt(0).Exp(evaluatePoint, big.NewInt(int64(params.Degree())), params.Modulus())
-	vanishPoint.Sub(vanishPoint, big.NewInt(1))
-
-	for i := 0; i < len(commitments); i++ {
-		commitmentHash := hashCommitment(commitments[i], hash)
-		if !verifier.VerifyEvaluation(evaluatePoint, commitments[i], pf.Evaluations[commitmentHash]) {
+	for i := 0; i < len(pf.EvalProofs); i++ {
+		if !v.polyVerifier.VerifyEvaluation(buf.evaluationPoint, pf.Witness[i], pf.EvalProofs[i]) {
 			return false
 		}
 	}
-	if !verifier.VerifyEvaluation(evaluatePoint, pf.RowCheckCommit.QuoCommitment, pf.RowCheckEval.QuoEval) {
-		return false
-	}
-	if !verifier.VerifyEvaluation(evaluatePoint, pf.RowCheckCommit.QuoShiftCommitment, pf.RowCheckEval.QuoShiftEval) {
-		return false
-	}
-	rowCheckQuoDeg := maxDegree - params.Degree()
-	rowCheckQuoCommitDeg := int(math.Ceil(float64(rowCheckQuoDeg)/float64(params.BigIntCommitSize()))) * params.BigIntCommitSize()
-	rowCheckShiftEval := big.NewInt(0).Exp(evaluatePoint, big.NewInt(int64(rowCheckQuoCommitDeg-rowCheckQuoDeg)), params.Modulus())
-	rowCheckShiftEval.Mul(rowCheckShiftEval, pf.RowCheckEval.QuoEval.Value)
-	rowCheckShiftEval.Mod(rowCheckShiftEval, params.Modulus())
 
-	if rowCheckShiftEval.Cmp(pf.RowCheckEval.QuoShiftEval.Value) != 0 {
-		return false
-	}
-
-	batchedEval := big.NewInt(0)
-	for t, circuit := range ctx.aritmeticCircuits {
-		circuit := circuit.(*arithmeticCircuitVerify)
-
-		for i := 0; i < len(circuit.monomials); i++ {
-			var term *big.Int
-			if circuit.coeffPublicWitness[i] == nil {
-				term = big.NewInt(0).SetInt64(circuit.coeffInt64[i])
-				term.Mul(term, circuit.coeffBigInt[i])
-				term.Mod(term, params.Modulus())
-			} else {
-				term = ringQ.Evaluate(encodes[&circuit.coeffPublicWitness[i][:1][0]], evaluatePoint)
-				term.Mul(term, big.NewInt(0).SetInt64(circuit.coeffInt64[i]))
-				term.Mul(term, circuit.coeffBigInt[i])
-				term.Mod(term, params.Modulus())
-			}
-
-			for j := 0; j < len(circuit.monomials[i]); j++ {
-				monomialHash := hashCommitment(circuit.monomials[i][j], hash)
-				monomialEval := pf.Evaluations[monomialHash].Value
-				term.Mul(term, monomialEval)
-				term.Mod(term, params.Modulus())
-			}
-			term.Mul(term, batchConsts[t])
-			batchedEval.Add(batchedEval, term)
-			batchedEval.Mod(batchedEval, params.Modulus())
-		}
-	}
-
-	rowCheckEval := big.NewInt(0).Set(pf.RowCheckEval.QuoEval.Value)
-	rowCheckEval.Mul(rowCheckEval, vanishPoint)
-	rowCheckEval.Mod(rowCheckEval, params.Modulus())
-
-	if rowCheckEval.Cmp(batchedEval) != 0 {
+	if !v.rowCheck(batchArithConsts, buf, pf) {
 		return false
 	}
 
 	return true
+}
+
+func (v *Verifier) rowCheck(batchConsts map[int]*big.Int, buf verifierBuffer, pf Proof) bool {
+	batchConstsPow := make(map[int]*big.Int, len(batchConsts))
+	for k, v := range batchConsts {
+		batchConstsPow[k] = big.NewInt(0).Set(v)
+	}
+
+	commits := []celpc.Commitment{pf.RowCheckCommit.QuoCommitment, pf.RowCheckCommit.QuoShiftCommitment}
+	evalPfs := []celpc.EvaluationProof{pf.RowCheckEvalProof.QuoEvalProof, pf.RowCheckEvalProof.QuoShiftEvalProof}
+	if !v.polyVerifier.VerifyOpeningProof(commits, pf.RowCheckCommit.OpeningProof) {
+		return false
+	}
+	for i := range evalPfs {
+		if !v.polyVerifier.VerifyEvaluation(buf.evaluationPoint, commits[i], evalPfs[i]) {
+			return false
+		}
+	}
+
+	quoDeg := v.ctx.maxDegree - v.Parameters.Degree()
+	quoCommitDeg := int(math.Ceil(float64(quoDeg)/float64(v.Parameters.BigIntCommitSize()))) * v.Parameters.BigIntCommitSize()
+
+	quoShiftEval := big.NewInt(0).Exp(buf.evaluationPoint, big.NewInt(int64(quoCommitDeg-quoDeg)), v.Parameters.Modulus())
+	quoShiftEval.Mul(quoShiftEval, pf.QuoEvalProof.Value)
+	quoShiftEval.Mod(quoShiftEval, v.Parameters.Modulus())
+	if quoShiftEval.Cmp(pf.QuoShiftEvalProof.Value) != 0 {
+		return false
+	}
+
+	batchedEval := big.NewInt(0)
+	for _, constraint := range v.ctx.constraints {
+		constraintEval := big.NewInt(0)
+		termEval := big.NewInt(0)
+		for i := 0; i < len(constraint.witness); i++ {
+			termEval.SetInt64(constraint.coeffsInt64[i])
+			termEval.Mul(termEval, constraint.coeffsBig[i])
+			termEval.Mod(termEval, v.Parameters.Modulus())
+
+			if constraint.coeffsPublicWitness[i] != -1 {
+				termEval.Mul(termEval, buf.publicWitnessEvals[constraint.coeffsPublicWitness[i]])
+				termEval.Mod(termEval, v.Parameters.Modulus())
+			}
+
+			for j := 0; j < len(constraint.witness[i]); j++ {
+				termEval.Mul(termEval, pf.EvalProofs[constraint.witness[i][j]].Value)
+				termEval.Mod(termEval, v.Parameters.Modulus())
+			}
+			constraintEval.Add(constraintEval, termEval)
+			constraintEval.Mod(constraintEval, v.Parameters.Modulus())
+		}
+		constraintEval.Mul(constraintEval, batchConstsPow[constraint.degree])
+		batchedEval.Add(batchedEval, constraintEval)
+		batchedEval.Mod(batchedEval, v.Parameters.Modulus())
+
+		batchConstsPow[constraint.degree].Mul(batchConstsPow[constraint.degree], batchConsts[constraint.degree])
+		batchConstsPow[constraint.degree].Mod(batchConstsPow[constraint.degree], v.Parameters.Modulus())
+	}
+
+	checkEval := big.NewInt(0).Mul(pf.RowCheckEvalProof.QuoEvalProof.Value, buf.vanishPoint)
+	checkEval.Mod(checkEval, v.Parameters.Modulus())
+
+	return batchedEval.Cmp(checkEval) == 0
 }

@@ -15,7 +15,7 @@ type Encoder struct {
 
 	UniformSampler *celpc.UniformSampler
 
-	TwInv     []*big.Int
+	twInv     []*big.Int
 	degreeInv *big.Int
 }
 
@@ -48,8 +48,21 @@ func NewEncoder(params celpc.Parameters, embedDegree int) *Encoder {
 
 		UniformSampler: celpc.NewUniformSampler(params),
 
-		TwInv:     twInv,
+		twInv:     twInv,
 		degreeInv: degreeInv,
+	}
+}
+
+// ShallowCopy creates a copy of Encoder that is thread-safe.
+func (e *Encoder) ShallowCopy() *Encoder {
+	return &Encoder{
+		Parameters:  e.Parameters,
+		EmbedDegree: e.EmbedDegree,
+
+		UniformSampler: celpc.NewUniformSampler(e.Parameters),
+
+		twInv:     e.twInv,
+		degreeInv: e.degreeInv,
 	}
 }
 
@@ -67,7 +80,6 @@ func (e *Encoder) EncodeAssign(x []*big.Int, pOut bigring.BigPoly) {
 	for i := 0; i < e.Parameters.Degree(); i++ {
 		pOut.Coeffs[i].Set(x[i])
 	}
-
 	for i := e.Parameters.Degree(); i < e.EmbedDegree; i++ {
 		pOut.Coeffs[i].SetInt64(0)
 	}
@@ -89,7 +101,7 @@ func (e *Encoder) EncodeAssign(x []*big.Int, pOut bigring.BigPoly) {
 				}
 
 				pOut.Coeffs[j+t].Sub(u, v)
-				pOut.Coeffs[j+t].Mul(pOut.Coeffs[j+t], e.TwInv[i])
+				pOut.Coeffs[j+t].Mul(pOut.Coeffs[j+t], e.twInv[i])
 				pOut.Coeffs[j+t].Mod(pOut.Coeffs[j+t], e.Parameters.Modulus())
 			}
 		}

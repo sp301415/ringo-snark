@@ -16,8 +16,8 @@ type Verifier struct {
 }
 
 // NewVerifier creates a new Verifier.
-func NewVerifier(params Parameters, ck AjtaiCommitKey) Verifier {
-	return Verifier{
+func NewVerifier(params Parameters, ck AjtaiCommitKey) *Verifier {
+	return &Verifier{
 		Parameters: params,
 		Encoder:    NewEncoder(params),
 		Commiter:   NewAjtaiCommiter(params, ck),

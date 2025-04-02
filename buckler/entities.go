@@ -2,15 +2,16 @@ package buckler
 
 import "github.com/sp301415/rlwe-piop/celpc"
 
-// Proof is the proof of the relation.
+// Proof is the proof for the circuit.
 type Proof struct {
-	Witness           map[string]celpc.Commitment
-	OpeningProof      celpc.OpeningProof
-	DecomposedWitness map[uint64][]celpc.Commitment
-	Evaluations       map[uint64]celpc.EvaluationProof
+	PublicWitness []PublicWitness
+	Witness       []celpc.Commitment
+	OpeningProof  celpc.OpeningProof
 
-	RowCheckCommit RowCheckCommit
-	RowCheckEval   RowCheckEval
+	RowCheckCommit
+
+	EvalProofs []celpc.EvaluationProof
+	RowCheckEvalProof
 }
 
 // RowCheckCommit is the first move of the row check.
@@ -20,8 +21,13 @@ type RowCheckCommit struct {
 	OpeningProof       celpc.OpeningProof
 }
 
-// RowCheckEval is the second move of the row check.
-type RowCheckEval struct {
-	QuoEval      celpc.EvaluationProof
-	QuoShiftEval celpc.EvaluationProof
+type rowCheckOpening struct {
+	QuoOpening      celpc.Opening
+	QuoShiftOpening celpc.Opening
+}
+
+// RowCheckEvalProof is the second move of the row check.
+type RowCheckEvalProof struct {
+	QuoEvalProof      celpc.EvaluationProof
+	QuoShiftEvalProof celpc.EvaluationProof
 }
