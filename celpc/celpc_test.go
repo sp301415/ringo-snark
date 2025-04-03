@@ -120,7 +120,7 @@ func TestCommitment(t *testing.T) {
 	})
 }
 
-func BenchmarkCELPC(b *testing.B) {
+func BenchmarkCommitment(b *testing.B) {
 	for _, paramsLiteral := range paramsLiteralList {
 		params := paramsLiteral.Compile()
 		logN := int(math.Log2(float64(params.Degree())))

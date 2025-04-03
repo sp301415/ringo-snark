@@ -3,6 +3,7 @@ package celpc
 import (
 	"math"
 	"math/big"
+	"runtime"
 	"sync"
 
 	"github.com/sp301415/rlwe-piop/bigring"
@@ -79,18 +80,16 @@ func (p *Prover) CommitAssign(pBig bigring.BigPoly, comOut Commitment, openOut O
 		p.Commiter.CommitAssign(openOut.Mask[i], openOut.Rand[i], comOut.Value[i])
 	}
 
-	bigBlind0 := make([]*big.Int, p.Parameters.bigIntCommitSize)
-	bigBlind1 := make([]*big.Int, p.Parameters.bigIntCommitSize)
-	bigBlind0[p.Parameters.bigIntCommitSize-1] = big.NewInt(0)
-	bigBlind1[0] = big.NewInt(0)
+	bigBlind := make([]*big.Int, p.Parameters.bigIntCommitSize)
+	bigBlindShift := make([]*big.Int, p.Parameters.bigIntCommitSize)
+	bigBlind[p.Parameters.bigIntCommitSize-1] = big.NewInt(0)
+	bigBlindShift[0] = big.NewInt(0)
 	for i := 0; i < p.Parameters.bigIntCommitSize-1; i++ {
-		bigBlind0[i] = big.NewInt(0)
-		p.UniformSampler.SampleModAssign(bigBlind0[i])
-
-		bigBlind1[i+1] = big.NewInt(0).Sub(p.Parameters.modulus, bigBlind0[i])
+		bigBlind[i] = p.UniformSampler.SampleMod()
+		bigBlindShift[i+1] = big.NewInt(0).Sub(p.Parameters.modulus, bigBlind[i])
 	}
 
-	p.CommitEncoder.RandomEncodeChunkAssign(bigBlind0, openOut.Mask[commitCount])
+	p.CommitEncoder.RandomEncodeChunkAssign(bigBlind, openOut.Mask[commitCount])
 	for j := 0; j < p.Parameters.ajtaiRandSize; j++ {
 		p.CommitRandSampler.SamplePolyAssign(0, openOut.Rand[commitCount][j])
 	}
@@ -98,7 +97,7 @@ func (p *Prover) CommitAssign(pBig bigring.BigPoly, comOut Commitment, openOut O
 
 	blindStdDev := math.Sqrt(float64(commitCount+2)) * p.Parameters.blindStdDev
 	blindRandStdDev := math.Sqrt(float64(commitCount+2)) * p.Parameters.blindRandStdDev
-	p.Encoder.RandomEncodeChunkAssign(bigBlind1, blindStdDev, openOut.Mask[commitCount+1])
+	p.Encoder.RandomEncodeChunkAssign(bigBlindShift, blindStdDev, openOut.Mask[commitCount+1])
 	for j := 0; j < p.Parameters.ajtaiRandSize; j++ {
 		p.GaussianSampler.SamplePolyAssign(0, blindRandStdDev, openOut.Rand[commitCount+1][j])
 	}
@@ -117,66 +116,69 @@ func (p *Prover) CommitParallel(pBig bigring.BigPoly) (Commitment, Opening) {
 func (p *Prover) CommitParallelAssign(pBig bigring.BigPoly, comOut Commitment, openOut Opening) {
 	commitCount := pBig.Degree() / p.Parameters.bigIntCommitSize
 
-	proverPool := make([]*Prover, commitCount+2)
-	for i := 0; i < commitCount+2; i++ {
+	bigBlind := make([]*big.Int, p.Parameters.bigIntCommitSize)
+	bigBlindShift := make([]*big.Int, p.Parameters.bigIntCommitSize)
+	bigBlind[p.Parameters.bigIntCommitSize-1] = big.NewInt(0)
+	bigBlindShift[0] = big.NewInt(0)
+	for i := 0; i < p.Parameters.bigIntCommitSize-1; i++ {
+		bigBlind[i] = p.UniformSampler.SampleMod()
+		bigBlindShift[i+1] = big.NewInt(0).Sub(p.Parameters.modulus, bigBlind[i])
+	}
+
+	workSize := min(runtime.NumCPU(), commitCount+2)
+
+	proverPool := make([]*Prover, workSize)
+	for i := 0; i < workSize; i++ {
 		proverPool[i] = p.ShallowCopy()
 	}
 
-	bigBlind0 := make([]*big.Int, p.Parameters.bigIntCommitSize)
-	bigBlind1 := make([]*big.Int, p.Parameters.bigIntCommitSize)
-	bigBlind0[p.Parameters.bigIntCommitSize-1] = big.NewInt(0)
-	bigBlind1[0] = big.NewInt(0)
-	for i := 0; i < p.Parameters.bigIntCommitSize-1; i++ {
-		bigBlind0[i] = big.NewInt(0)
-		p.UniformSampler.SampleModAssign(bigBlind0[i])
-
-		bigBlind1[i+1] = big.NewInt(0).Sub(p.Parameters.modulus, bigBlind0[i])
-	}
+	jobs := make(chan int)
+	go func() {
+		defer close(jobs)
+		for i := 0; i < commitCount+2; i++ {
+			jobs <- i
+		}
+	}()
 
 	var wg sync.WaitGroup
-	wg.Add(commitCount + 2)
+	wg.Add(workSize)
 
-	for i := 0; i < commitCount; i++ {
+	for i := 0; i < workSize; i++ {
 		go func(i int) {
+			defer wg.Done()
 			pIdx := proverPool[i]
 
-			pBigChunk := pBig.Coeffs[i*pIdx.Parameters.bigIntCommitSize : (i+1)*pIdx.Parameters.bigIntCommitSize]
-			pIdx.CommitEncoder.RandomEncodeChunkAssign(pBigChunk, openOut.Mask[i])
-			for j := 0; j < pIdx.Parameters.ajtaiRandSize; j++ {
-				pIdx.CommitRandSampler.SamplePolyAssign(0, openOut.Rand[i][j])
-			}
-			pIdx.Commiter.CommitAssign(openOut.Mask[i], openOut.Rand[i], comOut.Value[i])
+			for i := range jobs {
+				switch {
+				case i < commitCount:
+					pBigChunk := pBig.Coeffs[i*pIdx.Parameters.bigIntCommitSize : (i+1)*pIdx.Parameters.bigIntCommitSize]
+					pIdx.CommitEncoder.RandomEncodeChunkAssign(pBigChunk, openOut.Mask[i])
+					for j := 0; j < pIdx.Parameters.ajtaiRandSize; j++ {
+						pIdx.CommitRandSampler.SamplePolyAssign(0, openOut.Rand[i][j])
+					}
+					pIdx.Commiter.CommitAssign(openOut.Mask[i], openOut.Rand[i], comOut.Value[i])
 
-			wg.Done()
+				case i == commitCount:
+					pIdx.CommitEncoder.RandomEncodeChunkAssign(bigBlind, openOut.Mask[commitCount])
+					for j := 0; j < p.Parameters.ajtaiRandSize; j++ {
+						pIdx.CommitRandSampler.SamplePolyAssign(0, openOut.Rand[commitCount][j])
+					}
+					pIdx.Commiter.CommitAssign(openOut.Mask[commitCount], openOut.Rand[commitCount], comOut.Value[commitCount])
+
+				case i == commitCount+1:
+					blindStdDev := math.Sqrt(float64(commitCount+2)) * pIdx.Parameters.blindStdDev
+					blindRandStdDev := math.Sqrt(float64(commitCount+2)) * pIdx.Parameters.blindRandStdDev
+
+					pIdx.Encoder.RandomEncodeChunkAssign(bigBlindShift, blindStdDev, openOut.Mask[commitCount+1])
+					for j := 0; j < pIdx.Parameters.ajtaiRandSize; j++ {
+						pIdx.GaussianSampler.SamplePolyAssign(0, blindRandStdDev, openOut.Rand[commitCount+1][j])
+					}
+					pIdx.Commiter.CommitAssign(openOut.Mask[commitCount+1], openOut.Rand[commitCount+1], comOut.Value[commitCount+1])
+
+				}
+			}
 		}(i)
 	}
-
-	go func() {
-		pIdx := proverPool[commitCount]
-
-		pIdx.CommitEncoder.RandomEncodeChunkAssign(bigBlind0, openOut.Mask[commitCount])
-		for j := 0; j < p.Parameters.ajtaiRandSize; j++ {
-			pIdx.CommitRandSampler.SamplePolyAssign(0, openOut.Rand[commitCount][j])
-		}
-		pIdx.Commiter.CommitAssign(openOut.Mask[commitCount], openOut.Rand[commitCount], comOut.Value[commitCount])
-
-		wg.Done()
-	}()
-
-	go func() {
-		pIdx := proverPool[commitCount+1]
-
-		blindStdDev := math.Sqrt(float64(commitCount+2)) * pIdx.Parameters.blindStdDev
-		blindRandStdDev := math.Sqrt(float64(commitCount+2)) * pIdx.Parameters.blindRandStdDev
-
-		pIdx.Encoder.RandomEncodeChunkAssign(bigBlind1, blindStdDev, openOut.Mask[commitCount+1])
-		for j := 0; j < pIdx.Parameters.ajtaiRandSize; j++ {
-			pIdx.GaussianSampler.SamplePolyAssign(0, blindRandStdDev, openOut.Rand[commitCount+1][j])
-		}
-		pIdx.Commiter.CommitAssign(openOut.Mask[commitCount+1], openOut.Rand[commitCount+1], comOut.Value[commitCount+1])
-
-		wg.Done()
-	}()
 
 	wg.Wait()
 }
@@ -291,30 +293,40 @@ func (p *Prover) ProveOpeningParallelAssign(comVec []Commitment, openVec []Openi
 	openingProofStdDev := math.Sqrt(float64(batchCount+1)) * p.Parameters.openingProofStdDev
 	openingProofRandStdDev := math.Sqrt(float64(batchCount+1)) * p.Parameters.openingProofRandStdDev
 
-	proverPool := make([]*Prover, p.Parameters.Repetition())
-	for i := 0; i < p.Parameters.Repetition(); i++ {
+	workSizeFirstMove := min(runtime.NumCPU(), p.Parameters.Repetition())
+
+	proverPool := make([]*Prover, workSizeFirstMove)
+	for i := 0; i < workSizeFirstMove; i++ {
 		proverPool[i] = p.ShallowCopy()
 	}
 
-	var wg sync.WaitGroup
-	wg.Add(p.Parameters.Repetition())
+	jobsFirstMove := make(chan int)
+	go func() {
+		defer close(jobsFirstMove)
+		for i := 0; i < p.Parameters.Repetition(); i++ {
+			jobsFirstMove <- i
+		}
+	}()
 
-	for i := 0; i < p.Parameters.Repetition(); i++ {
+	var wg sync.WaitGroup
+	wg.Add(workSizeFirstMove)
+
+	for i := 0; i < workSizeFirstMove; i++ {
 		go func(i int) {
+			defer wg.Done()
 			pIdx := proverPool[i]
 
-			bigMask := make([]*big.Int, pIdx.Parameters.bigIntCommitSize)
-			for i := 0; i < pIdx.Parameters.bigIntCommitSize; i++ {
-				bigMask[i] = big.NewInt(0)
-				pIdx.UniformSampler.SampleModAssign(bigMask[i])
+			for i := range jobsFirstMove {
+				bigMask := make([]*big.Int, pIdx.Parameters.bigIntCommitSize)
+				for i := 0; i < pIdx.Parameters.bigIntCommitSize; i++ {
+					bigMask[i] = pIdx.UniformSampler.SampleMod()
+				}
+				pIdx.Encoder.RandomEncodeChunkAssign(bigMask, openingProofStdDev, openPfOut.ResponseMask[i])
+				for j := 0; j < pIdx.Parameters.ajtaiRandSize; j++ {
+					pIdx.GaussianSampler.SamplePolyAssign(0, openingProofRandStdDev, openPfOut.ResponseRand[i][j])
+				}
+				pIdx.Commiter.CommitAssign(openPfOut.ResponseMask[i], openPfOut.ResponseRand[i], openPfOut.Commitment[i])
 			}
-			pIdx.Encoder.RandomEncodeChunkAssign(bigMask, openingProofStdDev, openPfOut.ResponseMask[i])
-			for j := 0; j < pIdx.Parameters.ajtaiRandSize; j++ {
-				pIdx.GaussianSampler.SamplePolyAssign(0, openingProofRandStdDev, openPfOut.ResponseRand[i][j])
-			}
-			pIdx.Commiter.CommitAssign(openPfOut.ResponseMask[i], openPfOut.ResponseRand[i], openPfOut.Commitment[i])
-
-			wg.Done()
 		}(i)
 	}
 
@@ -333,28 +345,39 @@ func (p *Prover) ProveOpeningParallelAssign(comVec []Commitment, openVec []Openi
 		}
 	}
 
-	wg.Add(p.Parameters.Repetition() * (p.Parameters.polyCommitSize + p.Parameters.ajtaiRandSize))
+	workSizeSecondMove := min(runtime.NumCPU(), p.Parameters.Repetition()*(p.Parameters.polyCommitSize+p.Parameters.ajtaiRandSize))
 
-	for i := 0; i < p.Parameters.Repetition(); i++ {
-		for k := 0; k < p.Parameters.polyCommitSize; k++ {
-			go func(i, k int) {
-				for j := 0; j < batchCount; j++ {
-					p.Parameters.ringQ.MulCoeffsMontgomeryThenAdd(challenge[i][j], batchMask[j][k], openPfOut.ResponseMask[i][k])
-				}
-				wg.Done()
-			}(i, k)
+	jobsSecondMove := make(chan [2]int)
+	go func() {
+		defer close(jobsSecondMove)
+		for i := 0; i < p.Parameters.Repetition(); i++ {
+			for k := 0; k < p.Parameters.polyCommitSize+p.Parameters.ajtaiRandSize; k++ {
+				jobsSecondMove <- [2]int{i, k}
+			}
 		}
-	}
+	}()
 
-	for i := 0; i < p.Parameters.Repetition(); i++ {
-		for k := 0; k < p.Parameters.ajtaiRandSize; k++ {
-			go func(i, k int) {
-				for j := 0; j < batchCount; j++ {
-					p.Parameters.ringQ.MulCoeffsMontgomeryThenAdd(challenge[i][j], batchRand[j][k], openPfOut.ResponseRand[i][k])
+	wg.Add(workSizeSecondMove)
+
+	for i := 0; i < workSizeSecondMove; i++ {
+		go func() {
+			defer wg.Done()
+			for idx := range jobsSecondMove {
+				i, k := idx[0], idx[1]
+				switch {
+				case k < p.Parameters.polyCommitSize:
+					for j := 0; j < batchCount; j++ {
+						p.Parameters.ringQ.MulCoeffsMontgomeryThenAdd(challenge[i][j], batchMask[j][k], openPfOut.ResponseMask[i][k])
+					}
+
+				case k >= p.Parameters.polyCommitSize:
+					k -= p.Parameters.polyCommitSize
+					for j := 0; j < batchCount; j++ {
+						p.Parameters.ringQ.MulCoeffsMontgomeryThenAdd(challenge[i][j], batchRand[j][k], openPfOut.ResponseRand[i][k])
+					}
 				}
-				wg.Done()
-			}(i, k)
-		}
+			}
+		}()
 	}
 
 	wg.Wait()
@@ -433,30 +456,44 @@ func (p *Prover) EvaluateParallelAssign(x *big.Int, open Opening, evalPfOut Eval
 		xPowBuf.Mod(xPowBuf, p.Parameters.modulus)
 	}
 
+	workSize := min(runtime.NumCPU(), p.Parameters.polyCommitSize+p.Parameters.ajtaiRandSize)
+
+	jobs := make(chan int)
+	go func() {
+		defer close(jobs)
+		for i := 0; i < p.Parameters.polyCommitSize+p.Parameters.ajtaiRandSize; i++ {
+			jobs <- i
+		}
+	}()
+
 	var wg sync.WaitGroup
-	wg.Add(p.Parameters.polyCommitSize + p.Parameters.ajtaiRandSize)
+	wg.Add(workSize)
 
-	for i := 0; i < p.Parameters.polyCommitSize; i++ {
-		go func(i int) {
-			evalPfOut.Mask[i].Copy(open.Mask[commitCount+1][i])
-			p.Parameters.ringQ.MulCoeffsMontgomeryThenAdd(xEcd, open.Mask[commitCount][i], evalPfOut.Mask[i])
-			for j := 0; j < commitCount; j++ {
-				p.Parameters.ringQ.MulCoeffsMontgomeryThenAdd(xPowEcd[j], open.Mask[j][i], evalPfOut.Mask[i])
+	for i := 0; i < workSize; i++ {
+		go func() {
+			defer wg.Done()
+			for i := range jobs {
+				switch {
+				case i < p.Parameters.polyCommitSize:
+					evalPfOut.Mask[i].Copy(open.Mask[commitCount+1][i])
+					p.Parameters.ringQ.MulCoeffsMontgomeryThenAdd(xEcd, open.Mask[commitCount][i], evalPfOut.Mask[i])
+					for j := 0; j < commitCount; j++ {
+						p.Parameters.ringQ.MulCoeffsMontgomeryThenAdd(xPowEcd[j], open.Mask[j][i], evalPfOut.Mask[i])
+					}
+
+				case i >= p.Parameters.polyCommitSize:
+					i -= p.Parameters.polyCommitSize
+					evalPfOut.Rand[i].Copy(open.Rand[commitCount+1][i])
+					p.Parameters.ringQ.MulCoeffsMontgomeryThenAdd(xEcd, open.Rand[commitCount][i], evalPfOut.Rand[i])
+					for j := 0; j < commitCount; j++ {
+						p.Parameters.ringQ.MulCoeffsMontgomeryThenAdd(xPowEcd[j], open.Rand[j][i], evalPfOut.Rand[i])
+					}
+				}
 			}
-			wg.Done()
-		}(i)
+		}()
 	}
 
-	for i := 0; i < p.Parameters.ajtaiRandSize; i++ {
-		go func(i int) {
-			evalPfOut.Rand[i].Copy(open.Rand[commitCount+1][i])
-			p.Parameters.ringQ.MulCoeffsMontgomeryThenAdd(xEcd, open.Rand[commitCount][i], evalPfOut.Rand[i])
-			for j := 0; j < commitCount; j++ {
-				p.Parameters.ringQ.MulCoeffsMontgomeryThenAdd(xPowEcd[j], open.Rand[j][i], evalPfOut.Rand[i])
-			}
-			wg.Done()
-		}(i)
-	}
+	wg.Wait()
 
 	xPowBasis := make([]*big.Int, p.Parameters.bigIntCommitSize)
 	xPowBasis[0] = big.NewInt(1)
