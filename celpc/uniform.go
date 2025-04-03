@@ -57,6 +57,13 @@ func (s *UniformSampler) SamplePolyAssign(pOut ring.Poly) {
 	}
 }
 
+// SampleMod samples a uniformly random value modulo modulus.
+func (s *UniformSampler) SampleMod() *big.Int {
+	r := big.NewInt(0)
+	s.SampleModAssign(r)
+	return r
+}
+
 // SampleModAssign samples a uniformly random value modulo modulus.
 func (s *UniformSampler) SampleModAssign(xOut *big.Int) {
 	for {

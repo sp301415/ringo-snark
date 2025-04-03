@@ -2,6 +2,7 @@ package buckler
 
 import (
 	"math/big"
+	"slices"
 
 	"github.com/sp301415/rlwe-piop/celpc"
 )
@@ -16,9 +17,13 @@ type Context struct {
 
 	maxDegree int
 
-	constraints []ArithmeticConstraint
+	arithConstraints []ArithmeticConstraint
 
 	decomposedWitness map[int64][]Witness
+
+	nttConstraints    [][2]int64
+	autConstraintsIdx []int
+	autConstraints    [][][2]int64
 }
 
 func newContext(params celpc.Parameters, walker *walker) *Context {
@@ -41,7 +46,7 @@ func NewArithmeticConstraint() *ArithmeticConstraint {
 
 // AddArithmeticConstraint adds an arithmetic constraint to the context.
 func (ctx *Context) AddArithmeticConstraint(c ArithmeticConstraint) {
-	ctx.constraints = append(ctx.constraints, c)
+	ctx.arithConstraints = append(ctx.arithConstraints, c)
 
 	for i := 0; i < len(c.witness); i++ {
 		degree := 0
@@ -88,4 +93,41 @@ func (ctx *Context) AddNormConstraint(w Witness, logBound uint64) {
 		decomposeConstraint.AddTerm(-(1 << (i - 1)), nil, nil, wDecomposed[i])
 	}
 	ctx.AddArithmeticConstraint(decomposeConstraint)
+}
+
+// AddNTTConstraint adds an NTT constraint to the context.
+func (ctx *Context) AddNTTConstraint(w, wNTT Witness) {
+	linCheckDeg := 3*ctx.Parameters.Degree() - 2
+	if ctx.maxDegree < linCheckDeg {
+		ctx.maxDegree = linCheckDeg
+	}
+
+	ctx.nttConstraints = append(ctx.nttConstraints, [2]int64{w[0].Int64(), wNTT[0].Int64()})
+}
+
+// AddAutomorphismNTTConstraint adds an automorphism X -> X^d over NTT constraint to the context.
+func (ctx *Context) AddAutomorphismNTTConstraint(wNTT Witness, d int, wAutNTT Witness) {
+	linCheckDeg := 3*ctx.Parameters.Degree() - 2
+	if ctx.maxDegree < linCheckDeg {
+		ctx.maxDegree = linCheckDeg
+	}
+
+	d %= 2 * ctx.Parameters.Degree()
+	idx := slices.Index(ctx.autConstraintsIdx, d)
+	if idx == -1 {
+		ctx.autConstraintsIdx = append(ctx.autConstraintsIdx, d)
+		ctx.autConstraints = append(ctx.autConstraints, [][2]int64{{wNTT[0].Int64(), wAutNTT[0].Int64()}})
+	} else {
+		ctx.autConstraints[idx] = append(ctx.autConstraints[idx], [2]int64{wNTT[0].Int64(), wAutNTT[0].Int64()})
+	}
+}
+
+// HasRowCheck returns true if the row check is needed.
+func (ctx *Context) HasRowCheck() bool {
+	return len(ctx.arithConstraints) > 0
+}
+
+// HasLinearCheck returns true if the linear check is needed.
+func (ctx *Context) HasLinearCheck() bool {
+	return len(ctx.nttConstraints) > 0 || len(ctx.autConstraints) > 0
 }

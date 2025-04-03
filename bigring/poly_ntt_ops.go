@@ -119,3 +119,19 @@ func (r *BigRing) MulSubNTTAssign(p0, p1 BigNTTPoly, pOut BigNTTPoly) {
 		pOut.Coeffs[i].Mod(pOut.Coeffs[i], r.modulus)
 	}
 }
+
+// AutomorphismNTT returns pOut = p(X^d).
+func (r *BigRing) AutomorphismNTT(p BigNTTPoly, d int) BigNTTPoly {
+	pOut := NewBigNTTPoly(r.degree)
+	r.AutomorphismNTTAssign(p, d, pOut)
+	return pOut
+}
+
+// AutomorphismNTTAssign assigns pOut = p(X^d).
+func (r *BigRing) AutomorphismNTTAssign(p BigNTTPoly, d int, pOut BigNTTPoly) {
+	for i := 0; i < r.degree; i++ {
+		j := ((2*i + 1) * d) % (2 * r.degree)
+		j = (j - 1) >> 1
+		pOut.Coeffs[i].Set(p.Coeffs[j])
+	}
+}

@@ -3,8 +3,6 @@ package buckler
 import (
 	"math/big"
 	"slices"
-
-	"github.com/sp301415/rlwe-piop/celpc"
 )
 
 // bigSignedDecompose ternary decomposes x.
@@ -45,13 +43,4 @@ func bigSignedDecompose(x *big.Int, q *big.Int, n int) []*big.Int {
 	slices.Reverse(dcmp)
 
 	return dcmp
-}
-
-// hashCommitment hashes the commitment.
-// This is not cryptgraphically secure, but it is fast and works for our purposes.
-func hashCommitment(c celpc.Commitment, hash *celpc.RandomOracle) uint64 {
-	hash.Reset()
-	hash.WriteCommitment(c)
-	hash.Finalize()
-	return hash.Sample()
 }
