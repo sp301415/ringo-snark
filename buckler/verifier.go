@@ -1,7 +1,6 @@
 package buckler
 
 import (
-	"math"
 	"math/big"
 
 	"github.com/sp301415/rlwe-piop/bigring"
@@ -28,25 +27,6 @@ type verifierBuffer struct {
 	evaluationPoint    *big.Int
 	vanishPoint        *big.Int
 	publicWitnessEvals []*big.Int
-}
-
-func newVerifier(params celpc.Parameters, ctx *Context) *Verifier {
-	logEmbedDegree := int(math.Ceil(math.Log2(float64(ctx.maxDegree))))
-	embedDegree := 1 << logEmbedDegree
-
-	return &Verifier{
-		Parameters: params,
-
-		ringQ:     bigring.NewBigRing(embedDegree, params.Modulus()),
-		baseRingQ: bigring.NewBigRing(params.Degree(), params.Modulus()),
-
-		encoder:      NewEncoder(params, embedDegree),
-		polyVerifier: celpc.NewVerifier(params, celpc.AjtaiCommitKey{}),
-
-		oracle: celpc.NewRandomOracle(params),
-
-		ctx: ctx,
-	}
 }
 
 func (v *Verifier) newBuffer() verifierBuffer {

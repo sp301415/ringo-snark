@@ -33,7 +33,7 @@ func newContext(params celpc.Parameters, walker *walker) *Context {
 		publicWitnessCount: walker.publicWitnessCount,
 		witnessCount:       walker.witnessCount,
 
-		maxDegree: 2 * params.Degree(),
+		maxDegree: params.Degree() + 1,
 
 		decomposedWitness: make(map[int64][]Witness),
 	}
@@ -53,7 +53,7 @@ func (ctx *Context) AddArithmeticConstraint(c ArithmeticConstraint) {
 		if c.coeffsPublicWitness[i] == -1 {
 			degree += ctx.Parameters.Degree() - 1
 		}
-		degree += len(c.witness[i]) * (2*ctx.Parameters.Degree() - 1)
+		degree += len(c.witness[i]) * ctx.Parameters.Degree()
 		degree += 1
 
 		if degree > ctx.maxDegree {
@@ -97,7 +97,7 @@ func (ctx *Context) AddNormConstraint(w Witness, logBound uint64) {
 
 // AddNTTConstraint adds an NTT constraint to the context.
 func (ctx *Context) AddNTTConstraint(w, wNTT Witness) {
-	linCheckDeg := 3*ctx.Parameters.Degree() - 2
+	linCheckDeg := 2 * ctx.Parameters.Degree()
 	if ctx.maxDegree < linCheckDeg {
 		ctx.maxDegree = linCheckDeg
 	}
@@ -107,7 +107,7 @@ func (ctx *Context) AddNTTConstraint(w, wNTT Witness) {
 
 // AddAutomorphismNTTConstraint adds an automorphism X -> X^d over NTT constraint to the context.
 func (ctx *Context) AddAutomorphismNTTConstraint(wNTT Witness, d int, wAutNTT Witness) {
-	linCheckDeg := 3*ctx.Parameters.Degree() - 2
+	linCheckDeg := 2 * ctx.Parameters.Degree()
 	if ctx.maxDegree < linCheckDeg {
 		ctx.maxDegree = linCheckDeg
 	}

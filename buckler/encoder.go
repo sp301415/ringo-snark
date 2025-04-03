@@ -126,11 +126,10 @@ func (e *Encoder) RandomEncode(x []*big.Int) bigring.BigPoly {
 // v should have length Parameters.Degree.
 func (e *Encoder) RandomEncodeAssign(x []*big.Int, pOut bigring.BigPoly) {
 	e.EncodeAssign(x, pOut)
-	for i := 0; i < e.Parameters.Degree(); i++ {
-		e.UniformSampler.SampleModAssign(pOut.Coeffs[i+e.Parameters.Degree()])
-		pOut.Coeffs[i].Sub(pOut.Coeffs[i], pOut.Coeffs[i+e.Parameters.Degree()])
-		if pOut.Coeffs[i].Sign() < 0 {
-			pOut.Coeffs[i].Add(pOut.Coeffs[i], e.Parameters.Modulus())
-		}
+
+	e.UniformSampler.SampleModAssign(pOut.Coeffs[e.Parameters.Degree()])
+	pOut.Coeffs[0].Sub(pOut.Coeffs[0], pOut.Coeffs[e.Parameters.Degree()])
+	if pOut.Coeffs[0].Sign() < 0 {
+		pOut.Coeffs[0].Add(pOut.Coeffs[0], e.Parameters.Modulus())
 	}
 }

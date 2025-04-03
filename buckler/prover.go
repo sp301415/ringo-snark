@@ -15,9 +15,11 @@ func (w *walker) walkForProve(prover *Prover, v reflect.Value, pw []PublicWitnes
 	case reflect.TypeOf(PublicWitness{}):
 		pw[w.publicWitnessCount] = v.Interface().(PublicWitness)
 		w.publicWitnessCount++
+		return
 	case reflect.TypeOf(Witness{}):
 		sw[w.witnessCount] = v.Interface().(Witness)
 		w.witnessCount++
+		return
 	}
 
 	switch v.Kind() {
@@ -49,9 +51,6 @@ type Prover struct {
 	oracle *celpc.RandomOracle
 
 	ctx *Context
-
-	// Only for Debugging
-	tw []*big.Int
 }
 
 type proverBuffer struct {
@@ -69,24 +68,6 @@ func newProver(params celpc.Parameters, ctx *Context) *Prover {
 	logEmbedDegree := int(math.Ceil(math.Log2(float64(ctx.maxDegree))))
 	embedDegree := 1 << logEmbedDegree
 
-	// Only for debugging
-	exp1 := big.NewInt(0).Sub(params.Modulus(), big.NewInt(1))
-	exp1.Div(exp1, big.NewInt(int64(params.Degree())))
-	exp2 := big.NewInt(int64(params.Degree()) / 2)
-	g := big.NewInt(0)
-	for x := big.NewInt(2); x.Cmp(params.Modulus()) < 0; x.Add(x, big.NewInt(1)) {
-		g.Exp(x, exp1, params.Modulus())
-		gPow := big.NewInt(0).Exp(g, exp2, params.Modulus())
-		if gPow.Cmp(big.NewInt(1)) != 0 {
-			break
-		}
-	}
-
-	tw := make([]*big.Int, params.Degree())
-	for i := 0; i < params.Degree(); i++ {
-		tw[i] = big.NewInt(0).Exp(g, big.NewInt(int64(i)), params.Modulus())
-	}
-
 	return &Prover{
 		Parameters: params,
 
@@ -99,8 +80,6 @@ func newProver(params celpc.Parameters, ctx *Context) *Prover {
 		oracle: celpc.NewRandomOracle(params),
 
 		ctx: ctx,
-
-		tw: tw,
 	}
 }
 
@@ -150,12 +129,13 @@ func (p *Prover) Prove(ck celpc.AjtaiCommitKey, c Circuit) Proof {
 		}
 	}
 
+	witnessCommitDeg := p.Parameters.Degree() + p.Parameters.BigIntCommitSize()
 	for i := 0; i < len(buf.witnesses); i++ {
 		wEcd := p.encoder.RandomEncode(buf.witnesses[i])
 		wEcdNTT := p.ringQ.ToNTTPoly(wEcd)
 		buf.witnessEncodings[i] = wEcdNTT
 
-		wCommit := bigring.BigPoly{Coeffs: wEcd.Coeffs[:2*p.Parameters.Degree()]}
+		wCommit := bigring.BigPoly{Coeffs: wEcd.Coeffs[:witnessCommitDeg]}
 		buf.commitments[i], buf.openings[i] = p.polyProver.Commit(wCommit)
 	}
 	openingProof := p.polyProver.ProveOpening(buf.commitments, buf.openings)
@@ -192,12 +172,10 @@ func (p *Prover) Prove(ck celpc.AjtaiCommitKey, c Circuit) Proof {
 
 	var linCheckCommit LinCheckCommitment
 	var linCheckOpen linCheckOpening
-	var batchLinConst *big.Int
-	var batchLinVec []*big.Int
 	if p.ctx.HasLinearCheck() {
-		batchLinConst = p.oracle.SampleMod()
+		batchLinConst := p.oracle.SampleMod()
 
-		batchLinVec = make([]*big.Int, p.Parameters.Degree())
+		batchLinVec := make([]*big.Int, p.Parameters.Degree())
 		batchLinVec[0] = p.oracle.SampleMod()
 		for i := 1; i < p.Parameters.Degree(); i++ {
 			batchLinVec[i] = big.NewInt(0).Mul(batchLinVec[i-1], batchLinVec[0])
@@ -318,7 +296,7 @@ func (p *Prover) linCheckMask() (LinCheckMaskCommitment, linCheckMask) {
 	var open linCheckMask
 
 	open.Mask = p.ringQ.NewPoly()
-	maskDegree := 3*p.Parameters.Degree() - 2
+	maskDegree := 2 * p.Parameters.Degree()
 	for i := 0; i < p.Parameters.Degree(); i++ {
 		p.encoder.UniformSampler.SampleModAssign(open.Mask.Coeffs[i])
 	}
@@ -331,7 +309,7 @@ func (p *Prover) linCheckMask() (LinCheckMaskCommitment, linCheckMask) {
 		}
 	}
 
-	maskCommitDegree := 3 * p.Parameters.Degree()
+	maskCommitDegree := 2 * p.Parameters.Degree()
 	com.MaskCommitment, open.MaskOpening = p.polyProver.Commit(bigring.BigPoly{Coeffs: open.Mask.Coeffs[:maskCommitDegree]})
 	com.OpeningProof = p.polyProver.ProveOpening([]celpc.Commitment{com.MaskCommitment}, []celpc.Opening{open.MaskOpening})
 
@@ -396,7 +374,7 @@ func (p *Prover) linCheck(batchConst *big.Int, linCheckVec []*big.Int, linCheckM
 	quo, remShift := p.ringQ.QuoRemByVanishing(batched, p.Parameters.Degree())
 	remShift.Coeffs[0].SetInt64(0)
 
-	quoCommitDegree := 3 * p.Parameters.Degree()
+	quoCommitDegree := p.Parameters.Degree()
 	remCommitDegree := p.Parameters.Degree()
 
 	rem := p.ringQ.NewPoly()

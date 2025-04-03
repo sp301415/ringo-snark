@@ -18,9 +18,11 @@ func (w *walker) walkForCompile(v reflect.Value) {
 	case reflect.TypeOf(PublicWitness{}):
 		v.Set(reflect.ValueOf([]*big.Int{big.NewInt(w.publicWitnessCount)}))
 		w.publicWitnessCount++
+		return
 	case reflect.TypeOf(Witness{}):
 		v.Set(reflect.ValueOf([]*big.Int{big.NewInt(w.witnessCount)}))
 		w.witnessCount++
+		return
 	}
 
 	switch v.Kind() {
@@ -44,6 +46,7 @@ func Compile(params celpc.Parameters, c Circuit) (*Prover, *Verifier, error) {
 	if reflect.TypeOf(c).Kind() != reflect.Ptr {
 		return nil, nil, fmt.Errorf("circuit must be defined with a pointer receiver")
 	}
+
 	w := &walker{}
 	w.walkForCompile(reflect.ValueOf(c))
 
@@ -52,5 +55,20 @@ func Compile(params celpc.Parameters, c Circuit) (*Prover, *Verifier, error) {
 		return nil, nil, err
 	}
 
-	return newProver(params, ctx), newVerifier(params, ctx), nil
+	prover := newProver(params, ctx)
+	verifier := &Verifier{
+		Parameters: params,
+
+		ringQ:     prover.ringQ,
+		baseRingQ: prover.baseRingQ,
+
+		encoder:      prover.encoder.ShallowCopy(),
+		polyVerifier: celpc.NewVerifier(params, celpc.AjtaiCommitKey{}),
+
+		oracle: celpc.NewRandomOracle(params),
+
+		ctx: ctx,
+	}
+
+	return prover, verifier, nil
 }
