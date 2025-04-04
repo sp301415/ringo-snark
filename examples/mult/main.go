@@ -1,21 +1,16 @@
-<h1 align="center">Ringo-SNARK</h1>
-<p align="center">A Zero-Knowledge PIOP Toolkit for Ring-LWE Relations</p>
+package main
 
-> [!IMPORTANT]
-> This library is under construction!
+import (
+	"fmt"
+	"math"
+	"math/rand"
+	"time"
 
-**Ringo-SNARK** is a Go library that offers efficient and simple API for proving relationships commonly used in lattice-based cryptosystems.
+	"github.com/sp301415/cyclone/bigring"
+	"github.com/sp301415/cyclone/buckler"
+	"github.com/sp301415/cyclone/celpc"
+)
 
-This library consists of two parts:
-
-1. **CELPC** [[HSS24](https://eprint.iacr.org/2024/306)], a lattice-based PCS (Polynomial Commitment Scheme) with post-quantum security and transparent setup. More importantly, CELPC naturally supports polynomials over very large prime fields, making it a suitable candidate for proving relations over typical FHE parameters.
-2. **Buckler** [[HLSS24](https://eprint.iacr.org/2024/1879)], a zero-knowledge PIOP (Polynomial Interactive Oracle Proof) toolkit for relationships over power-of-two cyclotomic rings, which is commonly used in lattice-based cryptography.
-
-## Examples
-
-For more examples, see `examples/` folder.
-
-```go
 // In this example, we show how to prove the follwing relations:
 //
 // 	X * Y = Z
@@ -64,7 +59,30 @@ func (c *MultCircuit) Define(ctx *buckler.Context) {
 
 func main() {
 	// First, we should define the Polynomial Commitment Parameters.
-	paramsLogN13LogQ212 := celpc.ParametersLiteral{ /* Hidden for brevity */ }.Compile()
+	paramsLogN13LogQ212 := celpc.ParametersLiteral{
+		AjtaiSize:     1,
+		AjtaiRandSize: 1 + 1,
+
+		Degree:           1 << 13,
+		BigIntCommitSize: 1 << 11,
+
+		ModulusBase: 9694,
+		Digits:      16,
+
+		RingDegree:     1 << 11,
+		LogRingModulus: []int{55, 55},
+
+		CommitStdDev:       10,
+		OpeningProofStdDev: 32,
+		BlindStdDev:        19,
+
+		CommitRandStdDev:       20,
+		OpeningProofRandStdDev: 64,
+		BlindRandStdDev:        20,
+
+		OpenProofBound: math.Exp2(29.2650093168425),
+		EvalBound:      math.Exp2(44.73717241497201),
+	}.Compile()
 
 	// Now, generate the witness.
 	ringQ := bigring.NewBigRing(paramsLogN13LogQ212.Degree(), paramsLogN13LogQ212.Modulus())
@@ -102,18 +120,16 @@ func main() {
 		XNTT: XNTT.Coeffs,
 		ZNTT: ZNTT.Coeffs,
 	}
+	now := time.Now()
 	proof, err := prover.Prove(ck, &assignment)
+	fmt.Println("Prover time:", time.Since(now))
 	if err != nil {
 		panic(err)
 	}
 
 	// Verify the proof.
+	now = time.Now()
 	vf := verifier.Verify(ck, proof)
+	fmt.Println("Verifier time:", time.Since(now))
 	fmt.Println("Verification result:", vf)
 }
-```
-
-## References
-- Concretely Efficient Lattice-based Polynomial Commitment from Standard Assumptions (https://eprint.iacr.org/2024/306)
-- Practical Zero-Knowledge PIOP for Public Key and Ciphertext Generation in (Multi-Group) Homomorphic Encryption (https://eprint.iacr.org/2024/1879)
-- On the Security and Privacy of CKKS-based Homomorphic Evaluation Protocols (https://eprint.iacr.org/2025/382)
