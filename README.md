@@ -18,8 +18,8 @@ For more examples, see `examples/` folder.
 ```go
 // In this example, we show how to prove the follwing relations:
 //
-// 	X * Y = Z
-//  |X| <= 2^2
+// X * Y = Z
+// |X| <= 2^2
 //
 // Where X, Z are secret and Y is public.
 
@@ -27,10 +27,10 @@ For more examples, see `examples/` folder.
 // over the ring R_q to linear relations over Z_q^N.
 // For instance, our relation can be transformed to:
 //
-//  XNTT = NTT(X)
-//  ZNTT = NTT(Z)
-//  XNTT * YNTT - ZNTT = 0
-//  |X| <= 2^2
+// XNTT = NTT(X)
+// ZNTT = NTT(Z)
+// XNTT * YNTT - ZNTT = 0
+// |X| <= 2^2
 //
 // Where * and - are element-wise vector operations.
 
