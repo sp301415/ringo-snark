@@ -43,6 +43,10 @@ func (v *Verifier) Verify(ck celpc.AjtaiCommitKey, pf Proof) bool {
 	v.polyVerifier.Commiter = celpc.NewAjtaiCommiter(v.Parameters, ck)
 	buf := v.newBuffer()
 
+	if int(v.ctx.witnessCount) != len(pf.Witness) || int(v.ctx.publicWitnessCount) != len(pf.PublicWitness) {
+		return false
+	}
+
 	for i := 0; i < len(pf.Witness); i++ {
 		v.oracle.WriteCommitment(pf.Witness[i])
 	}

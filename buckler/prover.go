@@ -1,6 +1,7 @@
 package buckler
 
 import (
+	"fmt"
 	"math"
 	"math/big"
 	"reflect"
@@ -10,32 +11,44 @@ import (
 	"github.com/sp301415/rlwe-piop/num"
 )
 
-func (w *walker) walkForProve(prover *Prover, v reflect.Value, pw []PublicWitness, sw []Witness) {
+func (w *walker) walkForProve(prover *Prover, v reflect.Value, pw []PublicWitness, sw []Witness) error {
 	switch v.Type() {
 	case reflect.TypeOf(PublicWitness{}):
 		pw[w.publicWitnessCount] = v.Interface().(PublicWitness)
+		if len(pw[w.publicWitnessCount]) != prover.Parameters.Degree() {
+			return fmt.Errorf("degree mismatch")
+		}
 		w.publicWitnessCount++
-		return
+		return nil
 	case reflect.TypeOf(Witness{}):
 		sw[w.witnessCount] = v.Interface().(Witness)
+		if len(sw[w.witnessCount]) != prover.Parameters.Degree() {
+			return fmt.Errorf("degree mismatch")
+		}
 		w.witnessCount++
-		return
+		return nil
 	}
 
 	switch v.Kind() {
 	case reflect.Ptr, reflect.Interface:
-		w.walkForProve(prover, v.Elem(), pw, sw)
+		return w.walkForProve(prover, v.Elem(), pw, sw)
 	case reflect.Invalid:
 		panic("invalid type")
 	case reflect.Struct:
 		for i := 0; i < v.NumField(); i++ {
-			w.walkForProve(prover, v.Field(i), pw, sw)
+			if err := w.walkForProve(prover, v.Field(i), pw, sw); err != nil {
+				return err
+			}
 		}
 	case reflect.Slice, reflect.Array:
 		for i := 0; i < v.Len(); i++ {
-			w.walkForProve(prover, v.Index(i), pw, sw)
+			if err := w.walkForProve(prover, v.Index(i), pw, sw); err != nil {
+				return err
+			}
 		}
 	}
+
+	return nil
 }
 
 // Prover proves the given circuit.
@@ -95,13 +108,19 @@ func (p *Prover) newBuffer() proverBuffer {
 }
 
 // Prove proves the circuit in given assignment.
-func (p *Prover) Prove(ck celpc.AjtaiCommitKey, c Circuit) Proof {
+func (p *Prover) Prove(ck celpc.AjtaiCommitKey, c Circuit) (Proof, error) {
 	p.oracle.Reset()
 	p.polyProver.Commiter = celpc.NewAjtaiCommiter(p.Parameters, ck)
 	buf := p.newBuffer()
 
+	if p.ctx.circuitType != reflect.TypeOf(c).Elem() {
+		return Proof{}, fmt.Errorf("circuit type mismatch")
+	}
+
 	walker := &walker{}
-	walker.walkForProve(p, reflect.ValueOf(c), buf.publicWitnesses, buf.witnesses)
+	if err := walker.walkForProve(p, reflect.ValueOf(c), buf.publicWitnesses, buf.witnesses); err != nil {
+		return Proof{}, err
+	}
 
 	for i := 0; i < len(buf.publicWitnesses); i++ {
 		pwEcd := p.encoder.Encode(buf.publicWitnesses[i])
@@ -132,8 +151,7 @@ func (p *Prover) Prove(ck celpc.AjtaiCommitKey, c Circuit) Proof {
 	witnessCommitDeg := p.Parameters.Degree() + p.Parameters.BigIntCommitSize()
 	for i := 0; i < len(buf.witnesses); i++ {
 		wEcd := p.encoder.RandomEncode(buf.witnesses[i])
-		wEcdNTT := p.ringQ.ToNTTPoly(wEcd)
-		buf.witnessEncodings[i] = wEcdNTT
+		buf.witnessEncodings[i] = p.ringQ.ToNTTPoly(wEcd)
 
 		wCommit := bigring.BigPoly{Coeffs: wEcd.Coeffs[:witnessCommitDeg]}
 		buf.commitments[i], buf.openings[i] = p.polyProver.Commit(wCommit)
@@ -236,7 +254,7 @@ func (p *Prover) Prove(ck celpc.AjtaiCommitKey, c Circuit) Proof {
 		EvalProofs:              evalProofs,
 		RowCheckEvaluationProof: rowCheckEvalProof,
 		LinCheckEvaluationProof: linCheckEvalProof,
-	}
+	}, nil
 }
 
 func (p *Prover) rowCheck(batchConsts map[int]*big.Int, buf proverBuffer) (RowCheckCommitment, rowCheckOpening) {

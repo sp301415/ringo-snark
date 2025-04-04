@@ -2,6 +2,7 @@ package buckler
 
 import (
 	"math/big"
+	"reflect"
 	"slices"
 
 	"github.com/sp301415/rlwe-piop/celpc"
@@ -15,7 +16,8 @@ type Context struct {
 	publicWitnessCount int64
 	witnessCount       int64
 
-	maxDegree int
+	circuitType reflect.Type
+	maxDegree   int
 
 	arithConstraints []ArithmeticConstraint
 
@@ -33,7 +35,8 @@ func newContext(params celpc.Parameters, walker *walker) *Context {
 		publicWitnessCount: walker.publicWitnessCount,
 		witnessCount:       walker.witnessCount,
 
-		maxDegree: params.Degree() + 1,
+		circuitType: walker.circuitType,
+		maxDegree:   params.Degree() + 1,
 
 		decomposedWitness: make(map[int64][]Witness),
 	}
@@ -62,13 +65,14 @@ func (ctx *Context) AddArithmeticConstraint(c ArithmeticConstraint) {
 	}
 }
 
-// AddNormConstraint adds an two-norm constraint to the context.
+// AddNormConstraint adds an infinity-norm constraint to the context.
 func (ctx *Context) AddNormConstraint(w Witness, logBound uint64) {
 	if logBound == 0 {
 		var ternaryConstraint ArithmeticConstraint
 		ternaryConstraint.AddTerm(1, nil, nil, w, w, w)
 		ternaryConstraint.AddTerm(-1, nil, nil, w)
 		ctx.AddArithmeticConstraint(ternaryConstraint)
+		return
 	}
 
 	id := w[0].Int64()

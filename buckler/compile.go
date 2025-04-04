@@ -2,15 +2,18 @@ package buckler
 
 import (
 	"fmt"
+	"math"
 	"math/big"
 	"reflect"
 
+	"github.com/sp301415/rlwe-piop/bigring"
 	"github.com/sp301415/rlwe-piop/celpc"
 )
 
 type walker struct {
 	publicWitnessCount int64
 	witnessCount       int64
+	circuitType        reflect.Type
 }
 
 func (w *walker) walkForCompile(v reflect.Value) {
@@ -47,20 +50,40 @@ func Compile(params celpc.Parameters, c Circuit) (*Prover, *Verifier, error) {
 		return nil, nil, fmt.Errorf("circuit must be defined with a pointer receiver")
 	}
 
-	w := &walker{}
+	w := &walker{circuitType: reflect.TypeOf(c).Elem()}
 	w.walkForCompile(reflect.ValueOf(c))
 
 	ctx := newContext(params, w)
 	c.Define(ctx)
 
-	prover := newProver(params, ctx)
+	logEmbedDegree := int(math.Ceil(math.Log2(float64(ctx.maxDegree))))
+	embedDegree := 1 << logEmbedDegree
+
+	ringQ := bigring.NewBigRing(embedDegree, params.Modulus())
+	baseRingQ := bigring.NewBigRing(params.Degree(), params.Modulus())
+	encoder := NewEncoder(params, embedDegree)
+
+	prover := &Prover{
+		Parameters: params,
+
+		ringQ:     ringQ,
+		baseRingQ: baseRingQ,
+
+		encoder:    encoder.ShallowCopy(),
+		polyProver: celpc.NewProver(params, celpc.AjtaiCommitKey{}),
+
+		oracle: celpc.NewRandomOracle(params),
+
+		ctx: ctx,
+	}
+
 	verifier := &Verifier{
 		Parameters: params,
 
-		ringQ:     prover.ringQ,
-		baseRingQ: prover.baseRingQ,
+		ringQ:     ringQ,
+		baseRingQ: baseRingQ,
 
-		encoder:      prover.encoder.ShallowCopy(),
+		encoder:      encoder.ShallowCopy(),
 		polyVerifier: celpc.NewVerifier(params, celpc.AjtaiCommitKey{}),
 
 		oracle: celpc.NewRandomOracle(params),
