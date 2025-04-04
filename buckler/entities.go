@@ -3,8 +3,8 @@ package buckler
 import (
 	"math/big"
 
-	"github.com/sp301415/rlwe-piop/bigring"
-	"github.com/sp301415/rlwe-piop/celpc"
+	"github.com/sp301415/cyclone/bigring"
+	"github.com/sp301415/cyclone/celpc"
 )
 
 // Proof is the proof for the circuit.

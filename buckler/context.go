@@ -5,7 +5,7 @@ import (
 	"reflect"
 	"slices"
 
-	"github.com/sp301415/rlwe-piop/celpc"
+	"github.com/sp301415/cyclone/celpc"
 )
 
 // Context is a context for compiling a circuit.

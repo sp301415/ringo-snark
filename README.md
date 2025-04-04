@@ -1,10 +1,10 @@
-<h1 align="center">RLWE-PIOP</h1>
+<h1 align="center">Cyclone</h1>
 <p align="center">A Zero-Knowledge PIOP Toolkit for Ring-LWE Relations</p>
 
 > [!IMPORTANT]
 > This library is under construction!
 
-**rlwe-piop** is a Go library that offers efficient and simple API for proving relationships commonly used in lattice-based cryptosystems.
+**Cyclone** is a Go library that offers efficient and simple API for proving relationships commonly used in lattice-based cryptosystems.
 
 This library consists of two parts:
 

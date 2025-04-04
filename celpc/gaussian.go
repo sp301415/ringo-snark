@@ -1,7 +1,7 @@
 package celpc
 
 import (
-	"github.com/sp301415/rlwe-piop/csprng"
+	"github.com/sp301415/cyclone/csprng"
 	"github.com/tuneinsight/lattigo/v6/ring"
 )
 

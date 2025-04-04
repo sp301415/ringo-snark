@@ -6,8 +6,8 @@ import (
 	"math/big"
 	"testing"
 
-	"github.com/sp301415/rlwe-piop/bigring"
-	"github.com/sp301415/rlwe-piop/celpc"
+	"github.com/sp301415/cyclone/bigring"
+	"github.com/sp301415/cyclone/celpc"
 	"github.com/stretchr/testify/assert"
 )
 

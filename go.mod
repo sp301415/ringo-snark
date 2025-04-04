@@ -1,4 +1,4 @@
-module github.com/sp301415/rlwe-piop
+module github.com/sp301415/cyclone
 
 go 1.21
 

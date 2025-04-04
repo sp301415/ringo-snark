@@ -3,9 +3,9 @@ package buckler
 import (
 	"math/big"
 
-	"github.com/sp301415/rlwe-piop/bigring"
-	"github.com/sp301415/rlwe-piop/celpc"
-	"github.com/sp301415/rlwe-piop/num"
+	"github.com/sp301415/cyclone/bigring"
+	"github.com/sp301415/cyclone/celpc"
+	"github.com/sp301415/cyclone/num"
 )
 
 // Verifier verifies the given circuit.

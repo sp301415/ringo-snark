@@ -3,7 +3,7 @@ package bigring
 import (
 	"math/big"
 
-	"github.com/sp301415/rlwe-piop/num"
+	"github.com/sp301415/cyclone/num"
 )
 
 // BigRing is a negacyclic ring.

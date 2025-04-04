@@ -6,9 +6,9 @@ import (
 	"math/big"
 	"reflect"
 
-	"github.com/sp301415/rlwe-piop/bigring"
-	"github.com/sp301415/rlwe-piop/celpc"
-	"github.com/sp301415/rlwe-piop/num"
+	"github.com/sp301415/cyclone/bigring"
+	"github.com/sp301415/cyclone/celpc"
+	"github.com/sp301415/cyclone/num"
 )
 
 func (w *walker) walkForProve(prover *Prover, v reflect.Value, pw []PublicWitness, sw []Witness) error {
