@@ -51,9 +51,7 @@ func Compile(params celpc.Parameters, c Circuit) (*Prover, *Verifier, error) {
 	w.walkForCompile(reflect.ValueOf(c))
 
 	ctx := newContext(params, w)
-	if err := c.Define(ctx); err != nil {
-		return nil, nil, err
-	}
+	c.Define(ctx)
 
 	prover := newProver(params, ctx)
 	verifier := &Verifier{

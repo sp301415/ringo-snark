@@ -16,5 +16,5 @@ type Witness []*big.Int
 // Note that the Define method should be defined with a pointer reciever.
 type Circuit interface {
 	// Define defines the relation.
-	Define(ctx *Context) error
+	Define(ctx *Context)
 }
