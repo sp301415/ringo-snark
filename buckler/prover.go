@@ -77,25 +77,6 @@ type proverBuffer struct {
 	openings    []celpc.Opening
 }
 
-func newProver(params celpc.Parameters, ctx *Context) *Prover {
-	logEmbedDegree := int(math.Ceil(math.Log2(float64(ctx.maxDegree))))
-	embedDegree := 1 << logEmbedDegree
-
-	return &Prover{
-		Parameters: params,
-
-		ringQ:     bigring.NewBigRing(embedDegree, params.Modulus()),
-		baseRingQ: bigring.NewBigRing(params.Degree(), params.Modulus()),
-
-		encoder:    NewEncoder(params, embedDegree),
-		polyProver: celpc.NewProver(params, celpc.AjtaiCommitKey{}),
-
-		oracle: celpc.NewRandomOracle(params),
-
-		ctx: ctx,
-	}
-}
-
 func (p *Prover) newBuffer() proverBuffer {
 	return proverBuffer{
 		publicWitnesses:        make([]PublicWitness, p.ctx.publicWitnessCount),
@@ -270,14 +251,7 @@ func (p *Prover) rowCheck(batchConsts map[int]*big.Int, buf proverBuffer) (RowCh
 		termNTT := p.ringQ.NewNTTPoly()
 		for i := 0; i < len(constraint.witness); i++ {
 			for j := 0; j < p.ringQ.N(); j++ {
-				termNTT.Coeffs[j].SetInt64(constraint.coeffsInt64[i])
-			}
-
-			if constraint.coeffsBig[i] != nil {
-				for j := 0; j < p.ringQ.N(); j++ {
-					termNTT.Coeffs[j].Mul(termNTT.Coeffs[j], constraint.coeffsBig[i])
-					termNTT.Coeffs[j].Mod(termNTT.Coeffs[j], p.Parameters.Modulus())
-				}
+				termNTT.Coeffs[j].Set(constraint.coeffsBig[i])
 			}
 
 			if constraint.coeffsPublicWitness[i] != -1 {

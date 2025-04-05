@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"math"
+	"math/big"
 	"math/rand"
 	"time"
 
@@ -49,8 +50,8 @@ func (c *MultCircuit) Define(ctx *buckler.Context) {
 
 	// XNTT * YNTT - ZNTT = 0
 	var multConstraint buckler.ArithmeticConstraint
-	multConstraint.AddTerm(1, nil, c.YNTT, c.XNTT) // YNTT * XNTT
-	multConstraint.AddTerm(-1, nil, nil, c.ZNTT)   // - ZNTT
+	multConstraint.AddTerm(big.NewInt(1), c.YNTT, c.XNTT) // YNTT * XNTT
+	multConstraint.AddTerm(big.NewInt(-1), nil, c.ZNTT)   // - ZNTT
 	ctx.AddArithmeticConstraint(multConstraint)
 
 	// |X| <= 5

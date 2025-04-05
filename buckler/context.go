@@ -72,14 +72,14 @@ func (ctx *Context) AddInfNormConstraint(w Witness, bound uint64) {
 	switch bound {
 	case 0:
 		var zeroConstraint ArithmeticConstraint
-		zeroConstraint.AddTerm(1, nil, nil, w)
+		zeroConstraint.AddTerm(big.NewInt(1), nil, w)
 		ctx.AddArithmeticConstraint(zeroConstraint)
 		return
 
 	case 1:
 		var ternaryConstraint ArithmeticConstraint
-		ternaryConstraint.AddTerm(1, nil, nil, w, w, w)
-		ternaryConstraint.AddTerm(-1, nil, nil, w)
+		ternaryConstraint.AddTerm(big.NewInt(1), nil, w, w, w)
+		ternaryConstraint.AddTerm(big.NewInt(-1), nil, w)
 		ctx.AddArithmeticConstraint(ternaryConstraint)
 		return
 	}
@@ -97,15 +97,15 @@ func (ctx *Context) AddInfNormConstraint(w Witness, bound uint64) {
 
 	for i := 0; i < len(dcmpBase); i++ {
 		var ternaryConstraint ArithmeticConstraint
-		ternaryConstraint.AddTerm(1, nil, nil, wDcmp[i], wDcmp[i], wDcmp[i])
-		ternaryConstraint.AddTerm(-1, nil, nil, wDcmp[i])
+		ternaryConstraint.AddTerm(big.NewInt(1), nil, wDcmp[i], wDcmp[i], wDcmp[i])
+		ternaryConstraint.AddTerm(big.NewInt(-1), nil, wDcmp[i])
 		ctx.AddArithmeticConstraint(ternaryConstraint)
 	}
 
 	var decomposeConstraint ArithmeticConstraint
-	decomposeConstraint.AddTerm(1, nil, nil, w)
+	decomposeConstraint.AddTerm(big.NewInt(1), nil, w)
 	for i := 0; i < len(dcmpBase); i++ {
-		decomposeConstraint.AddTerm(-int64(dcmpBase[i]), nil, nil, wDcmp[i])
+		decomposeConstraint.AddTerm(big.NewInt(-int64(dcmpBase[i])), nil, wDcmp[i])
 	}
 	ctx.AddArithmeticConstraint(decomposeConstraint)
 }
