@@ -52,8 +52,8 @@ func NewBigRing(N int, Q *big.Int) *BigRing {
 	}
 }
 
-// N returns the degree of the BigRing.
-func (r *BigRing) N() int {
+// Degree returns the degree of the BigRing.
+func (r *BigRing) Degree() int {
 	return r.degree
 }
 

@@ -72,6 +72,7 @@ func (v *Verifier) VerifyOpeningProof(comVec []Commitment, openPf OpeningProof) 
 	for i := 0; i < v.Parameters.Repetition(); i++ {
 		v.Oracle.WriteAjtaiCommitment(openPf.Commitment[i])
 	}
+	v.Oracle.Finalize()
 
 	challenge := make([][]ring.Poly, v.Parameters.Repetition())
 	batchCommitment := make([]AjtaiCommitment, 0)

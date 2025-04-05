@@ -104,7 +104,7 @@ func (r *BigRing) QuoRemByVanishing(p BigPoly, N int) (BigPoly, BigPoly) {
 	rem := p.Copy()
 
 	c := big.NewInt(0)
-	for i := r.N() - 1; i >= N; i-- {
+	for i := r.Degree() - 1; i >= N; i-- {
 		c.Set(rem.Coeffs[i])
 		quo.Coeffs[i-N].Add(quo.Coeffs[i-N], c)
 		if quo.Coeffs[i-N].Cmp(r.modulus) >= 0 {

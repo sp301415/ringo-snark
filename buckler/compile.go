@@ -44,7 +44,10 @@ func (w *walker) walkForCompile(v reflect.Value) {
 	}
 }
 
-// Compile compiles the circuit returns the prover, verifier pair.
+// Compile compiles the circuit and returns the prover, verifier pair.
+//
+// For correct compilation, the [PublicWitness] and [Witness] field must be empty.
+// Moreover, all other fields must be set correctly.
 func Compile(params celpc.Parameters, c Circuit) (*Prover, *Verifier, error) {
 	if reflect.TypeOf(c).Kind() != reflect.Ptr {
 		return nil, nil, fmt.Errorf("circuit must be defined with a pointer receiver")

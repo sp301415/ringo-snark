@@ -18,8 +18,8 @@ For more examples, see `examples/` folder.
 ```go
 // In this example, we show how to prove the follwing relations:
 //
-// X * Y = Z
-// |X| <= 2^2
+// 	X * Y = Z
+//  |X| <= 5
 //
 // Where X, Z are secret and Y is public.
 
@@ -27,10 +27,10 @@ For more examples, see `examples/` folder.
 // over the ring R_q to linear relations over Z_q^N.
 // For instance, our relation can be transformed to:
 //
-// XNTT = NTT(X)
-// ZNTT = NTT(Z)
-// XNTT * YNTT - ZNTT = 0
-// |X| <= 2^2
+//  XNTT = NTT(X)
+//  ZNTT = NTT(Z)
+//  XNTT * YNTT - ZNTT = 0
+//  |X| <= 5
 //
 // Where * and - are element-wise vector operations.
 
@@ -54,24 +54,47 @@ func (c *MultCircuit) Define(ctx *buckler.Context) {
 
 	// XNTT * YNTT - ZNTT = 0
 	var multConstraint buckler.ArithmeticConstraint
-	multConstraint.AddTerm(1, nil, c.YNTT, c.XNTT) // YNTT * XNTT
-	multConstraint.AddTerm(-1, nil, nil, c.ZNTT)   // - ZNTT
+	multConstraint.AddTerm(big.NewInt(1), c.YNTT, c.XNTT) // YNTT * XNTT
+	multConstraint.AddTerm(big.NewInt(-1), nil, c.ZNTT)   // - ZNTT
 	ctx.AddArithmeticConstraint(multConstraint)
 
-	// |X| <= 2^2
-	ctx.AddNormConstraint(c.XCoeffs, 2) // Argument is log2 of the bound!
+	// |X| <= 5
+	ctx.AddInfNormConstraint(c.XCoeffs, 5)
 }
 
 func main() {
 	// First, we should define the Polynomial Commitment Parameters.
-	paramsLogN13LogQ212 := celpc.ParametersLiteral{ /* Hidden for brevity */ }.Compile()
+	paramsLogN13LogQ212 := celpc.ParametersLiteral{
+		AjtaiSize:     1,
+		AjtaiRandSize: 1 + 1,
+
+		Degree:           1 << 13,
+		BigIntCommitSize: 1 << 11,
+
+		ModulusBase: 9694,
+		Digits:      16,
+
+		RingDegree:     1 << 11,
+		LogRingModulus: []int{55, 55},
+
+		CommitStdDev:       10,
+		OpeningProofStdDev: 32,
+		BlindStdDev:        math.Exp2(19),
+
+		CommitRandStdDev:       20,
+		OpeningProofRandStdDev: 64,
+		BlindRandStdDev:        math.Exp2(20),
+
+		OpenProofBound: math.Exp2(32.754070623437386),
+		EvalBound:      math.Exp2(48.75847312606874),
+	}.Compile()
 
 	// Now, generate the witness.
 	ringQ := bigring.NewBigRing(paramsLogN13LogQ212.Degree(), paramsLogN13LogQ212.Modulus())
 	X := ringQ.NewPoly()
 	Y := ringQ.NewPoly()
 	for i := 0; i < paramsLogN13LogQ212.Degree(); i++ {
-		X.Coeffs[i].SetInt64(rand.Int63() % 4) // Less than 2^2
+		X.Coeffs[i].SetInt64(rand.Int63() % 6) // Less or equal to 5
 		Y.Coeffs[i].SetInt64(rand.Int63())
 	}
 
@@ -102,13 +125,17 @@ func main() {
 		XNTT: XNTT.Coeffs,
 		ZNTT: ZNTT.Coeffs,
 	}
+	now := time.Now()
 	proof, err := prover.Prove(ck, &assignment)
+	fmt.Println("Prover time:", time.Since(now))
 	if err != nil {
 		panic(err)
 	}
 
 	// Verify the proof.
+	now = time.Now()
 	vf := verifier.Verify(ck, proof)
+	fmt.Println("Verifier time:", time.Since(now))
 	fmt.Println("Verification result:", vf)
 }
 ```

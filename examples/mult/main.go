@@ -75,14 +75,14 @@ func main() {
 
 		CommitStdDev:       10,
 		OpeningProofStdDev: 32,
-		BlindStdDev:        19,
+		BlindStdDev:        math.Exp2(19),
 
 		CommitRandStdDev:       20,
 		OpeningProofRandStdDev: 64,
-		BlindRandStdDev:        20,
+		BlindRandStdDev:        math.Exp2(20),
 
-		OpenProofBound: math.Exp2(29.2650093168425),
-		EvalBound:      math.Exp2(44.73717241497201),
+		OpenProofBound: math.Exp2(32.754070623437386),
+		EvalBound:      math.Exp2(48.75847312606874),
 	}.Compile()
 
 	// Now, generate the witness.

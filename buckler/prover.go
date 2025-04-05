@@ -250,7 +250,7 @@ func (p *Prover) rowCheck(batchConsts map[int]*big.Int, buf proverBuffer) (RowCh
 		constraintEvalNTT := p.ringQ.NewNTTPoly()
 		termNTT := p.ringQ.NewNTTPoly()
 		for i := 0; i < len(constraint.witness); i++ {
-			for j := 0; j < p.ringQ.N(); j++ {
+			for j := 0; j < p.ringQ.Degree(); j++ {
 				termNTT.Coeffs[j].Set(constraint.coeffsBig[i])
 			}
 

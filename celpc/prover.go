@@ -223,6 +223,7 @@ func (p *Prover) ProveOpeningAssign(comVec []Commitment, openVec []Opening, open
 	for i := 0; i < p.Parameters.Repetition(); i++ {
 		p.Oracle.WriteAjtaiCommitment(openPfOut.Commitment[i])
 	}
+	p.Oracle.Finalize()
 
 	challenge := make([][]ring.Poly, p.Parameters.Repetition())
 	for i := 0; i < p.Parameters.Repetition(); i++ {
@@ -309,6 +310,7 @@ func (p *Prover) ProveOpeningParallelAssign(comVec []Commitment, openVec []Openi
 	for i := 0; i < p.Parameters.Repetition(); i++ {
 		p.Oracle.WriteAjtaiCommitment(openPfOut.Commitment[i])
 	}
+	p.Oracle.Finalize()
 
 	challenge := make([][]ring.Poly, p.Parameters.Repetition())
 	for i := 0; i < p.Parameters.Repetition(); i++ {
