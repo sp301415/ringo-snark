@@ -129,16 +129,17 @@ func (p *Prover) Prove(ck celpc.AjtaiCommitKey, c Circuit) (Proof, error) {
 
 	for wID, wDcmpIDs := range p.ctx.decomposedWitness {
 		w := buf.witnesses[wID]
-		logBound := len(wDcmpIDs) - 1
+		dcmpBound := p.ctx.decomposeBound[wID]
+		dcmpBase := getDcmpBase(dcmpBound)
 
-		wDcmp := make([]Witness, logBound+1)
-		for i := 0; i < logBound+1; i++ {
+		wDcmp := make([]Witness, len(dcmpBase))
+		for i := 0; i < len(dcmpBase); i++ {
 			wDcmp[i] = make(Witness, p.Parameters.Degree())
 		}
 
 		for i := 0; i < p.Parameters.Degree(); i++ {
-			coeffDcmp := bigSignedDecompose(w[i], p.Parameters.Modulus(), logBound)
-			for j := 0; j < logBound+1; j++ {
+			coeffDcmp := bigSignedDecompose(w[i], p.Parameters.Modulus(), dcmpBase)
+			for j := 0; j < len(dcmpBase); j++ {
 				wDcmp[j][i] = coeffDcmp[j]
 			}
 		}

@@ -21,6 +21,7 @@ type Context struct {
 
 	arithConstraints []ArithmeticConstraint
 
+	decomposeBound    map[int64]uint64
 	decomposedWitness map[int64][]Witness
 
 	nttConstraints    [][2]int64
@@ -38,6 +39,7 @@ func newContext(params celpc.Parameters, walker *walker) *Context {
 		circuitType: walker.circuitType,
 		maxDegree:   params.Degree() + 1,
 
+		decomposeBound:    make(map[int64]uint64),
 		decomposedWitness: make(map[int64][]Witness),
 	}
 }
@@ -65,9 +67,16 @@ func (ctx *Context) AddArithmeticConstraint(c ArithmeticConstraint) {
 	}
 }
 
-// AddNormConstraint adds an infinity-norm constraint to the context.
-func (ctx *Context) AddNormConstraint(w Witness, logBound uint64) {
-	if logBound == 0 {
+// AddInfNormConstraint adds an infinity-norm constraint to the context.
+func (ctx *Context) AddInfNormConstraint(w Witness, bound uint64) {
+	switch bound {
+	case 0:
+		var zeroConstraint ArithmeticConstraint
+		zeroConstraint.AddTerm(1, nil, nil, w)
+		ctx.AddArithmeticConstraint(zeroConstraint)
+		return
+
+	case 1:
 		var ternaryConstraint ArithmeticConstraint
 		ternaryConstraint.AddTerm(1, nil, nil, w, w, w)
 		ternaryConstraint.AddTerm(-1, nil, nil, w)
@@ -75,26 +84,28 @@ func (ctx *Context) AddNormConstraint(w Witness, logBound uint64) {
 		return
 	}
 
-	id := w[0].Int64()
-	wDecomposed := make([]Witness, 0, logBound+1)
-	for i := ctx.witnessCount; i < ctx.witnessCount+int64(logBound+1); i++ {
-		wDecomposed = append(wDecomposed, Witness{big.NewInt(i)})
-	}
-	ctx.decomposedWitness[id] = wDecomposed
-	ctx.witnessCount += int64(logBound + 1)
+	dcmpBase := getDcmpBase(bound)
 
-	for i := 0; i < len(wDecomposed); i++ {
+	id := w[0].Int64()
+	wDcmp := make([]Witness, 0, len(dcmpBase))
+	for i := ctx.witnessCount; i < ctx.witnessCount+int64(len(dcmpBase)); i++ {
+		wDcmp = append(wDcmp, Witness{big.NewInt(i)})
+	}
+	ctx.decomposedWitness[id] = wDcmp
+	ctx.decomposeBound[id] = bound
+	ctx.witnessCount += int64(len(dcmpBase))
+
+	for i := 0; i < len(dcmpBase); i++ {
 		var ternaryConstraint ArithmeticConstraint
-		ternaryConstraint.AddTerm(1, nil, nil, wDecomposed[i], wDecomposed[i], wDecomposed[i])
-		ternaryConstraint.AddTerm(-1, nil, nil, wDecomposed[i])
+		ternaryConstraint.AddTerm(1, nil, nil, wDcmp[i], wDcmp[i], wDcmp[i])
+		ternaryConstraint.AddTerm(-1, nil, nil, wDcmp[i])
 		ctx.AddArithmeticConstraint(ternaryConstraint)
 	}
 
 	var decomposeConstraint ArithmeticConstraint
 	decomposeConstraint.AddTerm(1, nil, nil, w)
-	decomposeConstraint.AddTerm(-1, nil, nil, wDecomposed[0])
-	for i := 1; i < len(wDecomposed); i++ {
-		decomposeConstraint.AddTerm(-(1 << (i - 1)), nil, nil, wDecomposed[i])
+	for i := 0; i < len(dcmpBase); i++ {
+		decomposeConstraint.AddTerm(-int64(dcmpBase[i]), nil, nil, wDcmp[i])
 	}
 	ctx.AddArithmeticConstraint(decomposeConstraint)
 }

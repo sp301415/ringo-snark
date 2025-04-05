@@ -14,7 +14,7 @@ import (
 // In this example, we show how to prove the follwing relations:
 //
 // 	X * Y = Z
-//  |X| <= 2^2
+//  |X| <= 5
 //
 // Where X, Z are secret and Y is public.
 
@@ -25,7 +25,7 @@ import (
 //  XNTT = NTT(X)
 //  ZNTT = NTT(Z)
 //  XNTT * YNTT - ZNTT = 0
-//  |X| <= 2^2
+//  |X| <= 5
 //
 // Where * and - are element-wise vector operations.
 
@@ -53,8 +53,8 @@ func (c *MultCircuit) Define(ctx *buckler.Context) {
 	multConstraint.AddTerm(-1, nil, nil, c.ZNTT)   // - ZNTT
 	ctx.AddArithmeticConstraint(multConstraint)
 
-	// |X| <= 2^2
-	ctx.AddNormConstraint(c.XCoeffs, 2) // Argument is log2 of the bound!
+	// |X| <= 5
+	ctx.AddInfNormConstraint(c.XCoeffs, 5)
 }
 
 func main() {
@@ -89,7 +89,7 @@ func main() {
 	X := ringQ.NewPoly()
 	Y := ringQ.NewPoly()
 	for i := 0; i < paramsLogN13LogQ212.Degree(); i++ {
-		X.Coeffs[i].SetInt64(rand.Int63() % 4) // Less than 2^2
+		X.Coeffs[i].SetInt64(rand.Int63() % 6) // Less or equal to 5
 		Y.Coeffs[i].SetInt64(rand.Int63())
 	}
 
