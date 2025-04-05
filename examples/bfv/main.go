@@ -123,7 +123,7 @@ func main() {
 
 	ecd := bgv.NewEncoder(bfvParamsLogN13LogQ240)
 	ptT := bfvParamsLogN13LogQ240.RingT().NewPoly()
-	ecd.EncodeRingT([]uint64{0}, rlwe.NewScale(1), ptT)
+	ecd.EncodeRingT([]uint64{1, 2, 3, 4}, rlwe.NewScale(1), ptT)
 	ptQ := rlwe.NewPlaintext(bfvParamsLogN13LogQ240, bfvParamsLogN13LogQ240.MaxLevel())
 	ecd.RingT2Q(bfvParamsLogN13LogQ240.MaxLevel(), true, ptT, ptQ.Value)
 	ringQ.NTT(ptQ.Value, ptQ.Value)
@@ -161,6 +161,9 @@ func main() {
 	for i := 0; i < bigringQ.Degree(); i++ {
 		ctCoeffs[0].Coeffs[i].Mul(ctCoeffs[0].Coeffs[i], bigringQ.Modulus())
 		ctCoeffs[0].Coeffs[i].Div(ctCoeffs[0].Coeffs[i], ringQ.Modulus())
+
+		ctCoeffs[1].Coeffs[i].Mul(ctCoeffs[1].Coeffs[i], bigringQ.Modulus())
+		ctCoeffs[1].Coeffs[i].Div(ctCoeffs[1].Coeffs[i], ringQ.Modulus())
 	}
 	ctNTT := [2]bigring.BigNTTPoly{bigringQ.ToNTTPoly(ctCoeffs[0]), bigringQ.ToNTTPoly(ctCoeffs[1])}
 
@@ -179,8 +182,8 @@ func main() {
 	errCoeffs := bigringQ.ToPoly(errNTT)
 
 	// After modulus switching, the existing error is replaced by the rounding error,
-	// which has infinity norm ~ 1/2(t + N).
-	errBound := uint64(math.Ceil(0.5*float64(ringT.N()) + float64(ringT.ModuliChain()[0])))
+	// which has infinity norm ~ t + N.
+	errBound := uint64(bfvParamsLogN13LogQ240.N()) + bfvParamsLogN13LogQ240.PlaintextModulus()
 
 	// Now we are ready to generate the proof.
 	c := CiphertextCircuit{
