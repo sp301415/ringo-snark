@@ -20,7 +20,7 @@ import (
 //
 // c0 = -c1*s + (q/t)*m + e
 // |m| < t
-// |e| < B_e
+// |e| <= B_e
 //
 // Where t is the plaintext modulus and B_e is the error bound.
 // In our example, we set t = 2^16 + 1.
@@ -56,8 +56,8 @@ func (c *CiphertextCircuit) Define(ctx *buckler.Context) {
 
 	// |m| < t
 	ctx.AddInfNormConstraint(c.MessageCoeffs, c.PlaintextModulus-1)
-	// |e| < B_e
-	ctx.AddInfNormConstraint(c.ErrorCoeffs, c.ErrBound-1)
+	// |e| <= B_e
+	ctx.AddInfNormConstraint(c.ErrorCoeffs, c.ErrBound)
 }
 
 // A common problem of using zk-SNARKs is the mismatch between the constraint space and the proof space.
