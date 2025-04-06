@@ -1,4 +1,4 @@
-module github.com/sp301415/cyclone
+module github.com/sp301415/ringo-snark
 
 go 1.21
 

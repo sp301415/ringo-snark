@@ -3,7 +3,7 @@ package celpc
 import (
 	"math/big"
 
-	"github.com/sp301415/cyclone/bigring"
+	"github.com/sp301415/ringo-snark/bigring"
 	"github.com/tuneinsight/lattigo/v6/ring"
 )
 

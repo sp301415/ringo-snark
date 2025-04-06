@@ -7,9 +7,9 @@ import (
 	"math/rand"
 	"time"
 
-	"github.com/sp301415/cyclone/bigring"
-	"github.com/sp301415/cyclone/buckler"
-	"github.com/sp301415/cyclone/celpc"
+	"github.com/sp301415/ringo-snark/bigring"
+	"github.com/sp301415/ringo-snark/buckler"
+	"github.com/sp301415/ringo-snark/celpc"
 )
 
 // In this example, we show how to prove the follwing relations:

@@ -6,9 +6,9 @@ import (
 	"math/big"
 	"time"
 
-	"github.com/sp301415/cyclone/bigring"
-	"github.com/sp301415/cyclone/buckler"
-	"github.com/sp301415/cyclone/celpc"
+	"github.com/sp301415/ringo-snark/bigring"
+	"github.com/sp301415/ringo-snark/buckler"
+	"github.com/sp301415/ringo-snark/celpc"
 	"github.com/tuneinsight/lattigo/v6/core/rlwe"
 	"github.com/tuneinsight/lattigo/v6/schemes/bgv"
 )
@@ -47,12 +47,12 @@ func (c *CiphertextCircuit) Define(ctx *buckler.Context) {
 	ctx.AddNTTConstraint(c.ErrorCoeffs, c.ErrorNTT)
 
 	// Body + Mask * sk - Message - Error = 0
-	var ctCircuit buckler.ArithmeticConstraint
-	ctCircuit.AddTerm(big.NewInt(1), c.CiphertextNTT[0])
-	ctCircuit.AddTerm(big.NewInt(1), c.CiphertextNTT[1], c.SecretKeyNTT)
-	ctCircuit.AddTerm(big.NewInt(0).Neg(c.Delta), nil, c.MessageNTT)
-	ctCircuit.AddTerm(big.NewInt(-1), nil, c.ErrorNTT)
-	ctx.AddArithmeticConstraint(ctCircuit)
+	var ctConstraint buckler.ArithmeticConstraint
+	ctConstraint.AddTerm(big.NewInt(1), c.CiphertextNTT[0])
+	ctConstraint.AddTerm(big.NewInt(1), c.CiphertextNTT[1], c.SecretKeyNTT)
+	ctConstraint.AddTerm(big.NewInt(0).Neg(c.Delta), nil, c.MessageNTT)
+	ctConstraint.AddTerm(big.NewInt(-1), nil, c.ErrorNTT)
+	ctx.AddArithmeticConstraint(ctConstraint)
 
 	// |m| < t
 	ctx.AddInfNormConstraint(c.MessageCoeffs, c.PlaintextModulus-1)

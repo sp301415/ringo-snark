@@ -5,7 +5,7 @@ import (
 	"io"
 	"math/big"
 
-	"github.com/sp301415/cyclone/csprng"
+	"github.com/sp301415/ringo-snark/csprng"
 	"github.com/tuneinsight/lattigo/v6/ring"
 )
 

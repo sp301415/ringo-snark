@@ -3,9 +3,9 @@ package buckler
 import (
 	"math/big"
 
-	"github.com/sp301415/cyclone/bigring"
-	"github.com/sp301415/cyclone/celpc"
-	"github.com/sp301415/cyclone/num"
+	"github.com/sp301415/ringo-snark/bigring"
+	"github.com/sp301415/ringo-snark/celpc"
+	"github.com/sp301415/ringo-snark/num"
 )
 
 // Encoder computes the encoding of a vector to a polynomial.
