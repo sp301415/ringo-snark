@@ -132,7 +132,7 @@ func (v *Verifier) VerifyEvaluation(x *big.Int, com Commitment, evalPf Evaluatio
 	}
 
 	normFloat, _ := norm.Float64()
-	if math.Sqrt(normFloat) > v.Parameters.evalBound {
+	if math.Sqrt(normFloat) > v.Parameters.evalProofBound {
 		return false
 	}
 

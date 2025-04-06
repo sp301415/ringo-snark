@@ -102,7 +102,7 @@ func main() {
 		BlindRandStdDev:        math.Exp2(20),
 
 		OpenProofBound: math.Exp2(32.754070623437386),
-		EvalBound:      math.Exp2(48.75847312606874),
+		EvalProofBound: math.Exp2(48.75847312606874),
 	}.Compile()
 
 	bfvParamsLiteralLogN13LogQ240 := bgv.ParametersLiteral{

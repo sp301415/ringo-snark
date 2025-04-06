@@ -82,7 +82,7 @@ func main() {
 		BlindRandStdDev:        math.Exp2(20),
 
 		OpenProofBound: math.Exp2(32.754070623437386),
-		EvalBound:      math.Exp2(48.75847312606874),
+		EvalProofBound: math.Exp2(48.75847312606874),
 	}.Compile()
 
 	// Now, generate the witness.

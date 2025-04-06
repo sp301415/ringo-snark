@@ -62,8 +62,8 @@ type ParametersLiteral struct {
 
 	// OpenProofBound is the bound of opening verification.
 	OpenProofBound float64
-	// EvalBound is the bound of evaluation verification.
-	EvalBound float64
+	// EvalProofBound is the bound of evaluation verification.
+	EvalProofBound float64
 }
 
 // Compile transforms ParametersLiteral to read-only Parameters.
@@ -126,7 +126,7 @@ func (p ParametersLiteral) Compile() Parameters {
 		blindRandStdDev:        p.BlindRandStdDev,
 
 		openProofBound: p.OpenProofBound,
-		evalBound:      p.EvalBound,
+		evalProofBound: p.EvalProofBound,
 	}
 }
 
@@ -194,8 +194,8 @@ type Parameters struct {
 
 	// openProofBound is the bound of opening verification.
 	openProofBound float64
-	// evalBound is the bound of evaluation verification.
-	evalBound float64
+	// evalProofBound is the bound of evaluation verification.
+	evalProofBound float64
 }
 
 // AjtaiSize returns the size of the Ajtai Commitment.
@@ -293,7 +293,7 @@ func (p Parameters) OpenProofBound() float64 {
 	return p.openProofBound
 }
 
-// EvalBound returns the bound of evaluation verification.
-func (p Parameters) EvalBound() float64 {
-	return p.evalBound
+// EvalProofBound returns the bound of evaluation verification.
+func (p Parameters) EvalProofBound() float64 {
+	return p.evalProofBound
 }

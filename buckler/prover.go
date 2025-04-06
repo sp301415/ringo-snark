@@ -263,6 +263,7 @@ func (p *Prover) rowCheck(batchConsts map[int]*big.Int, buf proverBuffer) (RowCh
 				witnessEcdNTT := buf.witnessEncodings[constraint.witness[i][j]]
 				p.ringQ.MulNTTAssign(termNTT, witnessEcdNTT, termNTT)
 			}
+
 			p.ringQ.AddNTTAssign(constraintEvalNTT, termNTT, constraintEvalNTT)
 		}
 		p.ringQ.ScalarMulAddNTTAssign(constraintEvalNTT, batchConstsPow[constraint.degree], batchedNTT)

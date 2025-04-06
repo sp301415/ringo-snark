@@ -26,7 +26,7 @@ var (
 		BlindRandStdDev:        10404567.0,
 
 		OpenProofBound: math.Exp2(35.7),
-		EvalBound:      math.Exp2(54.6),
+		EvalProofBound: math.Exp2(54.6),
 	}
 
 	// ParametersLogN21LogP256 is a parameters set for commiting 2^21 degree polynomial over 256-bit prime field.
@@ -52,7 +52,7 @@ var (
 		BlindRandStdDev:        10404567.0,
 
 		OpenProofBound: math.Exp2(36.8),
-		EvalBound:      math.Exp2(55.7),
+		EvalProofBound: math.Exp2(55.7),
 	}
 
 	// ParametersLogN23LogP256 is a parameters set for commiting 2^23 degree polynomial over 256-bit prime field.
@@ -78,7 +78,7 @@ var (
 		BlindRandStdDev:        10404567.0,
 
 		OpenProofBound: math.Exp2(38.0),
-		EvalBound:      math.Exp2(56.9),
+		EvalProofBound: math.Exp2(56.9),
 	}
 
 	// ParametersLogN25LogP256 is a parameters set for commiting 2^25 degree polynomial over 256-bit prime field.
@@ -104,6 +104,6 @@ var (
 		BlindRandStdDev:        10404567.0,
 
 		OpenProofBound: math.Exp2(39.2),
-		EvalBound:      math.Exp2(58.1),
+		EvalProofBound: math.Exp2(58.1),
 	}
 )
