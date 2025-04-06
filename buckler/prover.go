@@ -103,11 +103,6 @@ func (p *Prover) Prove(ck celpc.AjtaiCommitKey, c Circuit) (Proof, error) {
 		return Proof{}, err
 	}
 
-	for i := 0; i < len(buf.publicWitnesses); i++ {
-		pwEcd := p.encoder.Encode(buf.publicWitnesses[i])
-		buf.publicWitnessEncodings[i] = p.ringQ.ToNTTPoly(pwEcd)
-	}
-
 	for wID, wDcmpIDs := range p.ctx.decomposedWitness {
 		w := buf.witnesses[wID]
 		dcmpBound := p.ctx.decomposeBound[wID]
@@ -128,6 +123,11 @@ func (p *Prover) Prove(ck celpc.AjtaiCommitKey, c Circuit) (Proof, error) {
 		for i, wDcmpID := range wDcmpIDs {
 			buf.witnesses[wDcmpID[0].Int64()] = wDcmp[i]
 		}
+	}
+
+	for i := 0; i < len(buf.publicWitnesses); i++ {
+		pwEcd := p.encoder.Encode(buf.publicWitnesses[i])
+		buf.publicWitnessEncodings[i] = p.ringQ.ToNTTPoly(pwEcd)
 	}
 
 	witnessCommitDeg := p.Parameters.Degree() + p.Parameters.BigIntCommitSize()

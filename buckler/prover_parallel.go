@@ -58,49 +58,46 @@ func (p *Prover) ProveParallel(ck celpc.AjtaiCommitKey, c Circuit) (Proof, error
 		polyProverPool[i] = p.polyProver.ShallowCopy()
 	}
 
-	encodeJobs := make(chan int)
+	type commitJob struct {
+		idx      int
+		isPublic bool
+	}
+	commitJobs := make(chan commitJob)
 	go func() {
-		defer close(encodeJobs)
+		defer close(commitJobs)
+		for i := 0; i < len(buf.witnesses); i++ {
+			commitJobs <- commitJob{
+				idx:      i,
+				isPublic: false,
+			}
+		}
 		for i := 0; i < len(buf.publicWitnesses); i++ {
-			encodeJobs <- i
+			commitJobs <- commitJob{
+				idx:      i,
+				isPublic: true,
+			}
 		}
 	}()
 
 	var wg sync.WaitGroup
 	wg.Add(workSize)
 
-	for i := 0; i < workSize; i++ {
-		go func(i int) {
-			defer wg.Done()
-			for j := range encodeJobs {
-				pwEcd := encoderPool[i].Encode(buf.publicWitnesses[j])
-				buf.publicWitnessEncodings[j] = p.ringQ.ToNTTPoly(pwEcd)
-			}
-		}(i)
-	}
-
-	wg.Wait()
-
-	commitJobs := make(chan int)
-	go func() {
-		defer close(commitJobs)
-		for i := 0; i < len(buf.witnesses); i++ {
-			commitJobs <- i
-		}
-	}()
-
-	wg.Add(workSize)
-
 	witnessCommitDeg := p.Parameters.Degree() + p.Parameters.BigIntCommitSize()
 	for i := 0; i < workSize; i++ {
 		go func(i int) {
 			defer wg.Done()
-			for j := range commitJobs {
-				wEcd := encoderPool[i].RandomEncode(buf.witnesses[j])
-				buf.witnessEncodings[j] = p.ringQ.ToNTTPoly(wEcd)
+			for job := range commitJobs {
+				j := job.idx
+				if job.isPublic {
+					pwEcd := encoderPool[i].Encode(buf.publicWitnesses[j])
+					buf.publicWitnessEncodings[j] = p.ringQ.ToNTTPoly(pwEcd)
+				} else {
+					wEcd := encoderPool[i].RandomEncode(buf.witnesses[j])
+					buf.witnessEncodings[j] = p.ringQ.ToNTTPoly(wEcd)
 
-				wCommit := bigring.BigPoly{Coeffs: wEcd.Coeffs[:witnessCommitDeg]}
-				buf.commitments[j], buf.openings[j] = polyProverPool[i].CommitParallel(wCommit)
+					wCommit := bigring.BigPoly{Coeffs: wEcd.Coeffs[:witnessCommitDeg]}
+					buf.commitments[j], buf.openings[j] = polyProverPool[i].CommitParallel(wCommit)
+				}
 			}
 		}(i)
 	}
@@ -116,7 +113,7 @@ func (p *Prover) ProveParallel(ck celpc.AjtaiCommitKey, c Circuit) (Proof, error
 	var linCheckMaskCommit LinCheckMaskCommitment
 	var linCheckMask linCheckMask
 	if p.ctx.HasLinearCheck() {
-		linCheckMaskCommit, linCheckMask = p.linCheckMask()
+		linCheckMaskCommit, linCheckMask = p.linCheckMaskParallel()
 
 		p.oracle.WriteCommitment(linCheckMaskCommit.MaskCommitment)
 		p.oracle.WriteOpeningProof(linCheckMaskCommit.OpeningProof)
@@ -125,33 +122,51 @@ func (p *Prover) ProveParallel(ck celpc.AjtaiCommitKey, c Circuit) (Proof, error
 
 	p.oracle.Finalize()
 
-	var rowCheckCommit RowCheckCommitment
-	var rowCheckOpening rowCheckOpening
+	var batchArithConsts map[int]*big.Int
 	if p.ctx.HasRowCheck() {
-		batchArithConsts := make(map[int]*big.Int)
+		batchArithConsts = make(map[int]*big.Int)
 		for _, constraint := range p.ctx.arithConstraints {
 			if _, ok := batchArithConsts[constraint.degree]; !ok {
 				batchArithConsts[constraint.degree] = p.oracle.SampleMod()
 			}
 		}
 
-		rowCheckCommit, rowCheckOpening = p.rowCheckParallel(batchArithConsts, buf)
 	}
 
-	var linCheckCommit LinCheckCommitment
-	var linCheckOpen linCheckOpening
+	var batchLinConst *big.Int
+	var batchLinVec []*big.Int
 	if p.ctx.HasLinearCheck() {
-		batchLinConst := p.oracle.SampleMod()
-
-		batchLinVec := make([]*big.Int, p.Parameters.Degree())
+		batchLinConst = p.oracle.SampleMod()
+		batchLinVec = make([]*big.Int, p.Parameters.Degree())
 		batchLinVec[0] = p.oracle.SampleMod()
 		for i := 1; i < p.Parameters.Degree(); i++ {
 			batchLinVec[i] = big.NewInt(0).Mul(batchLinVec[i-1], batchLinVec[0])
 			batchLinVec[i].Mod(batchLinVec[i], p.Parameters.Modulus())
 		}
 
-		linCheckCommit, linCheckOpen = p.linCheckParallel(batchLinConst, batchLinVec, linCheckMask, buf)
 	}
+
+	wg.Add(2)
+
+	var rowCheckCommit RowCheckCommitment
+	var rowCheckOpening rowCheckOpening
+	go func() {
+		if p.ctx.HasRowCheck() {
+			rowCheckCommit, rowCheckOpening = p.rowCheckParallel(batchArithConsts, buf)
+		}
+		wg.Done()
+	}()
+
+	var linCheckCommit LinCheckCommitment
+	var linCheckOpen linCheckOpening
+	go func() {
+		if p.ctx.HasLinearCheck() {
+			linCheckCommit, linCheckOpen = p.linCheckParallel(batchLinConst, batchLinVec, linCheckMask, buf)
+		}
+		wg.Done()
+	}()
+
+	wg.Wait()
 
 	if p.ctx.HasRowCheck() {
 		p.oracle.WriteCommitment(rowCheckCommit.QuoCommitment)
@@ -296,6 +311,31 @@ func (p *Prover) rowCheckParallel(batchConsts map[int]*big.Int, buf proverBuffer
 	var open rowCheckOpening
 	com.QuoCommitment, open.QuoOpening = p.polyProver.CommitParallel(bigring.BigPoly{Coeffs: quo.Coeffs[:quoCommitDeg]})
 	com.OpeningProof = p.polyProver.ProveOpeningParallel([]celpc.Commitment{com.QuoCommitment}, []celpc.Opening{open.QuoOpening})
+
+	return com, open
+}
+
+func (p *Prover) linCheckMaskParallel() (LinCheckMaskCommitment, linCheckMask) {
+	var com LinCheckMaskCommitment
+	var open linCheckMask
+
+	open.Mask = p.ringQ.NewPoly()
+	maskDegree := 2 * p.Parameters.Degree()
+	for i := 0; i < p.Parameters.Degree(); i++ {
+		p.encoder.UniformSampler.SampleModAssign(open.Mask.Coeffs[i])
+	}
+	com.MaskSum = big.NewInt(0).Set(open.Mask.Coeffs[0])
+	for i := p.Parameters.Degree(); i < maskDegree; i++ {
+		p.encoder.UniformSampler.SampleModAssign(open.Mask.Coeffs[i])
+		open.Mask.Coeffs[i-p.Parameters.Degree()].Sub(open.Mask.Coeffs[i-p.Parameters.Degree()], open.Mask.Coeffs[i])
+		if open.Mask.Coeffs[i-p.Parameters.Degree()].Sign() < 0 {
+			open.Mask.Coeffs[i-p.Parameters.Degree()].Add(open.Mask.Coeffs[i-p.Parameters.Degree()], p.Parameters.Modulus())
+		}
+	}
+
+	maskCommitDegree := 2 * p.Parameters.Degree()
+	com.MaskCommitment, open.MaskOpening = p.polyProver.CommitParallel(bigring.BigPoly{Coeffs: open.Mask.Coeffs[:maskCommitDegree]})
+	com.OpeningProof = p.polyProver.ProveOpeningParallel([]celpc.Commitment{com.MaskCommitment}, []celpc.Opening{open.MaskOpening})
 
 	return com, open
 }
