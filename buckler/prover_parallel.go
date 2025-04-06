@@ -28,11 +28,6 @@ func (p *Prover) ProveParallel(ck celpc.AjtaiCommitKey, c Circuit) (Proof, error
 		return Proof{}, err
 	}
 
-	for i := 0; i < len(buf.publicWitnesses); i++ {
-		pwEcd := p.encoder.Encode(buf.publicWitnesses[i])
-		buf.publicWitnessEncodings[i] = p.ringQ.ToNTTPoly(pwEcd)
-	}
-
 	for wID, wDcmpIDs := range p.ctx.decomposedWitness {
 		w := buf.witnesses[wID]
 		dcmpBound := p.ctx.decomposeBound[wID]
@@ -63,6 +58,29 @@ func (p *Prover) ProveParallel(ck celpc.AjtaiCommitKey, c Circuit) (Proof, error
 		polyProverPool[i] = p.polyProver.ShallowCopy()
 	}
 
+	encodeJobs := make(chan int)
+	go func() {
+		defer close(encodeJobs)
+		for i := 0; i < len(buf.publicWitnesses); i++ {
+			encodeJobs <- i
+		}
+	}()
+
+	var wg sync.WaitGroup
+	wg.Add(workSize)
+
+	for i := 0; i < workSize; i++ {
+		go func(i int) {
+			defer wg.Done()
+			for j := range encodeJobs {
+				pwEcd := encoderPool[i].Encode(buf.publicWitnesses[j])
+				buf.publicWitnessEncodings[j] = p.ringQ.ToNTTPoly(pwEcd)
+			}
+		}(i)
+	}
+
+	wg.Wait()
+
 	commitJobs := make(chan int)
 	go func() {
 		defer close(commitJobs)
@@ -71,7 +89,6 @@ func (p *Prover) ProveParallel(ck celpc.AjtaiCommitKey, c Circuit) (Proof, error
 		}
 	}()
 
-	var wg sync.WaitGroup
 	wg.Add(workSize)
 
 	witnessCommitDeg := p.Parameters.Degree() + p.Parameters.BigIntCommitSize()
@@ -160,9 +177,9 @@ func (p *Prover) ProveParallel(ck celpc.AjtaiCommitKey, c Circuit) (Proof, error
 		}
 	}()
 
-	evalProofs := make([]celpc.EvaluationProof, len(buf.commitments))
 	wg.Add(workSize)
 
+	evalProofs := make([]celpc.EvaluationProof, len(buf.commitments))
 	for i := 0; i < workSize; i++ {
 		go func(i int) {
 			defer wg.Done()
