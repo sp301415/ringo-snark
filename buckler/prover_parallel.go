@@ -51,11 +51,9 @@ func (p *Prover) ProveParallel(ck celpc.AjtaiCommitKey, c Circuit) (Proof, error
 	}
 
 	workSize := min(runtime.NumCPU(), len(buf.witnesses))
-	encoderPool := make([]*Encoder, workSize)
-	polyProverPool := make([]*celpc.Prover, workSize)
+	proverPool := make([]*Prover, workSize)
 	for i := 0; i < workSize; i++ {
-		encoderPool[i] = p.encoder.ShallowCopy()
-		polyProverPool[i] = p.polyProver.ShallowCopy()
+		proverPool[i] = p.ShallowCopy()
 	}
 
 	type commitJob struct {
@@ -89,14 +87,14 @@ func (p *Prover) ProveParallel(ck celpc.AjtaiCommitKey, c Circuit) (Proof, error
 			for job := range commitJobs {
 				j := job.idx
 				if job.isPublic {
-					pwEcd := encoderPool[i].Encode(buf.publicWitnesses[j])
+					pwEcd := proverPool[i].encoder.Encode(buf.publicWitnesses[j])
 					buf.publicWitnessEncodings[j] = p.ringQ.ToNTTPoly(pwEcd)
 				} else {
-					wEcd := encoderPool[i].RandomEncode(buf.witnesses[j])
+					wEcd := proverPool[i].encoder.RandomEncode(buf.witnesses[j])
 					buf.witnessEncodings[j] = p.ringQ.ToNTTPoly(wEcd)
 
 					wCommit := bigring.BigPoly{Coeffs: wEcd.Coeffs[:witnessCommitDeg]}
-					buf.commitments[j], buf.openings[j] = polyProverPool[i].CommitParallel(wCommit)
+					buf.commitments[j], buf.openings[j] = proverPool[i].polyProver.CommitParallel(wCommit)
 				}
 			}
 		}(i)
@@ -146,13 +144,16 @@ func (p *Prover) ProveParallel(ck celpc.AjtaiCommitKey, c Circuit) (Proof, error
 
 	}
 
+	if len(proverPool) < 2 {
+		proverPool = []*Prover{p.ShallowCopy(), p.ShallowCopy()}
+	}
 	wg.Add(2)
 
 	var rowCheckCommit RowCheckCommitment
 	var rowCheckOpening rowCheckOpening
 	go func() {
 		if p.ctx.HasRowCheck() {
-			rowCheckCommit, rowCheckOpening = p.rowCheckParallel(batchArithConsts, buf)
+			rowCheckCommit, rowCheckOpening = proverPool[0].rowCheckParallel(batchArithConsts, buf)
 		}
 		wg.Done()
 	}()
@@ -161,7 +162,7 @@ func (p *Prover) ProveParallel(ck celpc.AjtaiCommitKey, c Circuit) (Proof, error
 	var linCheckOpen linCheckOpening
 	go func() {
 		if p.ctx.HasLinearCheck() {
-			linCheckCommit, linCheckOpen = p.linCheckParallel(batchLinConst, batchLinVec, linCheckMask, buf)
+			linCheckCommit, linCheckOpen = proverPool[1].linCheckParallel(batchLinConst, batchLinVec, linCheckMask, buf)
 		}
 		wg.Done()
 	}()
@@ -199,7 +200,7 @@ func (p *Prover) ProveParallel(ck celpc.AjtaiCommitKey, c Circuit) (Proof, error
 		go func(i int) {
 			defer wg.Done()
 			for j := range evalJobs {
-				evalProofs[j] = polyProverPool[i].EvaluateParallel(evaluatePoint, buf.openings[j])
+				evalProofs[j] = proverPool[i].polyProver.EvaluateParallel(evaluatePoint, buf.openings[j])
 			}
 		}(i)
 	}

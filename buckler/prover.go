@@ -88,6 +88,23 @@ func (p *Prover) newBuffer() proverBuffer {
 	}
 }
 
+// ShallowCopy creates a shallow copy of the Prover.
+func (p *Prover) ShallowCopy() *Prover {
+	return &Prover{
+		Parameters: p.Parameters,
+
+		ringQ:     p.ringQ,
+		baseRingQ: p.baseRingQ,
+
+		encoder:    p.encoder.ShallowCopy(),
+		polyProver: p.polyProver.ShallowCopy(),
+
+		oracle: celpc.NewRandomOracle(p.Parameters),
+
+		ctx: p.ctx,
+	}
+}
+
 // Prove proves the circuit in given assignment.
 func (p *Prover) Prove(ck celpc.AjtaiCommitKey, c Circuit) (Proof, error) {
 	p.oracle.Reset()
