@@ -16,16 +16,22 @@ type walker struct {
 	circuitType        reflect.Type
 }
 
-func (w *walker) walkForCompile(v reflect.Value) {
+func (w *walker) walkForCompile(v reflect.Value) error {
 	switch v.Type() {
 	case reflect.TypeOf(PublicWitness{}):
+		if !v.CanSet() {
+			return fmt.Errorf("cannot set value")
+		}
 		v.Set(reflect.ValueOf([]*big.Int{big.NewInt(w.publicWitnessCount)}))
 		w.publicWitnessCount++
-		return
+		return nil
 	case reflect.TypeOf(Witness{}):
+		if !v.CanSet() {
+			return fmt.Errorf("cannot set value")
+		}
 		v.Set(reflect.ValueOf([]*big.Int{big.NewInt(w.witnessCount)}))
 		w.witnessCount++
-		return
+		return nil
 	}
 
 	switch v.Kind() {
@@ -42,6 +48,8 @@ func (w *walker) walkForCompile(v reflect.Value) {
 			w.walkForCompile(v.Index(i))
 		}
 	}
+
+	return nil
 }
 
 // Compile compiles the circuit and returns the prover, verifier pair.
@@ -54,7 +62,9 @@ func Compile(params celpc.Parameters, c Circuit) (*Prover, *Verifier, error) {
 	}
 
 	w := &walker{circuitType: reflect.TypeOf(c).Elem()}
-	w.walkForCompile(reflect.ValueOf(c))
+	if err := w.walkForCompile(reflect.ValueOf(c)); err != nil {
+		return nil, nil, err
+	}
 
 	ctx := newContext(params, w)
 	c.Define(ctx)

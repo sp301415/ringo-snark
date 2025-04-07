@@ -342,13 +342,6 @@ func (p *Prover) linCheckMaskParallel() (LinCheckMaskCommitment, linCheckMask) {
 }
 
 func (p *Prover) linCheckParallel(batchConst *big.Int, linCheckVec []*big.Int, linCheckMask linCheckMask, buf proverBuffer) (LinCheckCommitment, linCheckOpening) {
-	batchConstPow := make([]*big.Int, len(p.ctx.nttConstraints)+len(p.ctx.autConstraints))
-	batchConstPow[0] = big.NewInt(0).Set(batchConst)
-	for i := 1; i < len(batchConstPow); i++ {
-		batchConstPow[i] = big.NewInt(0).Mul(batchConstPow[i-1], batchConst)
-		batchConstPow[i].Mod(batchConstPow[i], p.Parameters.Modulus())
-	}
-
 	linCheckVecEcd := p.encoder.Encode(linCheckVec)
 	linCheckVecEcdNTT := p.ringQ.ToNTTPoly(linCheckVecEcd)
 
@@ -387,7 +380,8 @@ func (p *Prover) linCheckParallel(batchConst *big.Int, linCheckVec []*big.Int, l
 		go func() {
 			defer wg.Done()
 			for k := range batchJobs {
-				for c, nttConstraint := range p.ctx.nttConstraints {
+				batchConstPow := big.NewInt(0).Set(batchConst)
+				for _, nttConstraint := range p.ctx.nttConstraints {
 					nttConstraintEvalNTT0 := big.NewInt(0)
 					nttConstraintEvalNTT1 := big.NewInt(0)
 
@@ -399,13 +393,16 @@ func (p *Prover) linCheckParallel(batchConst *big.Int, linCheckVec []*big.Int, l
 					nttConstraintEvalNTT0.Sub(nttConstraintEvalNTT0, nttConstraintEvalNTT1)
 					nttConstraintEvalNTT0.Mod(nttConstraintEvalNTT0, p.Parameters.Modulus())
 
-					nttConstraintEvalNTT0.Mul(nttConstraintEvalNTT0, batchConstPow[c])
+					nttConstraintEvalNTT0.Mul(nttConstraintEvalNTT0, batchConstPow)
 					batchedNTT.Coeffs[k].Add(batchedNTT.Coeffs[k], nttConstraintEvalNTT0)
 					batchedNTT.Coeffs[k].Mod(batchedNTT.Coeffs[k], p.Parameters.Modulus())
+
+					batchConstPow.Mul(batchConstPow, batchConst)
+					batchConstPow.Mod(batchConstPow, p.Parameters.Modulus())
 				}
 
 				for i := range p.ctx.autConstraints {
-					for c, autConstraint := range p.ctx.autConstraints[i] {
+					for _, autConstraint := range p.ctx.autConstraints[i] {
 						autConstraintEvalNTT0 := big.NewInt(0)
 						autConstraintEvalNTT1 := big.NewInt(0)
 
@@ -417,9 +414,12 @@ func (p *Prover) linCheckParallel(batchConst *big.Int, linCheckVec []*big.Int, l
 						autConstraintEvalNTT0.Sub(autConstraintEvalNTT0, autConstraintEvalNTT1)
 						autConstraintEvalNTT0.Mod(autConstraintEvalNTT0, p.Parameters.Modulus())
 
-						autConstraintEvalNTT0.Mul(autConstraintEvalNTT0, batchConstPow[len(p.ctx.nttConstraints)+c])
+						autConstraintEvalNTT0.Mul(autConstraintEvalNTT0, batchConstPow)
 						batchedNTT.Coeffs[k].Add(batchedNTT.Coeffs[k], autConstraintEvalNTT0)
 						batchedNTT.Coeffs[k].Mod(batchedNTT.Coeffs[k], p.Parameters.Modulus())
+
+						batchConstPow.Mul(batchConstPow, batchConst)
+						batchConstPow.Mod(batchConstPow, p.Parameters.Modulus())
 					}
 				}
 			}
