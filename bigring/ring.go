@@ -18,6 +18,11 @@ type BigRing struct {
 
 // NewBigRing creates a new BigRing.
 func NewBigRing(N int, Q *big.Int) *BigRing {
+	QSubOne := big.NewInt(0).Sub(Q, big.NewInt(1))
+	if big.NewInt(0).Mod(QSubOne, big.NewInt(int64(2*N))).Sign() != 0 {
+		panic("no 2Nth root of unity")
+	}
+
 	tw := make([]*big.Int, N)
 	twInv := make([]*big.Int, N)
 

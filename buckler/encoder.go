@@ -21,6 +21,11 @@ type Encoder struct {
 
 // NewEncoder creates a new Encoder.
 func NewEncoder(params celpc.Parameters, embedDegree int) *Encoder {
+	QSubOne := big.NewInt(0).Sub(params.Modulus(), big.NewInt(1))
+	if big.NewInt(0).Mod(QSubOne, big.NewInt(int64(params.Degree()))).Sign() != 0 {
+		panic("no Nth root of unity")
+	}
+
 	twInv := make([]*big.Int, params.Degree()/2)
 
 	exp1 := big.NewInt(0).Sub(params.Modulus(), big.NewInt(1))

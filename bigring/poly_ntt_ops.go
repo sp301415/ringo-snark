@@ -129,6 +129,11 @@ func (r *BigRing) AutomorphismNTT(p BigNTTPoly, d int) BigNTTPoly {
 
 // AutomorphismNTTAssign assigns pOut = p(X^d).
 func (r *BigRing) AutomorphismNTTAssign(p BigNTTPoly, d int, pOut BigNTTPoly) {
+	d %= 2 * r.degree
+	if d < 0 {
+		d += 2 * r.degree
+	}
+
 	for i := 0; i < r.degree; i++ {
 		j := ((2*i + 1) * d) % (2 * r.degree)
 		j = (j - 1) >> 1

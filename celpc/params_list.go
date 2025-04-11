@@ -15,7 +15,7 @@ var (
 		Digits:      16,
 
 		RingDegree:     1 << 11,
-		LogRingModulus: []int{60, 55},
+		LogRingModulus: []int{55, 55},
 
 		CommitStdDev:       10.0,
 		OpeningProofStdDev: 34.0,
