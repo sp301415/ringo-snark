@@ -21,7 +21,7 @@ type Context struct {
 
 	arithConstraints []ArithmeticConstraint
 
-	decomposeBound    map[int64]uint64
+	decomposeBound    map[int64]*big.Int
 	decomposedWitness map[int64][]Witness
 
 	nttConstraints    [][2]int64
@@ -39,7 +39,7 @@ func newContext(params celpc.Parameters, walker *walker) *Context {
 		circuitType: walker.circuitType,
 		maxDegree:   params.Degree() + 1,
 
-		decomposeBound:    make(map[int64]uint64),
+		decomposeBound:    make(map[int64]*big.Int),
 		decomposedWitness: make(map[int64][]Witness),
 	}
 }
@@ -67,16 +67,17 @@ func (ctx *Context) AddArithmeticConstraint(c ArithmeticConstraint) {
 	}
 }
 
-// AddInfNormConstraint adds an infinity-norm constraint to the context.
-func (ctx *Context) AddInfNormConstraint(w Witness, bound uint64) {
-	switch bound {
-	case 0:
+// AddInfNormConstraintBig adds an infinity-norm constraint to the context.
+func (ctx *Context) AddInfNormConstraintBig(w Witness, bound *big.Int) {
+	switch {
+	case bound.Sign() < 0:
+		return
+	case bound.Sign() == 0:
 		var zeroConstraint ArithmeticConstraint
 		zeroConstraint.AddTerm(big.NewInt(1), nil, w)
 		ctx.AddArithmeticConstraint(zeroConstraint)
 		return
-
-	case 1:
+	case bound.Cmp(big.NewInt(1)) == 0:
 		var ternaryConstraint ArithmeticConstraint
 		ternaryConstraint.AddTerm(big.NewInt(1), nil, w, w, w)
 		ternaryConstraint.AddTerm(big.NewInt(-1), nil, w)
@@ -84,7 +85,7 @@ func (ctx *Context) AddInfNormConstraint(w Witness, bound uint64) {
 		return
 	}
 
-	dcmpBase := getDcmpBase(bound)
+	dcmpBase := getDecomposeBase(bound)
 
 	id := w[0].Int64()
 	wDcmp := make([]Witness, 0, len(dcmpBase))
@@ -105,9 +106,14 @@ func (ctx *Context) AddInfNormConstraint(w Witness, bound uint64) {
 	var decomposeConstraint ArithmeticConstraint
 	decomposeConstraint.AddTerm(big.NewInt(1), nil, w)
 	for i := 0; i < len(dcmpBase); i++ {
-		decomposeConstraint.AddTerm(big.NewInt(-int64(dcmpBase[i])), nil, wDcmp[i])
+		decomposeConstraint.AddTerm(big.NewInt(0).Neg(dcmpBase[i]), nil, wDcmp[i])
 	}
 	ctx.AddArithmeticConstraint(decomposeConstraint)
+}
+
+// AddInfNormConstraint adds an infinity-norm constraint to the context.
+func (ctx *Context) AddInfNormConstraint(w Witness, bound uint64) {
+	ctx.AddInfNormConstraintBig(w, big.NewInt(0).SetUint64(bound))
 }
 
 // AddNTTConstraint adds an NTT constraint to the context.

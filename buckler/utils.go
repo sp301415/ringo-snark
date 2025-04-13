@@ -1,30 +1,32 @@
 package buckler
 
 import (
-	"math"
 	"math/big"
 )
 
-// getDcmpBase returns the base for the decomposition.
-func getDcmpBase(n uint64) []uint64 {
-	dcmpLen := int(math.Floor(math.Log2(float64(n)))) + 1
-	base := make([]uint64, dcmpLen)
+func getDecomposeBase(n *big.Int) []*big.Int {
+	dcmpLen := n.BitLen() + 1
+	base := make([]*big.Int, dcmpLen)
 
 	for i := 0; i < dcmpLen-1; i++ {
-		var sum uint64
+		sum := big.NewInt(0)
 		for j := 0; j < i; j++ {
-			sum += base[j]
+			sum.Add(sum, base[j])
 		}
 
-		base[i] = ((n - sum) >> 1) + ((n - sum) & 1)
-	}
-	base[dcmpLen-1] = 1
+		b := big.NewInt(0).Sub(n, sum)
+		quo := big.NewInt(0).Rsh(b, 1)
+		rem := big.NewInt(0).And(b, big.NewInt(1))
 
+		base[i] = big.NewInt(0).Add(quo, rem)
+	}
+
+	base[dcmpLen-1] = big.NewInt(1)
 	return base
 }
 
 // bigSignedDecompose ternary decomposes x.
-func bigSignedDecompose(x *big.Int, q *big.Int, base []uint64) []*big.Int {
+func bigSignedDecompose(x *big.Int, q *big.Int, base []*big.Int) []*big.Int {
 	dcmp := make([]*big.Int, len(base))
 
 	v := big.NewInt(0).Set(x)
@@ -34,7 +36,7 @@ func bigSignedDecompose(x *big.Int, q *big.Int, base []uint64) []*big.Int {
 	}
 
 	for i := 0; i < len(dcmp); i++ {
-		b := big.NewInt(0).SetUint64(base[i])
+		b := base[i]
 		bNeg := big.NewInt(0).Neg(b)
 
 		if v.Cmp(b) >= 0 {

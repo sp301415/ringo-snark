@@ -31,7 +31,7 @@ func (p *Prover) ProveParallel(ck celpc.AjtaiCommitKey, c Circuit) (Proof, error
 	for wID, wDcmpIDs := range p.ctx.decomposedWitness {
 		w := buf.witnesses[wID]
 		dcmpBound := p.ctx.decomposeBound[wID]
-		dcmpBase := getDcmpBase(dcmpBound)
+		dcmpBase := getDecomposeBase(dcmpBound)
 
 		wDcmp := make([]Witness, len(dcmpBase))
 		for i := 0; i < len(dcmpBase); i++ {
