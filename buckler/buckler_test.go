@@ -98,9 +98,15 @@ func TestBuckler(t *testing.T) {
 		ZNTT: ZNTT.Coeffs,
 	}
 
-	proof, err := prover.Prove(ck, &assignment)
+	pf, err := prover.Prove(ck, &assignment)
 	assert.NoError(t, err)
 
-	vf := verifier.Verify(ck, proof)
+	vf := verifier.Verify(ck, pf)
 	assert.True(t, vf)
+
+	pfParallel, err := prover.ProveParallel(ck, &assignment)
+	assert.NoError(t, err)
+
+	vfParallel := verifier.Verify(ck, pfParallel)
+	assert.True(t, vfParallel)
 }
