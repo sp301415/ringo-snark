@@ -21,3 +21,7 @@ jobs:
       - name: Test CELPC
         run: |
           go test ./celpc -timeout=0 -count=1
+
+      - name: Test Buckler
+        run: |
+          go test ./buckler -timeout=0 -count=1
