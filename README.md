@@ -140,6 +140,18 @@ func main() {
 }
 ```
 
+## TODO
+- [x] Arithmetic Constraints
+- [x] Infinite-Norm Contraints
+- [x] NTT Contraints
+- [x] Automorphism Constraints
+- [ ] Arbitrary Linear Constraints
+- [ ] Sumcheck
+- [ ] Two-Norm Constraints
+- [ ] Approximate Infinite-Norm Constraints (via Modular J-L)
+- [ ] Approximate Two-Norm Constraints (via Modular J-L)
+- [ ] Strong Fiat-Shamir Transform
+
 ## References
 - Concretely Efficient Lattice-based Polynomial Commitment from Standard Assumptions (https://eprint.iacr.org/2024/306)
 - Practical Zero-Knowledge PIOP for Public Key and Ciphertext Generation in (Multi-Group) Homomorphic Encryption (https://eprint.iacr.org/2024/1879)
