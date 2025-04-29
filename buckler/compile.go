@@ -61,6 +61,14 @@ func Compile(params celpc.Parameters, c Circuit) (*Prover, *Verifier, error) {
 		return nil, nil, fmt.Errorf("circuit must be defined with a pointer receiver")
 	}
 
+	QSubOne := big.NewInt(0).Sub(params.Modulus(), big.NewInt(1))
+	if big.NewInt(0).Mod(QSubOne, big.NewInt(int64(2*params.Degree()))).Sign() != 0 {
+		return nil, nil, fmt.Errorf("no 2Nth root of unity")
+	}
+	if big.NewInt(0).Mod(QSubOne, big.NewInt(int64(params.Degree()))).Sign() != 0 {
+		return nil, nil, fmt.Errorf("no Nth root of unity")
+	}
+
 	w := &walker{circuitType: reflect.TypeOf(c).Elem()}
 	if err := w.walkForCompile(reflect.ValueOf(c)); err != nil {
 		return nil, nil, err
