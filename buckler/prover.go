@@ -331,7 +331,7 @@ func (p *Prover) Prove(ck celpc.AjtaiCommitKey, c Circuit) (Proof, error) {
 	}, nil
 }
 
-func (p *Prover) evaluateCircuit(batchConsts map[int]*big.Int, buf proverBuffer, constraints []ArithmeticConstraint) bigring.BigPoly {
+func (p *Prover) evaluateCircuit(batchConsts map[int]*big.Int, constraints []ArithmeticConstraint, buf proverBuffer) bigring.BigPoly {
 	batchConstsPow := make(map[int]*big.Int, len(batchConsts))
 	for k, v := range batchConsts {
 		batchConstsPow[k] = big.NewInt(0).Set(v)
@@ -369,7 +369,7 @@ func (p *Prover) evaluateCircuit(batchConsts map[int]*big.Int, buf proverBuffer,
 }
 
 func (p *Prover) rowCheck(batchConsts map[int]*big.Int, buf proverBuffer) (RowCheckCommitment, rowCheckOpening) {
-	batched := p.evaluateCircuit(batchConsts, buf, p.ctx.arithConstraints)
+	batched := p.evaluateCircuit(batchConsts, p.ctx.arithConstraints, buf)
 	quo, _ := p.ringQ.QuoRemByVanishing(batched, p.Parameters.Degree())
 
 	quoDeg := p.ctx.maxDegree - p.Parameters.Degree()
@@ -487,7 +487,7 @@ func (p *Prover) linCheck(batchConst *big.Int, linCheckVec []*big.Int, linCheckM
 }
 
 func (p *Prover) sumCheck(batchConsts map[int]*big.Int, sumCheckMask sumCheckMask, buf proverBuffer) (SumCheckCommitment, sumCheckOpening) {
-	batched := p.evaluateCircuit(batchConsts, buf, p.ctx.sumCheckConstraints)
+	batched := p.evaluateCircuit(batchConsts, p.ctx.sumCheckConstraints, buf)
 	p.ringQ.AddAssign(batched, sumCheckMask.Mask, batched)
 
 	quo, remShift := p.ringQ.QuoRemByVanishing(batched, p.Parameters.Degree())

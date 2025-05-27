@@ -118,9 +118,9 @@ func TestBuckler(t *testing.T) {
 	vf := verifier.Verify(ck, pf)
 	assert.True(t, vf)
 
-	// pfParallel, err := prover.ProveParallel(ck, &assignment)
-	// assert.NoError(t, err)
+	pfParallel, err := prover.ProveParallel(ck, &assignment)
+	assert.NoError(t, err)
 
-	// vfParallel := verifier.Verify(ck, pfParallel)
-	// assert.True(t, vfParallel)
+	vfParallel := verifier.Verify(ck, pfParallel)
+	assert.True(t, vfParallel)
 }

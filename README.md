@@ -18,7 +18,7 @@ For more examples, see `examples/` folder.
 ```go
 // In this example, we show how to prove the follwing relations:
 //
-// 	X * Y = Z
+//  X * Y = Z
 //  |X| <= 5
 //
 // Where X, Z are secret and Y is public.
