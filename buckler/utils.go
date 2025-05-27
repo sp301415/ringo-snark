@@ -5,7 +5,11 @@ import (
 )
 
 func getDecomposeBase(n *big.Int) []*big.Int {
-	dcmpLen := n.BitLen() + 1
+	dcmpLen := n.BitLen()
+	if big.NewInt(0).And(n, big.NewInt(0).Sub(n, big.NewInt(1))).Sign() == 0 {
+		dcmpLen -= 1
+	}
+
 	base := make([]*big.Int, dcmpLen)
 
 	for i := 0; i < dcmpLen-1; i++ {

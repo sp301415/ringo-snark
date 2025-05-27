@@ -11,7 +11,7 @@ import (
 // Context is a context for compiling a circuit.
 // It runs through the circuit and collects the information needed to compile it.
 type Context struct {
-	Parameters celpc.Parameters
+	ringDegree int
 
 	publicWitnessCount int64
 	witnessCount       int64
@@ -23,17 +23,22 @@ type Context struct {
 	sumCheckConstraints []ArithmeticConstraint
 	sumCheckSums        []*big.Int
 
-	decomposeBound    map[int64]*big.Int
-	decomposedWitness map[int64][]Witness
-
 	nttConstraints    [][2]int64
 	autConstraintsIdx []int
 	autConstraints    [][][2]int64
+
+	InfDecomposeBound    map[int64]*big.Int
+	InfDecomposedWitness map[int64][]Witness
+
+	TwoDecomposeBound    map[int64]*big.Int
+	TwoDecomposeBase     map[int64]PublicWitness
+	TwoDecomposeMask     map[int64]PublicWitness
+	TwoDecomposedWitness map[int64]Witness
 }
 
 func newContext(params celpc.Parameters, walker *walker) *Context {
 	return &Context{
-		Parameters: params,
+		ringDegree: params.Degree(),
 
 		publicWitnessCount: walker.publicWitnessCount,
 		witnessCount:       walker.witnessCount,
@@ -41,8 +46,13 @@ func newContext(params celpc.Parameters, walker *walker) *Context {
 		circuitType: walker.circuitType,
 		maxDegree:   params.Degree() + 1,
 
-		decomposeBound:    make(map[int64]*big.Int),
-		decomposedWitness: make(map[int64][]Witness),
+		InfDecomposeBound:    make(map[int64]*big.Int),
+		InfDecomposedWitness: make(map[int64][]Witness),
+
+		TwoDecomposeBound:    make(map[int64]*big.Int),
+		TwoDecomposeBase:     make(map[int64]PublicWitness),
+		TwoDecomposeMask:     make(map[int64]PublicWitness),
+		TwoDecomposedWitness: make(map[int64]Witness),
 	}
 }
 
@@ -58,9 +68,9 @@ func (ctx *Context) AddArithmeticConstraint(c ArithmeticConstraint) {
 	for i := 0; i < len(c.witness); i++ {
 		degree := 0
 		if c.coeffsPublicWitness[i] == -1 {
-			degree += ctx.Parameters.Degree() - 1
+			degree += ctx.ringDegree - 1
 		}
-		degree += len(c.witness[i]) * ctx.Parameters.Degree()
+		degree += len(c.witness[i]) * ctx.ringDegree
 		degree += 1
 
 		if degree > ctx.maxDegree {
@@ -80,6 +90,33 @@ func (ctx *Context) AddSumCheckConstraintBig(c ArithmeticConstraint, sum *big.In
 // where it checks if the sum of the witness is equal to uint64 value.
 func (ctx *Context) AddSumCheckConstraint(c ArithmeticConstraint, sum uint64) {
 	ctx.AddSumCheckConstraintBig(c, big.NewInt(0).SetUint64(sum))
+}
+
+// AddNTTConstraint adds an NTT constraint to the context.
+func (ctx *Context) AddNTTConstraint(w, wNTT Witness) {
+	linCheckDeg := 2 * ctx.ringDegree
+	if ctx.maxDegree < linCheckDeg {
+		ctx.maxDegree = linCheckDeg
+	}
+
+	ctx.nttConstraints = append(ctx.nttConstraints, [2]int64{w[0].Int64(), wNTT[0].Int64()})
+}
+
+// AddAutomorphismNTTConstraint adds an automorphism X -> X^d over NTT constraint to the context.
+func (ctx *Context) AddAutomorphismNTTConstraint(wNTT Witness, d int, wAutNTT Witness) {
+	linCheckDeg := 2 * ctx.ringDegree
+	if ctx.maxDegree < linCheckDeg {
+		ctx.maxDegree = linCheckDeg
+	}
+
+	d %= 2 * ctx.ringDegree
+	idx := slices.Index(ctx.autConstraintsIdx, d)
+	if idx == -1 {
+		ctx.autConstraintsIdx = append(ctx.autConstraintsIdx, d)
+		ctx.autConstraints = append(ctx.autConstraints, [][2]int64{{wNTT[0].Int64(), wAutNTT[0].Int64()}})
+	} else {
+		ctx.autConstraints[idx] = append(ctx.autConstraints[idx], [2]int64{wNTT[0].Int64(), wAutNTT[0].Int64()})
+	}
 }
 
 // AddInfNormConstraintBig adds an infinity-norm constraint to the context.
@@ -107,8 +144,8 @@ func (ctx *Context) AddInfNormConstraintBig(w Witness, bound *big.Int) {
 	for i := ctx.witnessCount; i < ctx.witnessCount+int64(len(dcmpBase)); i++ {
 		wDcmp = append(wDcmp, Witness{big.NewInt(i)})
 	}
-	ctx.decomposedWitness[id] = wDcmp
-	ctx.decomposeBound[id] = bound
+	ctx.InfDecomposedWitness[id] = wDcmp
+	ctx.InfDecomposeBound[id] = bound
 	ctx.witnessCount += int64(len(dcmpBase))
 
 	for i := 0; i < len(dcmpBase); i++ {
@@ -131,31 +168,35 @@ func (ctx *Context) AddInfNormConstraint(w Witness, bound uint64) {
 	ctx.AddInfNormConstraintBig(w, big.NewInt(0).SetUint64(bound))
 }
 
-// AddNTTConstraint adds an NTT constraint to the context.
-func (ctx *Context) AddNTTConstraint(w, wNTT Witness) {
-	linCheckDeg := 2 * ctx.Parameters.Degree()
-	if ctx.maxDegree < linCheckDeg {
-		ctx.maxDegree = linCheckDeg
-	}
+// AddSqTwoNormConstraintBig adds a squared two-norm constraint to the context.
+func (ctx *Context) AddSqTwoNormConstraintBig(w Witness, bound *big.Int) {
+	id := w[0].Int64()
+	wDcmp := Witness{big.NewInt(ctx.witnessCount)}
+	ctx.witnessCount++
 
-	ctx.nttConstraints = append(ctx.nttConstraints, [2]int64{w[0].Int64(), wNTT[0].Int64()})
+	pwBase := PublicWitness{big.NewInt(ctx.publicWitnessCount)}
+	pwMask := PublicWitness{big.NewInt(ctx.publicWitnessCount + 1)}
+	ctx.publicWitnessCount += 2
+
+	ctx.TwoDecomposeBound[id] = bound
+	ctx.TwoDecomposedWitness[id] = wDcmp
+	ctx.TwoDecomposeBase[id] = pwBase
+	ctx.TwoDecomposeMask[id] = pwMask
+
+	var binaryConstraint ArithmeticConstraint
+	binaryConstraint.AddTerm(big.NewInt(1), nil, wDcmp, wDcmp)
+	binaryConstraint.AddTerm(big.NewInt(-1), pwMask, wDcmp)
+	ctx.AddArithmeticConstraint(binaryConstraint)
+
+	var decomposeConstraint ArithmeticConstraint
+	decomposeConstraint.AddTerm(big.NewInt(1), nil, w, w)
+	decomposeConstraint.AddTerm(big.NewInt(-1), pwBase, wDcmp)
+	ctx.AddSumCheckConstraint(decomposeConstraint, 0)
 }
 
-// AddAutomorphismNTTConstraint adds an automorphism X -> X^d over NTT constraint to the context.
-func (ctx *Context) AddAutomorphismNTTConstraint(wNTT Witness, d int, wAutNTT Witness) {
-	linCheckDeg := 2 * ctx.Parameters.Degree()
-	if ctx.maxDegree < linCheckDeg {
-		ctx.maxDegree = linCheckDeg
-	}
-
-	d %= 2 * ctx.Parameters.Degree()
-	idx := slices.Index(ctx.autConstraintsIdx, d)
-	if idx == -1 {
-		ctx.autConstraintsIdx = append(ctx.autConstraintsIdx, d)
-		ctx.autConstraints = append(ctx.autConstraints, [][2]int64{{wNTT[0].Int64(), wAutNTT[0].Int64()}})
-	} else {
-		ctx.autConstraints[idx] = append(ctx.autConstraints[idx], [2]int64{wNTT[0].Int64(), wAutNTT[0].Int64()})
-	}
+// AddSqTwoNormConstraint adds a squared two-norm constraint to the context.
+func (ctx *Context) AddSqTwoNormConstraint(w Witness, bound uint64) {
+	ctx.AddSqTwoNormConstraintBig(w, big.NewInt(0).SetUint64(bound))
 }
 
 // HasRowCheck returns true if the row check is needed.

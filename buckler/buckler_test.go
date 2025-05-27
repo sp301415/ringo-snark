@@ -44,18 +44,18 @@ type TestCircuit struct {
 	Y    buckler.Witness
 	YNTT buckler.Witness
 
-	YSum *big.Int
-
 	AutIdx  int
 	YAutNTT buckler.Witness
 
-	YBound uint64
+	YInfBound uint64
+	YSqBound  uint64
 
 	ZNTT buckler.Witness
 }
 
 func (c *TestCircuit) Define(ctx *buckler.Context) {
-	ctx.AddInfNormConstraint(c.Y, c.YBound)
+	ctx.AddInfNormConstraint(c.Y, c.YInfBound)
+	ctx.AddSqTwoNormConstraint(c.Y, c.YSqBound)
 	ctx.AddNTTConstraint(c.Y, c.YNTT)
 	ctx.AddAutomorphismNTTConstraint(c.YNTT, c.AutIdx, c.YAutNTT)
 
@@ -63,10 +63,6 @@ func (c *TestCircuit) Define(ctx *buckler.Context) {
 	multConstraint.AddTerm(big.NewInt(1), c.XNTT, c.YNTT)
 	multConstraint.AddTerm(big.NewInt(-1), nil, c.ZNTT)
 	ctx.AddArithmeticConstraint(multConstraint)
-
-	var sumConstraint buckler.ArithmeticConstraint
-	sumConstraint.AddTerm(big.NewInt(1), nil, c.Y)
-	ctx.AddSumCheckConstraintBig(sumConstraint, c.YSum)
 }
 
 func TestBuckler(t *testing.T) {
@@ -76,23 +72,27 @@ func TestBuckler(t *testing.T) {
 
 	XNTT := ringQ.NewNTTPoly()
 	Y := ringQ.NewPoly()
-	YSum := big.NewInt(0)
 	for i := 0; i < ringQ.Degree(); i++ {
 		us.SampleModAssign(XNTT.Coeffs[i])
 		Y.Coeffs[i].SetUint64(us.SampleN(bound))
-		YSum.Add(YSum, Y.Coeffs[i])
 	}
 	YNTT := ringQ.ToNTTPoly(Y)
 	ZNTT := ringQ.MulNTT(XNTT, YNTT)
+
+	var YInfBound, YSqBound uint64
+	for i := 0; i < ringQ.Degree(); i++ {
+		YInfBound = max(YInfBound, Y.Coeffs[i].Uint64())
+		YSqBound += Y.Coeffs[i].Uint64() * Y.Coeffs[i].Uint64()
+	}
 
 	autIdx := 5
 	YAutNTT := ringQ.AutomorphismNTT(YNTT, autIdx)
 
 	ck := celpc.GenAjtaiCommitKey(params)
 	c := TestCircuit{
-		YSum:   YSum,
-		YBound: bound,
-		AutIdx: autIdx,
+		AutIdx:    autIdx,
+		YInfBound: YInfBound,
+		YSqBound:  YSqBound,
 	}
 	prover, verifier, err := buckler.Compile(params, &c)
 	assert.NoError(t, err)
@@ -103,12 +103,11 @@ func TestBuckler(t *testing.T) {
 		Y:    Y.Coeffs,
 		YNTT: YNTT.Coeffs,
 
-		YSum: YSum,
-
 		AutIdx:  autIdx,
 		YAutNTT: YAutNTT.Coeffs,
 
-		YBound: bound,
+		YInfBound: YInfBound,
+		YSqBound:  YSqBound,
 
 		ZNTT: ZNTT.Coeffs,
 	}

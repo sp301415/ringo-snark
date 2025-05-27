@@ -120,9 +120,9 @@ func (p *Prover) Prove(ck celpc.AjtaiCommitKey, c Circuit) (Proof, error) {
 		return Proof{}, err
 	}
 
-	for wID, wDcmpIDs := range p.ctx.decomposedWitness {
+	for wID, wDcmpIDs := range p.ctx.InfDecomposedWitness {
 		w := buf.witnesses[wID]
-		dcmpBound := p.ctx.decomposeBound[wID]
+		dcmpBound := p.ctx.InfDecomposeBound[wID]
 		dcmpBase := getDecomposeBase(dcmpBound)
 
 		wDcmp := make([]Witness, len(dcmpBase))
@@ -140,6 +140,38 @@ func (p *Prover) Prove(ck celpc.AjtaiCommitKey, c Circuit) (Proof, error) {
 		for i, wDcmpID := range wDcmpIDs {
 			buf.witnesses[wDcmpID[0].Int64()] = wDcmp[i]
 		}
+	}
+
+	for wID, _ := range p.ctx.TwoDecomposeBound {
+		dcmpBase := getDecomposeBase(p.ctx.TwoDecomposeBound[wID])
+
+		pwBase := PublicWitness(p.ringQ.NewPoly().Coeffs)
+		pwMask := PublicWitness(p.ringQ.NewPoly().Coeffs)
+		for i := 0; i < len(dcmpBase); i++ {
+			pwBase[i].Set(dcmpBase[i])
+			pwMask[i].SetInt64(1)
+		}
+
+		pwBaseID := p.ctx.TwoDecomposeBase[wID][0].Int64()
+		buf.publicWitnesses[pwBaseID] = pwBase
+		pwMaskID := p.ctx.TwoDecomposeMask[wID][0].Int64()
+		buf.publicWitnesses[pwMaskID] = pwMask
+
+		w := buf.witnesses[wID]
+		wSqNorm, sq := big.NewInt(0), big.NewInt(0)
+		for i := 0; i < p.Parameters.Degree(); i++ {
+			sq.Mul(w[i], w[i])
+			wSqNorm.Add(wSqNorm, sq)
+		}
+
+		wSqNormDcmp := bigSignedDecompose(wSqNorm, p.Parameters.Modulus(), dcmpBase)
+		wDcmp := Witness(p.ringQ.NewPoly().Coeffs)
+		for i := 0; i < len(wSqNormDcmp); i++ {
+			wDcmp[i].Set(wSqNormDcmp[i])
+		}
+
+		wDcmpID := p.ctx.TwoDecomposedWitness[wID][0].Int64()
+		buf.witnesses[wDcmpID] = wDcmp
 	}
 
 	for i := 0; i < len(buf.publicWitnesses); i++ {
