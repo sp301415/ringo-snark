@@ -13,14 +13,17 @@ type Proof struct {
 	Witness       []celpc.Commitment
 	OpeningProof  celpc.OpeningProof
 
-	LinCheckMaskCommitment
+	LinCheckMaskCommitment SumCheckMaskCommitment
+	SumCheckMaskCommitment
 
 	RowCheckCommitment
-	LinCheckCommitment
+	LinCheckCommitment SumCheckCommitment
+	SumCheckCommitment
 
 	EvalProofs []celpc.EvaluationProof
 	RowCheckEvaluationProof
-	LinCheckEvaluationProof
+	LinCheckEvaluationProof SumCheckEvaluationProof
+	SumCheckEvaluationProof
 }
 
 // RowCheckCommitment is the first move of the row check.
@@ -38,34 +41,34 @@ type RowCheckEvaluationProof struct {
 	QuoEvalProof celpc.EvaluationProof
 }
 
-// LinCheckMaskCommitment is the masking polynomial for the linear check.
-type LinCheckMaskCommitment struct {
+// SumCheckMaskCommitment is the masking polynomial for the sumcheck.
+type SumCheckMaskCommitment struct {
 	MaskCommitment celpc.Commitment
 	OpeningProof   celpc.OpeningProof
 	MaskSum        *big.Int
 }
 
-type linCheckMask struct {
+type sumCheckMask struct {
 	Mask        bigring.BigPoly
 	MaskOpening celpc.Opening
 }
 
-// LinCheckCommitment is the first move of the linear check.
-type LinCheckCommitment struct {
+// SumCheckCommitment is the first move of the sumcheck.
+type SumCheckCommitment struct {
 	QuoCommitment      celpc.Commitment
 	RemCommitment      celpc.Commitment
 	RemShiftCommitment celpc.Commitment
 	OpeningProof       celpc.OpeningProof
 }
 
-type linCheckOpening struct {
+type sumCheckOpening struct {
 	QuoOpening      celpc.Opening
 	RemOpening      celpc.Opening
 	RemShiftOpening celpc.Opening
 }
 
-// LinCheckEvaluationProof is the second move of the linear check.
-type LinCheckEvaluationProof struct {
+// SumCheckEvaluationProof is the second move of the sumcheck.
+type SumCheckEvaluationProof struct {
 	MaskEvalProof     celpc.EvaluationProof
 	QuoEvalProof      celpc.EvaluationProof
 	RemEvalProof      celpc.EvaluationProof

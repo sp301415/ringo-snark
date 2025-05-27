@@ -162,34 +162,44 @@ func (p *Prover) Prove(ck celpc.AjtaiCommitKey, c Circuit) (Proof, error) {
 	}
 	p.oracle.WriteOpeningProof(openingProof)
 
-	var linCheckMaskCommit LinCheckMaskCommitment
-	var linCheckMask linCheckMask
-	if p.ctx.HasLinearCheck() {
-		linCheckMaskCommit, linCheckMask = p.linCheckMask()
+	var linCheckMaskCommit SumCheckMaskCommitment
+	var linCheckMask sumCheckMask
+	if p.ctx.HasLinCheck() {
+		linCheckMaskCommit, linCheckMask = p.sumCheckMask(2 * p.Parameters.Degree())
 
 		p.oracle.WriteCommitment(linCheckMaskCommit.MaskCommitment)
 		p.oracle.WriteOpeningProof(linCheckMaskCommit.OpeningProof)
 		p.oracle.WriteBigInt(linCheckMaskCommit.MaskSum)
 	}
 
+	var sumCheckMaskCommit SumCheckMaskCommitment
+	var sumCheckMask sumCheckMask
+	if p.ctx.HasSumCheck() {
+		sumCheckMaskCommit, sumCheckMask = p.sumCheckMask(p.ctx.maxDegree)
+
+		p.oracle.WriteCommitment(sumCheckMaskCommit.MaskCommitment)
+		p.oracle.WriteOpeningProof(sumCheckMaskCommit.OpeningProof)
+		p.oracle.WriteBigInt(sumCheckMaskCommit.MaskSum)
+	}
+
 	p.oracle.Finalize()
 
 	var rowCheckCommit RowCheckCommitment
-	var rowCheckOpening rowCheckOpening
+	var rowCheckOpen rowCheckOpening
 	if p.ctx.HasRowCheck() {
-		batchArithConsts := make(map[int]*big.Int)
+		batchRowCheckConsts := make(map[int]*big.Int)
 		for _, constraint := range p.ctx.arithConstraints {
-			if _, ok := batchArithConsts[constraint.degree]; !ok {
-				batchArithConsts[constraint.degree] = p.oracle.SampleMod()
+			if _, ok := batchRowCheckConsts[constraint.degree]; !ok {
+				batchRowCheckConsts[constraint.degree] = p.oracle.SampleMod()
 			}
 		}
 
-		rowCheckCommit, rowCheckOpening = p.rowCheck(batchArithConsts, buf)
+		rowCheckCommit, rowCheckOpen = p.rowCheck(batchRowCheckConsts, buf)
 	}
 
-	var linCheckCommit LinCheckCommitment
-	var linCheckOpen linCheckOpening
-	if p.ctx.HasLinearCheck() {
+	var linCheckCommit SumCheckCommitment
+	var linCheckOpen sumCheckOpening
+	if p.ctx.HasLinCheck() {
 		batchLinConst := p.oracle.SampleMod()
 
 		batchLinVec := make([]*big.Int, p.Parameters.Degree())
@@ -202,16 +212,36 @@ func (p *Prover) Prove(ck celpc.AjtaiCommitKey, c Circuit) (Proof, error) {
 		linCheckCommit, linCheckOpen = p.linCheck(batchLinConst, batchLinVec, linCheckMask, buf)
 	}
 
+	var sumCheckCommit SumCheckCommitment
+	var sumCheckOpen sumCheckOpening
+	if p.ctx.HasSumCheck() {
+		batchSumCheckConsts := make(map[int]*big.Int)
+		for _, constraint := range p.ctx.sumCheckConstraints {
+			if _, ok := batchSumCheckConsts[constraint.degree]; !ok {
+				batchSumCheckConsts[constraint.degree] = p.oracle.SampleMod()
+			}
+		}
+
+		sumCheckCommit, sumCheckOpen = p.sumCheck(batchSumCheckConsts, sumCheckMask, buf)
+	}
+
 	if p.ctx.HasRowCheck() {
 		p.oracle.WriteCommitment(rowCheckCommit.QuoCommitment)
 		p.oracle.WriteOpeningProof(rowCheckCommit.OpeningProof)
 	}
 
-	if p.ctx.HasLinearCheck() {
+	if p.ctx.HasLinCheck() {
 		p.oracle.WriteCommitment(linCheckCommit.QuoCommitment)
 		p.oracle.WriteCommitment(linCheckCommit.RemCommitment)
 		p.oracle.WriteCommitment(linCheckCommit.RemShiftCommitment)
 		p.oracle.WriteOpeningProof(linCheckCommit.OpeningProof)
+	}
+
+	if p.ctx.HasSumCheck() {
+		p.oracle.WriteCommitment(sumCheckCommit.QuoCommitment)
+		p.oracle.WriteCommitment(sumCheckCommit.RemCommitment)
+		p.oracle.WriteCommitment(sumCheckCommit.RemShiftCommitment)
+		p.oracle.WriteOpeningProof(sumCheckCommit.OpeningProof)
 	}
 
 	p.oracle.Finalize()
@@ -226,17 +256,27 @@ func (p *Prover) Prove(ck celpc.AjtaiCommitKey, c Circuit) (Proof, error) {
 	var rowCheckEvalProof RowCheckEvaluationProof
 	if p.ctx.HasRowCheck() {
 		rowCheckEvalProof = RowCheckEvaluationProof{
-			QuoEvalProof: p.polyProver.Evaluate(evaluatePoint, rowCheckOpening.QuoOpening),
+			QuoEvalProof: p.polyProver.Evaluate(evaluatePoint, rowCheckOpen.QuoOpening),
 		}
 	}
 
-	var linCheckEvalProof LinCheckEvaluationProof
-	if p.ctx.HasLinearCheck() {
-		linCheckEvalProof = LinCheckEvaluationProof{
+	var linCheckEvalProof SumCheckEvaluationProof
+	if p.ctx.HasLinCheck() {
+		linCheckEvalProof = SumCheckEvaluationProof{
 			MaskEvalProof:     p.polyProver.Evaluate(evaluatePoint, linCheckMask.MaskOpening),
 			QuoEvalProof:      p.polyProver.Evaluate(evaluatePoint, linCheckOpen.QuoOpening),
 			RemEvalProof:      p.polyProver.Evaluate(evaluatePoint, linCheckOpen.RemOpening),
 			RemShiftEvalProof: p.polyProver.Evaluate(evaluatePoint, linCheckOpen.RemShiftOpening),
+		}
+	}
+
+	var sumCheckEvalProof SumCheckEvaluationProof
+	if p.ctx.HasSumCheck() {
+		sumCheckEvalProof = SumCheckEvaluationProof{
+			MaskEvalProof:     p.polyProver.Evaluate(evaluatePoint, sumCheckMask.MaskOpening),
+			QuoEvalProof:      p.polyProver.Evaluate(evaluatePoint, sumCheckOpen.QuoOpening),
+			RemEvalProof:      p.polyProver.Evaluate(evaluatePoint, sumCheckOpen.RemOpening),
+			RemShiftEvalProof: p.polyProver.Evaluate(evaluatePoint, sumCheckOpen.RemShiftOpening),
 		}
 	}
 
@@ -246,24 +286,27 @@ func (p *Prover) Prove(ck celpc.AjtaiCommitKey, c Circuit) (Proof, error) {
 		OpeningProof:  openingProof,
 
 		LinCheckMaskCommitment: linCheckMaskCommit,
+		SumCheckMaskCommitment: sumCheckMaskCommit,
 
 		RowCheckCommitment: rowCheckCommit,
 		LinCheckCommitment: linCheckCommit,
+		SumCheckCommitment: sumCheckCommit,
 
 		EvalProofs:              evalProofs,
 		RowCheckEvaluationProof: rowCheckEvalProof,
 		LinCheckEvaluationProof: linCheckEvalProof,
+		SumCheckEvaluationProof: sumCheckEvalProof,
 	}, nil
 }
 
-func (p *Prover) rowCheck(batchConsts map[int]*big.Int, buf proverBuffer) (RowCheckCommitment, rowCheckOpening) {
+func (p *Prover) evaluateCircuit(batchConsts map[int]*big.Int, buf proverBuffer, constraints []ArithmeticConstraint) bigring.BigPoly {
 	batchConstsPow := make(map[int]*big.Int, len(batchConsts))
 	for k, v := range batchConsts {
 		batchConstsPow[k] = big.NewInt(0).Set(v)
 	}
 
 	batchedNTT := p.ringQ.NewNTTPoly()
-	for _, constraint := range p.ctx.arithConstraints {
+	for _, constraint := range constraints {
 		constraintEvalNTT := p.ringQ.NewNTTPoly()
 		termNTT := p.ringQ.NewNTTPoly()
 		for i := 0; i < len(constraint.witness); i++ {
@@ -290,7 +333,13 @@ func (p *Prover) rowCheck(batchConsts map[int]*big.Int, buf proverBuffer) (RowCh
 	}
 	batched := p.ringQ.ToPoly(batchedNTT)
 
+	return batched
+}
+
+func (p *Prover) rowCheck(batchConsts map[int]*big.Int, buf proverBuffer) (RowCheckCommitment, rowCheckOpening) {
+	batched := p.evaluateCircuit(batchConsts, buf, p.ctx.arithConstraints)
 	quo, _ := p.ringQ.QuoRemByVanishing(batched, p.Parameters.Degree())
+
 	quoDeg := p.ctx.maxDegree - p.Parameters.Degree()
 	quoCommitDeg := int(math.Ceil(float64(quoDeg)/float64(p.Parameters.BigIntCommitSize()))) * p.Parameters.BigIntCommitSize()
 
@@ -302,17 +351,16 @@ func (p *Prover) rowCheck(batchConsts map[int]*big.Int, buf proverBuffer) (RowCh
 	return com, open
 }
 
-func (p *Prover) linCheckMask() (LinCheckMaskCommitment, linCheckMask) {
-	var com LinCheckMaskCommitment
-	var open linCheckMask
+func (p *Prover) sumCheckMask(maskDeg int) (SumCheckMaskCommitment, sumCheckMask) {
+	var com SumCheckMaskCommitment
+	var open sumCheckMask
 
 	open.Mask = p.ringQ.NewPoly()
-	maskDegree := 2 * p.Parameters.Degree()
 	for i := 0; i < p.Parameters.Degree(); i++ {
 		p.encoder.UniformSampler.SampleModAssign(open.Mask.Coeffs[i])
 	}
 	com.MaskSum = big.NewInt(0).Set(open.Mask.Coeffs[0])
-	for i := p.Parameters.Degree(); i < maskDegree; i++ {
+	for i := p.Parameters.Degree(); i < maskDeg; i++ {
 		p.encoder.UniformSampler.SampleModAssign(open.Mask.Coeffs[i])
 		open.Mask.Coeffs[i-p.Parameters.Degree()].Sub(open.Mask.Coeffs[i-p.Parameters.Degree()], open.Mask.Coeffs[i])
 		if open.Mask.Coeffs[i-p.Parameters.Degree()].Sign() < 0 {
@@ -320,14 +368,14 @@ func (p *Prover) linCheckMask() (LinCheckMaskCommitment, linCheckMask) {
 		}
 	}
 
-	maskCommitDegree := 2 * p.Parameters.Degree()
-	com.MaskCommitment, open.MaskOpening = p.polyProver.Commit(bigring.BigPoly{Coeffs: open.Mask.Coeffs[:maskCommitDegree]})
+	maskCommitDeg := int(math.Ceil(float64(maskDeg)/float64(p.Parameters.BigIntCommitSize()))) * p.Parameters.BigIntCommitSize()
+	com.MaskCommitment, open.MaskOpening = p.polyProver.Commit(bigring.BigPoly{Coeffs: open.Mask.Coeffs[:maskCommitDeg]})
 	com.OpeningProof = p.polyProver.ProveOpening([]celpc.Commitment{com.MaskCommitment}, []celpc.Opening{open.MaskOpening})
 
 	return com, open
 }
 
-func (p *Prover) linCheck(batchConst *big.Int, linCheckVec []*big.Int, linCheckMask linCheckMask, buf proverBuffer) (LinCheckCommitment, linCheckOpening) {
+func (p *Prover) linCheck(batchConst *big.Int, linCheckVec []*big.Int, linCheckMask sumCheckMask, buf proverBuffer) (SumCheckCommitment, sumCheckOpening) {
 	batchConstPow := big.NewInt(0).Set(batchConst)
 
 	linCheckVecEcd := p.encoder.Encode(linCheckVec)
@@ -385,19 +433,48 @@ func (p *Prover) linCheck(batchConst *big.Int, linCheckVec []*big.Int, linCheckM
 	quo, remShift := p.ringQ.QuoRemByVanishing(batched, p.Parameters.Degree())
 	remShift.Coeffs[0].SetInt64(0)
 
-	quoCommitDegree := p.Parameters.Degree()
-	remCommitDegree := p.Parameters.Degree()
+	quoCommitDeg := p.Parameters.Degree()
+	remCommitDeg := p.Parameters.Degree()
 
 	rem := p.ringQ.NewPoly()
-	for i, ii := 0, 1; ii < remCommitDegree; i, ii = i+1, ii+1 {
+	for i, ii := 0, 1; ii < remCommitDeg; i, ii = i+1, ii+1 {
 		rem.Coeffs[i].Set(remShift.Coeffs[ii])
 	}
 
-	var com LinCheckCommitment
-	var open linCheckOpening
-	com.QuoCommitment, open.QuoOpening = p.polyProver.Commit(bigring.BigPoly{Coeffs: quo.Coeffs[:quoCommitDegree]})
-	com.RemCommitment, open.RemOpening = p.polyProver.Commit(bigring.BigPoly{Coeffs: rem.Coeffs[:remCommitDegree]})
-	com.RemShiftCommitment, open.RemShiftOpening = p.polyProver.Commit(bigring.BigPoly{Coeffs: remShift.Coeffs[:remCommitDegree]})
+	var com SumCheckCommitment
+	var open sumCheckOpening
+	com.QuoCommitment, open.QuoOpening = p.polyProver.Commit(bigring.BigPoly{Coeffs: quo.Coeffs[:quoCommitDeg]})
+	com.RemCommitment, open.RemOpening = p.polyProver.Commit(bigring.BigPoly{Coeffs: rem.Coeffs[:remCommitDeg]})
+	com.RemShiftCommitment, open.RemShiftOpening = p.polyProver.Commit(bigring.BigPoly{Coeffs: remShift.Coeffs[:remCommitDeg]})
+	com.OpeningProof = p.polyProver.ProveOpening(
+		[]celpc.Commitment{com.QuoCommitment, com.RemCommitment, com.RemShiftCommitment},
+		[]celpc.Opening{open.QuoOpening, open.RemOpening, open.RemShiftOpening},
+	)
+
+	return com, open
+}
+
+func (p *Prover) sumCheck(batchConsts map[int]*big.Int, sumCheckMask sumCheckMask, buf proverBuffer) (SumCheckCommitment, sumCheckOpening) {
+	batched := p.evaluateCircuit(batchConsts, buf, p.ctx.sumCheckConstraints)
+	p.ringQ.AddAssign(batched, sumCheckMask.Mask, batched)
+
+	quo, remShift := p.ringQ.QuoRemByVanishing(batched, p.Parameters.Degree())
+	remShift.Coeffs[0].SetInt64(0)
+
+	quoDeg := p.ctx.maxDegree - p.Parameters.Degree()
+	quoCommitDeg := int(math.Ceil(float64(quoDeg)/float64(p.Parameters.BigIntCommitSize()))) * p.Parameters.BigIntCommitSize()
+	remCommitDeg := p.Parameters.Degree()
+
+	rem := p.ringQ.NewPoly()
+	for i, ii := 0, 1; ii < remCommitDeg; i, ii = i+1, ii+1 {
+		rem.Coeffs[i].Set(remShift.Coeffs[ii])
+	}
+
+	var com SumCheckCommitment
+	var open sumCheckOpening
+	com.QuoCommitment, open.QuoOpening = p.polyProver.Commit(bigring.BigPoly{Coeffs: quo.Coeffs[:quoCommitDeg]})
+	com.RemCommitment, open.RemOpening = p.polyProver.Commit(bigring.BigPoly{Coeffs: rem.Coeffs[:remCommitDeg]})
+	com.RemShiftCommitment, open.RemShiftOpening = p.polyProver.Commit(bigring.BigPoly{Coeffs: remShift.Coeffs[:remCommitDeg]})
 	com.OpeningProof = p.polyProver.ProveOpening(
 		[]celpc.Commitment{com.QuoCommitment, com.RemCommitment, com.RemShiftCommitment},
 		[]celpc.Opening{open.QuoOpening, open.RemOpening, open.RemShiftOpening},

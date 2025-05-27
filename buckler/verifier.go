@@ -52,27 +52,33 @@ func (v *Verifier) Verify(ck celpc.AjtaiCommitKey, pf Proof) bool {
 	}
 	v.oracle.WriteOpeningProof(pf.OpeningProof)
 
-	if v.ctx.HasLinearCheck() {
+	if v.ctx.HasLinCheck() {
 		v.oracle.WriteCommitment(pf.LinCheckMaskCommitment.MaskCommitment)
 		v.oracle.WriteOpeningProof(pf.LinCheckMaskCommitment.OpeningProof)
 		v.oracle.WriteBigInt(pf.LinCheckMaskCommitment.MaskSum)
 	}
 
+	if v.ctx.HasSumCheck() {
+		v.oracle.WriteCommitment(pf.SumCheckMaskCommitment.MaskCommitment)
+		v.oracle.WriteOpeningProof(pf.SumCheckMaskCommitment.OpeningProof)
+		v.oracle.WriteBigInt(pf.SumCheckMaskCommitment.MaskSum)
+	}
+
 	v.oracle.Finalize()
 
-	batchArithConsts := make(map[int]*big.Int, len(v.ctx.arithConstraints))
+	batchRowCheckConsts := make(map[int]*big.Int, len(v.ctx.arithConstraints))
 	if v.ctx.HasRowCheck() {
 		for _, constraint := range v.ctx.arithConstraints {
-			if _, ok := batchArithConsts[constraint.degree]; !ok {
-				batchArithConsts[constraint.degree] = v.oracle.SampleMod()
+			if _, ok := batchRowCheckConsts[constraint.degree]; !ok {
+				batchRowCheckConsts[constraint.degree] = v.oracle.SampleMod()
 			}
 		}
 	}
 
-	batchLinConst := big.NewInt(0)
+	batchLinCheckConst := big.NewInt(0)
 	batchLinVec := make([]*big.Int, v.Parameters.Degree())
-	if v.ctx.HasLinearCheck() {
-		v.oracle.SampleModAssign(batchLinConst)
+	if v.ctx.HasLinCheck() {
+		v.oracle.SampleModAssign(batchLinCheckConst)
 
 		batchLinVec[0] = v.oracle.SampleMod()
 		for i := 1; i < v.Parameters.Degree(); i++ {
@@ -81,16 +87,32 @@ func (v *Verifier) Verify(ck celpc.AjtaiCommitKey, pf Proof) bool {
 		}
 	}
 
+	batchSumCheckConsts := make(map[int]*big.Int, len(v.ctx.sumCheckConstraints))
+	if v.ctx.HasSumCheck() {
+		for _, constraint := range v.ctx.sumCheckConstraints {
+			if _, ok := batchSumCheckConsts[constraint.degree]; !ok {
+				batchSumCheckConsts[constraint.degree] = v.oracle.SampleMod()
+			}
+		}
+	}
+
 	if v.ctx.HasRowCheck() {
 		v.oracle.WriteCommitment(pf.RowCheckCommitment.QuoCommitment)
 		v.oracle.WriteOpeningProof(pf.RowCheckCommitment.OpeningProof)
 	}
 
-	if v.ctx.HasLinearCheck() {
+	if v.ctx.HasLinCheck() {
 		v.oracle.WriteCommitment(pf.LinCheckCommitment.QuoCommitment)
 		v.oracle.WriteCommitment(pf.LinCheckCommitment.RemCommitment)
 		v.oracle.WriteCommitment(pf.LinCheckCommitment.RemShiftCommitment)
 		v.oracle.WriteOpeningProof(pf.LinCheckCommitment.OpeningProof)
+	}
+
+	if v.ctx.HasSumCheck() {
+		v.oracle.WriteCommitment(pf.SumCheckCommitment.QuoCommitment)
+		v.oracle.WriteCommitment(pf.SumCheckCommitment.RemCommitment)
+		v.oracle.WriteCommitment(pf.SumCheckCommitment.RemShiftCommitment)
+		v.oracle.WriteOpeningProof(pf.SumCheckCommitment.OpeningProof)
 	}
 
 	v.oracle.Finalize()
@@ -114,13 +136,19 @@ func (v *Verifier) Verify(ck celpc.AjtaiCommitKey, pf Proof) bool {
 	}
 
 	if v.ctx.HasRowCheck() {
-		if !v.rowCheck(batchArithConsts, buf, pf) {
+		if !v.rowCheck(batchRowCheckConsts, buf, pf) {
 			return false
 		}
 	}
 
-	if v.ctx.HasLinearCheck() {
-		if !v.linCheck(batchLinConst, batchLinVec, buf, pf) {
+	if v.ctx.HasLinCheck() {
+		if !v.linCheck(batchLinCheckConst, batchLinVec, buf, pf) {
+			return false
+		}
+	}
+
+	if v.ctx.HasSumCheck() {
+		if !v.sumCheck(batchSumCheckConsts, buf, pf) {
 			return false
 		}
 	}
@@ -128,21 +156,14 @@ func (v *Verifier) Verify(ck celpc.AjtaiCommitKey, pf Proof) bool {
 	return true
 }
 
-func (v *Verifier) rowCheck(batchConsts map[int]*big.Int, buf verifierBuffer, pf Proof) bool {
+func (v *Verifier) evaluateCircuit(batchConsts map[int]*big.Int, buf verifierBuffer, constraints []ArithmeticConstraint, pf Proof) *big.Int {
 	batchConstsPow := make(map[int]*big.Int, len(batchConsts))
 	for k, v := range batchConsts {
 		batchConstsPow[k] = big.NewInt(0).Set(v)
 	}
 
-	if !v.polyVerifier.VerifyOpeningProof([]celpc.Commitment{pf.RowCheckCommitment.QuoCommitment}, pf.RowCheckCommitment.OpeningProof) {
-		return false
-	}
-	if !v.polyVerifier.VerifyEvaluation(buf.evaluationPoint, pf.RowCheckCommitment.QuoCommitment, pf.RowCheckEvaluationProof.QuoEvalProof) {
-		return false
-	}
-
 	batchedEval := big.NewInt(0)
-	for _, constraint := range v.ctx.arithConstraints {
+	for _, constraint := range constraints {
 		constraintEval := big.NewInt(0)
 		termEval := big.NewInt(0)
 		for i := 0; i < len(constraint.witness); i++ {
@@ -168,6 +189,18 @@ func (v *Verifier) rowCheck(batchConsts map[int]*big.Int, buf verifierBuffer, pf
 		batchConstsPow[constraint.degree].Mod(batchConstsPow[constraint.degree], v.Parameters.Modulus())
 	}
 
+	return batchedEval
+}
+
+func (v *Verifier) rowCheck(batchConsts map[int]*big.Int, buf verifierBuffer, pf Proof) bool {
+	if !v.polyVerifier.VerifyOpeningProof([]celpc.Commitment{pf.RowCheckCommitment.QuoCommitment}, pf.RowCheckCommitment.OpeningProof) {
+		return false
+	}
+	if !v.polyVerifier.VerifyEvaluation(buf.evaluationPoint, pf.RowCheckCommitment.QuoCommitment, pf.RowCheckEvaluationProof.QuoEvalProof) {
+		return false
+	}
+
+	batchedEval := v.evaluateCircuit(batchConsts, buf, v.ctx.arithConstraints, pf)
 	checkEval := big.NewInt(0).Mul(pf.RowCheckEvaluationProof.QuoEvalProof.Value, buf.vanishPoint)
 	checkEval.Mod(checkEval, v.Parameters.Modulus())
 
@@ -204,9 +237,9 @@ func (v *Verifier) linCheck(batchConst *big.Int, linCheckVec []*big.Int, buf ver
 		}
 	}
 
-	remShiftCheckEval := big.NewInt(0).Mul(pf.RemEvalProof.Value, buf.evaluationPoint)
+	remShiftCheckEval := big.NewInt(0).Mul(pf.LinCheckEvaluationProof.RemEvalProof.Value, buf.evaluationPoint)
 	remShiftCheckEval.Mod(remShiftCheckEval, v.Parameters.Modulus())
-	if remShiftCheckEval.Cmp(pf.RemShiftEvalProof.Value) != 0 {
+	if remShiftCheckEval.Cmp(pf.LinCheckEvaluationProof.RemShiftEvalProof.Value) != 0 {
 		return false
 	}
 
@@ -269,8 +302,71 @@ func (v *Verifier) linCheck(batchConst *big.Int, linCheckVec []*big.Int, buf ver
 	batchedEval.Mod(batchedEval, v.Parameters.Modulus())
 
 	checkEval := big.NewInt(0).Mul(pf.LinCheckEvaluationProof.QuoEvalProof.Value, buf.vanishPoint)
-	checkEval.Add(checkEval, pf.RemShiftEvalProof.Value)
+	checkEval.Add(checkEval, pf.LinCheckEvaluationProof.RemShiftEvalProof.Value)
 	checkEval.Add(checkEval, pf.LinCheckMaskCommitment.MaskSum)
+	checkEval.Mod(checkEval, v.Parameters.Modulus())
+
+	return batchedEval.Cmp(checkEval) == 0
+}
+
+func (v *Verifier) sumCheck(batchConsts map[int]*big.Int, buf verifierBuffer, pf Proof) bool {
+	if !v.polyVerifier.VerifyOpeningProof([]celpc.Commitment{pf.SumCheckMaskCommitment.MaskCommitment}, pf.SumCheckMaskCommitment.OpeningProof) {
+		return false
+	}
+	if !v.polyVerifier.VerifyEvaluation(buf.evaluationPoint, pf.SumCheckMaskCommitment.MaskCommitment, pf.SumCheckEvaluationProof.MaskEvalProof) {
+		return false
+	}
+
+	commits := []celpc.Commitment{
+		pf.SumCheckCommitment.QuoCommitment,
+		pf.SumCheckCommitment.RemCommitment,
+		pf.SumCheckCommitment.RemShiftCommitment,
+	}
+	evalPfs := []celpc.EvaluationProof{
+		pf.SumCheckEvaluationProof.QuoEvalProof,
+		pf.SumCheckEvaluationProof.RemEvalProof,
+		pf.SumCheckEvaluationProof.RemShiftEvalProof,
+	}
+
+	if !v.polyVerifier.VerifyOpeningProof(commits, pf.SumCheckCommitment.OpeningProof) {
+		return false
+	}
+	for i := range evalPfs {
+		if !v.polyVerifier.VerifyEvaluation(buf.evaluationPoint, commits[i], evalPfs[i]) {
+			return false
+		}
+	}
+
+	remShiftCheckEval := big.NewInt(0).Mul(pf.SumCheckEvaluationProof.RemEvalProof.Value, buf.evaluationPoint)
+	remShiftCheckEval.Mod(remShiftCheckEval, v.Parameters.Modulus())
+	if remShiftCheckEval.Cmp(pf.SumCheckEvaluationProof.RemShiftEvalProof.Value) != 0 {
+		return false
+	}
+
+	batchConstsPow := make(map[int]*big.Int, len(batchConsts))
+	for k, v := range batchConsts {
+		batchConstsPow[k] = big.NewInt(0).Set(v)
+	}
+
+	batchedSum, sum := big.NewInt(0), big.NewInt(0)
+	for i, constraint := range v.ctx.sumCheckConstraints {
+		sum.Mul(batchConstsPow[constraint.degree], v.ctx.sumCheckSums[i])
+		batchedSum.Add(batchedSum, sum)
+		batchedSum.Mod(batchedSum, v.Parameters.Modulus())
+
+		batchConstsPow[constraint.degree].Mul(batchConstsPow[constraint.degree], batchConsts[constraint.degree])
+		batchConstsPow[constraint.degree].Mod(batchConstsPow[constraint.degree], v.Parameters.Modulus())
+	}
+	batchedSum.Mul(batchedSum, v.encoder.degreeInv)
+
+	batchedEval := v.evaluateCircuit(batchConsts, buf, v.ctx.sumCheckConstraints, pf)
+	batchedEval.Add(batchedEval, pf.SumCheckEvaluationProof.MaskEvalProof.Value)
+	batchedEval.Sub(batchedEval, batchedSum)
+	batchedEval.Mod(batchedEval, v.Parameters.Modulus())
+
+	checkEval := big.NewInt(0).Mul(pf.SumCheckEvaluationProof.QuoEvalProof.Value, buf.vanishPoint)
+	checkEval.Add(checkEval, pf.SumCheckEvaluationProof.RemShiftEvalProof.Value)
+	checkEval.Add(checkEval, pf.SumCheckMaskCommitment.MaskSum)
 	checkEval.Mod(checkEval, v.Parameters.Modulus())
 
 	return batchedEval.Cmp(checkEval) == 0

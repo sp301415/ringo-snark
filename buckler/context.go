@@ -19,7 +19,9 @@ type Context struct {
 	circuitType reflect.Type
 	maxDegree   int
 
-	arithConstraints []ArithmeticConstraint
+	arithConstraints    []ArithmeticConstraint
+	sumCheckConstraints []ArithmeticConstraint
+	sumCheckSums        []*big.Int
 
 	decomposeBound    map[int64]*big.Int
 	decomposedWitness map[int64][]Witness
@@ -65,6 +67,19 @@ func (ctx *Context) AddArithmeticConstraint(c ArithmeticConstraint) {
 			ctx.maxDegree = degree
 		}
 	}
+}
+
+// AddSumCheckConstraint add a sumcheck constraint to the context,
+// where it checks if the sum of the witness is equal to bigint value.
+func (ctx *Context) AddSumCheckConstraintBig(c ArithmeticConstraint, sum *big.Int) {
+	ctx.sumCheckConstraints = append(ctx.sumCheckConstraints, c)
+	ctx.sumCheckSums = append(ctx.sumCheckSums, sum)
+}
+
+// AddSumCheckConstraint add a sumcheck constraint to the context,
+// where it checks if the sum of the witness is equal to uint64 value.
+func (ctx *Context) AddSumCheckConstraint(c ArithmeticConstraint, sum uint64) {
+	ctx.AddSumCheckConstraintBig(c, big.NewInt(0).SetUint64(sum))
 }
 
 // AddInfNormConstraintBig adds an infinity-norm constraint to the context.
@@ -148,7 +163,12 @@ func (ctx *Context) HasRowCheck() bool {
 	return len(ctx.arithConstraints) > 0
 }
 
-// HasLinearCheck returns true if the linear check is needed.
-func (ctx *Context) HasLinearCheck() bool {
+// HasSumCheck returns true if the sum check is needed.
+func (ctx *Context) HasSumCheck() bool {
+	return len(ctx.sumCheckConstraints) > 0
+}
+
+// HasLinCheck returns true if the linear check is needed.
+func (ctx *Context) HasLinCheck() bool {
 	return len(ctx.nttConstraints) > 0 || len(ctx.autConstraints) > 0
 }

@@ -108,9 +108,9 @@ func (p *Prover) ProveParallel(ck celpc.AjtaiCommitKey, c Circuit) (Proof, error
 	}
 	p.oracle.WriteOpeningProof(openingProof)
 
-	var linCheckMaskCommit LinCheckMaskCommitment
-	var linCheckMask linCheckMask
-	if p.ctx.HasLinearCheck() {
+	var linCheckMaskCommit SumCheckMaskCommitment
+	var linCheckMask sumCheckMask
+	if p.ctx.HasLinCheck() {
 		linCheckMaskCommit, linCheckMask = p.linCheckMaskParallel()
 
 		p.oracle.WriteCommitment(linCheckMaskCommit.MaskCommitment)
@@ -133,7 +133,7 @@ func (p *Prover) ProveParallel(ck celpc.AjtaiCommitKey, c Circuit) (Proof, error
 
 	var batchLinConst *big.Int
 	var batchLinVec []*big.Int
-	if p.ctx.HasLinearCheck() {
+	if p.ctx.HasLinCheck() {
 		batchLinConst = p.oracle.SampleMod()
 		batchLinVec = make([]*big.Int, p.Parameters.Degree())
 		batchLinVec[0] = p.oracle.SampleMod()
@@ -158,10 +158,10 @@ func (p *Prover) ProveParallel(ck celpc.AjtaiCommitKey, c Circuit) (Proof, error
 		wg.Done()
 	}()
 
-	var linCheckCommit LinCheckCommitment
-	var linCheckOpen linCheckOpening
+	var linCheckCommit SumCheckCommitment
+	var linCheckOpen sumCheckOpening
 	go func() {
-		if p.ctx.HasLinearCheck() {
+		if p.ctx.HasLinCheck() {
 			linCheckCommit, linCheckOpen = proverPool[1].linCheckParallel(batchLinConst, batchLinVec, linCheckMask, buf)
 		}
 		wg.Done()
@@ -174,7 +174,7 @@ func (p *Prover) ProveParallel(ck celpc.AjtaiCommitKey, c Circuit) (Proof, error
 		p.oracle.WriteOpeningProof(rowCheckCommit.OpeningProof)
 	}
 
-	if p.ctx.HasLinearCheck() {
+	if p.ctx.HasLinCheck() {
 		p.oracle.WriteCommitment(linCheckCommit.QuoCommitment)
 		p.oracle.WriteCommitment(linCheckCommit.RemCommitment)
 		p.oracle.WriteCommitment(linCheckCommit.RemShiftCommitment)
@@ -214,9 +214,9 @@ func (p *Prover) ProveParallel(ck celpc.AjtaiCommitKey, c Circuit) (Proof, error
 		}
 	}
 
-	var linCheckEvalProof LinCheckEvaluationProof
-	if p.ctx.HasLinearCheck() {
-		linCheckEvalProof = LinCheckEvaluationProof{
+	var linCheckEvalProof SumCheckEvaluationProof
+	if p.ctx.HasLinCheck() {
+		linCheckEvalProof = SumCheckEvaluationProof{
 			MaskEvalProof:     p.polyProver.EvaluateParallel(evaluatePoint, linCheckMask.MaskOpening),
 			QuoEvalProof:      p.polyProver.EvaluateParallel(evaluatePoint, linCheckOpen.QuoOpening),
 			RemEvalProof:      p.polyProver.EvaluateParallel(evaluatePoint, linCheckOpen.RemOpening),
@@ -316,9 +316,9 @@ func (p *Prover) rowCheckParallel(batchConsts map[int]*big.Int, buf proverBuffer
 	return com, open
 }
 
-func (p *Prover) linCheckMaskParallel() (LinCheckMaskCommitment, linCheckMask) {
-	var com LinCheckMaskCommitment
-	var open linCheckMask
+func (p *Prover) linCheckMaskParallel() (SumCheckMaskCommitment, sumCheckMask) {
+	var com SumCheckMaskCommitment
+	var open sumCheckMask
 
 	open.Mask = p.ringQ.NewPoly()
 	maskDegree := 2 * p.Parameters.Degree()
@@ -341,7 +341,7 @@ func (p *Prover) linCheckMaskParallel() (LinCheckMaskCommitment, linCheckMask) {
 	return com, open
 }
 
-func (p *Prover) linCheckParallel(batchConst *big.Int, linCheckVec []*big.Int, linCheckMask linCheckMask, buf proverBuffer) (LinCheckCommitment, linCheckOpening) {
+func (p *Prover) linCheckParallel(batchConst *big.Int, linCheckVec []*big.Int, linCheckMask sumCheckMask, buf proverBuffer) (SumCheckCommitment, sumCheckOpening) {
 	linCheckVecEcd := p.encoder.Encode(linCheckVec)
 	linCheckVecEcdNTT := p.ringQ.ToNTTPoly(linCheckVecEcd)
 
@@ -442,8 +442,8 @@ func (p *Prover) linCheckParallel(batchConst *big.Int, linCheckVec []*big.Int, l
 		rem.Coeffs[i].Set(remShift.Coeffs[ii])
 	}
 
-	var com LinCheckCommitment
-	var open linCheckOpening
+	var com SumCheckCommitment
+	var open sumCheckOpening
 	com.QuoCommitment, open.QuoOpening = p.polyProver.CommitParallel(bigring.BigPoly{Coeffs: quo.Coeffs[:quoCommitDegree]})
 	com.RemCommitment, open.RemOpening = p.polyProver.CommitParallel(bigring.BigPoly{Coeffs: rem.Coeffs[:remCommitDegree]})
 	com.RemShiftCommitment, open.RemShiftOpening = p.polyProver.CommitParallel(bigring.BigPoly{Coeffs: remShift.Coeffs[:remCommitDegree]})
