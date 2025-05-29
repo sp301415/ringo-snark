@@ -177,7 +177,6 @@ func (r *BigRing) InvNTTInPlace(coeffs []*big.Int) {
 		}
 		t <<= 1
 	}
-
 }
 
 // NormalizeInPlace normalizes a vector of bigints in-place.

@@ -185,7 +185,7 @@ func (p *Prover) ProveParallel(ck celpc.AjtaiCommitKey, c Circuit) (Proof, error
 	}
 
 	if len(proverPool) < 3 {
-		proverPool = []*Prover{p.ShallowCopy(), p.ShallowCopy()}
+		proverPool = []*Prover{p.ShallowCopy(), p.ShallowCopy(), p.ShallowCopy()}
 	}
 	wg.Add(3)
 

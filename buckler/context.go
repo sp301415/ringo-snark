@@ -22,10 +22,6 @@ type Context struct {
 	sumCheckConstraints []ArithmeticConstraint
 	sumCheckSums        []*big.Int
 
-	nttConstraints    [][2]int64
-	autConstraintsIdx []int
-	autConstraints    [][][2]int64
-
 	linTransformers     []TransposeTransformer
 	linCheckConstraints map[TransposeTransformer][][2]int64
 

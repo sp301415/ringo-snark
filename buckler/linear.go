@@ -36,6 +36,31 @@ func (t *nttTransformer) TransposeTransform(v []*big.Int) []*big.Int {
 	return vOut
 }
 
+type autTransformer struct {
+	ringQ     *bigring.BigRing
+	autIdx    int
+	autIdxInv int
+}
+
+// NewAutTransformer returns a TransposeTransformer for an automorphism over coeff vector.
+func NewAutTransformer(ringQ *bigring.BigRing, autIdx int) TransposeTransformer {
+	autIdxInv := int(num.ModInverse(uint64(autIdx), uint64(2*ringQ.Degree())))
+	return &autTransformer{
+		ringQ:     ringQ,
+		autIdx:    autIdx,
+		autIdxInv: autIdxInv,
+	}
+}
+
+func (t *autTransformer) TransposeTransform(v []*big.Int) []*big.Int {
+	if len(v) != t.ringQ.Degree() {
+		panic("invalid vector length for automorphism transformation")
+	}
+
+	vOut := t.ringQ.Automorphism(bigring.BigPoly{Coeffs: v}, t.autIdxInv).Coeffs
+	return vOut
+}
+
 type autNTTTransformer struct {
 	ringQ     *bigring.BigRing
 	autIdx    int

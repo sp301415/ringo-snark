@@ -87,6 +87,32 @@ func (r *BigRing) ScalarMulSubAssign(p BigPoly, c *big.Int, pOut BigPoly) {
 	}
 }
 
+// Automorphism returns pOut = p(X^d).
+func (r *BigRing) Automorphism(p BigPoly, d int) BigNTTPoly {
+	pOut := NewBigNTTPoly(r.degree)
+	r.AutomorphismAssign(p, d, pOut)
+	return pOut
+}
+
+// AutomorphismAssign assigns pOut = p(X^d).
+func (r *BigRing) AutomorphismAssign(p BigPoly, d int, pOut BigNTTPoly) {
+	d %= 2 * r.degree
+	if d < 0 {
+		d += 2 * r.degree
+	}
+
+	for i := 0; i < r.degree; i++ {
+		j := (i * d) % (2 * r.degree)
+		if j < r.degree {
+			pOut.Coeffs[j].Set(p.Coeffs[i])
+		} else {
+			j -= r.degree
+			pOut.Coeffs[j].Neg(p.Coeffs[i])
+			pOut.Coeffs[j].Add(pOut.Coeffs[j], r.modulus)
+		}
+	}
+}
+
 // Evaluate evaluates the polynomial p at x.
 func (r *BigRing) Evaluate(p BigPoly, x *big.Int) *big.Int {
 	rOut := big.NewInt(0)
