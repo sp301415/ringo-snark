@@ -145,7 +145,7 @@ func main() {
 - [x] Infinite-Norm Contraints
 - [x] NTT Contraints
 - [x] Automorphism Constraints
-- [ ] Arbitrary Linear Constraints
+- [x] Arbitrary Linear Constraints
 - [x] Sumcheck
 - [x] Two-Norm Constraints
 - [ ] Approximate Infinite-Norm Constraints (via Modular J-L)

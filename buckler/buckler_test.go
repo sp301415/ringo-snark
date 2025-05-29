@@ -39,12 +39,13 @@ var (
 )
 
 type TestCircuit struct {
+	NTTTransformer    buckler.TransposeTransformer
+	AutNTTTransformer buckler.TransposeTransformer
+
 	XNTT buckler.PublicWitness
 
-	Y    buckler.Witness
-	YNTT buckler.Witness
-
-	AutIdx  int
+	Y       buckler.Witness
+	YNTT    buckler.Witness
 	YAutNTT buckler.Witness
 
 	YInfBound uint64
@@ -54,10 +55,11 @@ type TestCircuit struct {
 }
 
 func (c *TestCircuit) Define(ctx *buckler.Context) {
+	ctx.AddLinearConstraint(c.NTTTransformer, c.Y, c.YNTT)
+	ctx.AddLinearConstraint(c.AutNTTTransformer, c.YNTT, c.YAutNTT)
+
 	ctx.AddInfNormConstraint(c.Y, c.YInfBound)
 	ctx.AddSqTwoNormConstraint(c.Y, c.YSqBound)
-	ctx.AddNTTConstraint(c.Y, c.YNTT)
-	ctx.AddAutomorphismNTTConstraint(c.YNTT, c.AutIdx, c.YAutNTT)
 
 	var multConstraint buckler.ArithmeticConstraint
 	multConstraint.AddTerm(big.NewInt(1), c.XNTT, c.YNTT)
@@ -90,7 +92,9 @@ func TestBuckler(t *testing.T) {
 
 	ck := celpc.GenAjtaiCommitKey(params)
 	c := TestCircuit{
-		AutIdx:    autIdx,
+		NTTTransformer:    buckler.NewNTTTransformer(ringQ),
+		AutNTTTransformer: buckler.NewAutNTTTransformer(ringQ, autIdx),
+
 		YInfBound: YInfBound,
 		YSqBound:  YSqBound,
 	}
@@ -100,14 +104,9 @@ func TestBuckler(t *testing.T) {
 	assignment := TestCircuit{
 		XNTT: XNTT.Coeffs,
 
-		Y:    Y.Coeffs,
-		YNTT: YNTT.Coeffs,
-
-		AutIdx:  autIdx,
+		Y:       Y.Coeffs,
+		YNTT:    YNTT.Coeffs,
 		YAutNTT: YAutNTT.Coeffs,
-
-		YInfBound: YInfBound,
-		YSqBound:  YSqBound,
 
 		ZNTT: ZNTT.Coeffs,
 	}

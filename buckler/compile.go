@@ -36,7 +36,9 @@ func (w *walker) walkForCompile(v reflect.Value) error {
 
 	switch v.Kind() {
 	case reflect.Ptr, reflect.Interface:
-		w.walkForCompile(v.Elem())
+		if !v.IsNil() {
+			w.walkForCompile(v.Elem())
+		}
 	case reflect.Invalid:
 		panic("invalid type")
 	case reflect.Struct:

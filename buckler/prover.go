@@ -8,7 +8,6 @@ import (
 
 	"github.com/sp301415/ringo-snark/bigring"
 	"github.com/sp301415/ringo-snark/celpc"
-	"github.com/sp301415/ringo-snark/num"
 )
 
 func (w *walker) walkForProve(prover *Prover, v reflect.Value, pw []PublicWitness, sw []Witness) error {
@@ -31,7 +30,9 @@ func (w *walker) walkForProve(prover *Prover, v reflect.Value, pw []PublicWitnes
 
 	switch v.Kind() {
 	case reflect.Ptr, reflect.Interface:
-		return w.walkForProve(prover, v.Elem(), pw, sw)
+		if !v.IsNil() {
+			return w.walkForProve(prover, v.Elem(), pw, sw)
+		}
 	case reflect.Invalid:
 		panic("invalid type")
 	case reflect.Struct:
@@ -142,7 +143,7 @@ func (p *Prover) Prove(ck celpc.AjtaiCommitKey, c Circuit) (Proof, error) {
 		}
 	}
 
-	for wID, _ := range p.ctx.TwoDecomposeBound {
+	for wID := range p.ctx.TwoDecomposeBound {
 		dcmpBase := getDecomposeBase(p.ctx.TwoDecomposeBound[wID])
 
 		pwBase := PublicWitness(p.ringQ.NewPoly().Coeffs)
@@ -219,14 +220,8 @@ func (p *Prover) Prove(ck celpc.AjtaiCommitKey, c Circuit) (Proof, error) {
 	var rowCheckCommit RowCheckCommitment
 	var rowCheckOpen rowCheckOpening
 	if p.ctx.HasRowCheck() {
-		batchRowCheckConsts := make(map[int]*big.Int)
-		for _, constraint := range p.ctx.arithConstraints {
-			if _, ok := batchRowCheckConsts[constraint.degree]; !ok {
-				batchRowCheckConsts[constraint.degree] = p.oracle.SampleMod()
-			}
-		}
-
-		rowCheckCommit, rowCheckOpen = p.rowCheck(batchRowCheckConsts, buf)
+		batchRowCheckConst := p.oracle.SampleMod()
+		rowCheckCommit, rowCheckOpen = p.rowCheck(batchRowCheckConst, buf)
 	}
 
 	var linCheckCommit SumCheckCommitment
@@ -247,14 +242,8 @@ func (p *Prover) Prove(ck celpc.AjtaiCommitKey, c Circuit) (Proof, error) {
 	var sumCheckCommit SumCheckCommitment
 	var sumCheckOpen sumCheckOpening
 	if p.ctx.HasSumCheck() {
-		batchSumCheckConsts := make(map[int]*big.Int)
-		for _, constraint := range p.ctx.sumCheckConstraints {
-			if _, ok := batchSumCheckConsts[constraint.degree]; !ok {
-				batchSumCheckConsts[constraint.degree] = p.oracle.SampleMod()
-			}
-		}
-
-		sumCheckCommit, sumCheckOpen = p.sumCheck(batchSumCheckConsts, sumCheckMask, buf)
+		batchSumCheckConst := p.oracle.SampleMod()
+		sumCheckCommit, sumCheckOpen = p.sumCheck(batchSumCheckConst, sumCheckMask, buf)
 	}
 
 	if p.ctx.HasRowCheck() {
@@ -331,16 +320,13 @@ func (p *Prover) Prove(ck celpc.AjtaiCommitKey, c Circuit) (Proof, error) {
 	}, nil
 }
 
-func (p *Prover) evaluateCircuit(batchConsts map[int]*big.Int, constraints []ArithmeticConstraint, buf proverBuffer) bigring.BigPoly {
-	batchConstsPow := make(map[int]*big.Int, len(batchConsts))
-	for k, v := range batchConsts {
-		batchConstsPow[k] = big.NewInt(0).Set(v)
-	}
+func (p *Prover) evaluateCircuit(batchConst *big.Int, constraints []ArithmeticConstraint, buf proverBuffer) bigring.BigPoly {
+	batchConstPow := big.NewInt(0).Set(batchConst)
 
 	batchedNTT := p.ringQ.NewNTTPoly()
 	for _, constraint := range constraints {
-		constraintEvalNTT := p.ringQ.NewNTTPoly()
 		termNTT := p.ringQ.NewNTTPoly()
+		constraintEvalNTT := p.ringQ.NewNTTPoly()
 		for i := 0; i < len(constraint.witness); i++ {
 			for j := 0; j < p.ringQ.Degree(); j++ {
 				termNTT.Coeffs[j].Set(constraint.coeffsBig[i])
@@ -358,18 +344,18 @@ func (p *Prover) evaluateCircuit(batchConsts map[int]*big.Int, constraints []Ari
 
 			p.ringQ.AddNTTAssign(constraintEvalNTT, termNTT, constraintEvalNTT)
 		}
-		p.ringQ.ScalarMulAddNTTAssign(constraintEvalNTT, batchConstsPow[constraint.degree], batchedNTT)
+		p.ringQ.ScalarMulAddNTTAssign(constraintEvalNTT, batchConstPow, batchedNTT)
 
-		batchConstsPow[constraint.degree].Mul(batchConstsPow[constraint.degree], batchConsts[constraint.degree])
-		batchConstsPow[constraint.degree].Mod(batchConstsPow[constraint.degree], p.Parameters.Modulus())
+		batchConstPow.Mul(batchConstPow, batchConst)
+		batchConstPow.Mod(batchConstPow, p.Parameters.Modulus())
 	}
 	batched := p.ringQ.ToPoly(batchedNTT)
 
 	return batched
 }
 
-func (p *Prover) rowCheck(batchConsts map[int]*big.Int, buf proverBuffer) (RowCheckCommitment, rowCheckOpening) {
-	batched := p.evaluateCircuit(batchConsts, p.ctx.arithConstraints, buf)
+func (p *Prover) rowCheck(batchConst *big.Int, buf proverBuffer) (RowCheckCommitment, rowCheckOpening) {
+	batched := p.evaluateCircuit(batchConst, p.ctx.arithConstraints, buf)
 	quo, _ := p.ringQ.QuoRemByVanishing(batched, p.Parameters.Degree())
 
 	quoDeg := p.ctx.maxDegree - p.Parameters.Degree()
@@ -414,45 +400,18 @@ func (p *Prover) linCheck(batchConst *big.Int, linCheckVec []*big.Int, linCheckM
 	linCheckVecEcdNTT := p.ringQ.ToNTTPoly(linCheckVecEcd)
 
 	batchedNTT := p.ringQ.NewNTTPoly()
+	constraintEvalNTT := p.ringQ.NewNTTPoly()
+	for _, transformer := range p.ctx.linTransformers {
+		linCheckVecTransformed := transformer.TransposeTransform(linCheckVec)
+		linCheckVecTransformedEcd := p.encoder.Encode(linCheckVecTransformed)
+		linCheckVecTransformedEcdNTT := p.ringQ.ToNTTPoly(linCheckVecTransformedEcd)
+		for i := range p.ctx.linCheckConstraints[transformer] {
+			wEcdIn := buf.witnessEncodings[p.ctx.linCheckConstraints[transformer][i][0]]
+			wEcdOut := buf.witnessEncodings[p.ctx.linCheckConstraints[transformer][i][1]]
 
-	linCheckVecNTTTrans := make([]*big.Int, p.Parameters.Degree())
-	for i := 0; i < p.Parameters.Degree(); i++ {
-		linCheckVecNTTTrans[i] = big.NewInt(0).Set(linCheckVec[p.Parameters.Degree()-i-1])
-	}
-	p.baseRingQ.InvNTTInPlace(linCheckVecNTTTrans)
-	linCheckVecNTTTransEcd := p.encoder.Encode(linCheckVecNTTTrans)
-	linCheckVecNTTTransEcdNTT := p.ringQ.ToNTTPoly(linCheckVecNTTTransEcd)
-
-	for _, nttConstraint := range p.ctx.nttConstraints {
-		nttConstraintEvalNTT := p.ringQ.NewNTTPoly()
-
-		wEcdIn := buf.witnessEncodings[nttConstraint[0]]
-		wEcdOut := buf.witnessEncodings[nttConstraint[1]]
-
-		p.ringQ.MulNTTAssign(wEcdIn, linCheckVecNTTTransEcdNTT, nttConstraintEvalNTT)
-		p.ringQ.MulSubNTTAssign(wEcdOut, linCheckVecEcdNTT, nttConstraintEvalNTT)
-		p.ringQ.ScalarMulAddNTTAssign(nttConstraintEvalNTT, batchConstPow, batchedNTT)
-
-		batchConstPow.Mul(batchConstPow, batchConst)
-		batchConstPow.Mod(batchConstPow, p.Parameters.Modulus())
-	}
-
-	for i := range p.ctx.autConstraints {
-		autIdx := p.ctx.autConstraintsIdx[i]
-		autIdxInv := int(num.ModInverse(uint64(autIdx), uint64(2*p.Parameters.Degree())))
-		linCheckVecAutTrans := p.baseRingQ.AutomorphismNTT(bigring.BigNTTPoly{Coeffs: linCheckVec}, autIdxInv).Coeffs
-		linCheckVecAutTransEcd := p.encoder.Encode(linCheckVecAutTrans)
-		linCheckVecAutTransEcdNTT := p.ringQ.ToNTTPoly(linCheckVecAutTransEcd)
-
-		for _, autConstraint := range p.ctx.autConstraints[i] {
-			autConstraintEvalNTT := p.ringQ.NewNTTPoly()
-
-			wEcdIn := buf.witnessEncodings[autConstraint[0]]
-			wEcdOut := buf.witnessEncodings[autConstraint[1]]
-
-			p.ringQ.MulNTTAssign(wEcdIn, linCheckVecAutTransEcdNTT, autConstraintEvalNTT)
-			p.ringQ.MulSubNTTAssign(wEcdOut, linCheckVecEcdNTT, autConstraintEvalNTT)
-			p.ringQ.ScalarMulAddNTTAssign(autConstraintEvalNTT, batchConstPow, batchedNTT)
+			p.ringQ.MulNTTAssign(wEcdIn, linCheckVecTransformedEcdNTT, constraintEvalNTT)
+			p.ringQ.MulSubNTTAssign(wEcdOut, linCheckVecEcdNTT, constraintEvalNTT)
+			p.ringQ.ScalarMulAddNTTAssign(constraintEvalNTT, batchConstPow, batchedNTT)
 
 			batchConstPow.Mul(batchConstPow, batchConst)
 			batchConstPow.Mod(batchConstPow, p.Parameters.Modulus())
@@ -486,8 +445,8 @@ func (p *Prover) linCheck(batchConst *big.Int, linCheckVec []*big.Int, linCheckM
 	return com, open
 }
 
-func (p *Prover) sumCheck(batchConsts map[int]*big.Int, sumCheckMask sumCheckMask, buf proverBuffer) (SumCheckCommitment, sumCheckOpening) {
-	batched := p.evaluateCircuit(batchConsts, p.ctx.sumCheckConstraints, buf)
+func (p *Prover) sumCheck(batchConst *big.Int, sumCheckMask sumCheckMask, buf proverBuffer) (SumCheckCommitment, sumCheckOpening) {
+	batched := p.evaluateCircuit(batchConst, p.ctx.sumCheckConstraints, buf)
 	p.ringQ.AddAssign(batched, sumCheckMask.Mask, batched)
 
 	quo, remShift := p.ringQ.QuoRemByVanishing(batched, p.Parameters.Degree())
