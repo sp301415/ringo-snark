@@ -1,5 +1,6 @@
 <h1 align="center">Ringo-SNARK</h1>
 <p align="center">A Zero-Knowledge PIOP Toolkit for Ring-LWE Relations</p>
+<p align="center"><img src="LOGO.png" width="300"/></p>
 
 > [!IMPORTANT]
 > This library is under construction!
@@ -151,6 +152,7 @@ func main() {
 - [ ] Approximate Infinite-Norm Constraints (via Modular J-L)
 - [ ] Approximate Two-Norm Constraints (via Modular J-L)
 - [ ] Strong Fiat-Shamir Transform
+- [ ] Automatic Parameter Selection
 
 ## References
 - Concretely Efficient Lattice-based Polynomial Commitment from Standard Assumptions (https://eprint.iacr.org/2024/306)
