@@ -8,8 +8,9 @@ import (
 
 // BigRing is a negacyclic ring.
 type BigRing struct {
-	degree  int
-	modulus *big.Int
+	degree      int
+	modulus     *big.Int
+	barretConst *big.Int
 
 	tw        []*big.Int
 	twInv     []*big.Int
@@ -47,9 +48,13 @@ func NewBigRing(N int, Q *big.Int) *BigRing {
 
 	degreeInv := big.NewInt(0).ModInverse(big.NewInt(int64(N)), Q)
 
+	barretExp := big.NewInt(0).Lsh(big.NewInt(1), uint(2*Q.BitLen()))
+	barretConst := big.NewInt(0).Div(barretExp, Q)
+
 	return &BigRing{
-		degree:  N,
-		modulus: Q,
+		degree:      N,
+		modulus:     Q,
+		barretConst: barretConst,
 
 		tw:        tw,
 		twInv:     twInv,
@@ -85,6 +90,17 @@ func (r *BigRing) NewNTTPoly() BigNTTPoly {
 	return BigNTTPoly{Coeffs: coeffs}
 }
 
+// mod reduces x using Barrett reduction.
+func (r *BigRing) mod(x, quo *big.Int) {
+	quo.Mul(x, r.barretConst)
+	quo.Rsh(quo, uint(2*r.modulus.BitLen()))
+	quo.Mul(quo, r.modulus)
+	x.Sub(x, quo)
+	if x.Cmp(r.modulus) >= 0 {
+		x.Sub(x, r.modulus)
+	}
+}
+
 // ToNTTPoly computes NTT of p.
 func (r *BigRing) ToNTTPoly(p BigPoly) BigNTTPoly {
 	pOut := r.NewNTTPoly()
@@ -118,7 +134,7 @@ func (r *BigRing) ToPolyAssign(p BigNTTPoly, pOut BigPoly) {
 
 // NTTInPlace computes the NTT of a bigint vector in-place.
 func (r *BigRing) NTTInPlace(coeffs []*big.Int) {
-	u, v := big.NewInt(0), big.NewInt(0)
+	u, v, quo := big.NewInt(0), big.NewInt(0), big.NewInt(0)
 
 	t := r.degree
 	for m := 1; m < r.degree; m <<= 1 {
@@ -131,7 +147,7 @@ func (r *BigRing) NTTInPlace(coeffs []*big.Int) {
 				v.Set(coeffs[j+t])
 
 				v.Mul(v, r.tw[m+i])
-				v.Mod(v, r.modulus)
+				r.mod(v, quo)
 
 				coeffs[j].Add(u, v)
 				if coeffs[j].Cmp(r.modulus) >= 0 {
@@ -154,7 +170,7 @@ func (r *BigRing) NTTInPlace(coeffs []*big.Int) {
 func (r *BigRing) InvNTTInPlace(coeffs []*big.Int) {
 	num.BitReverseInPlace(coeffs)
 
-	u, v := big.NewInt(0), big.NewInt(0)
+	u, v, quo := big.NewInt(0), big.NewInt(0), big.NewInt(0)
 
 	t := 1
 	for m := r.degree >> 1; m >= 1; m >>= 1 {
@@ -172,7 +188,7 @@ func (r *BigRing) InvNTTInPlace(coeffs []*big.Int) {
 
 				coeffs[j+t].Sub(u, v)
 				coeffs[j+t].Mul(coeffs[j+t], r.twInv[m+i])
-				coeffs[j+t].Mod(coeffs[j+t], r.modulus)
+				r.mod(coeffs[j+t], quo)
 			}
 		}
 		t <<= 1
@@ -181,8 +197,9 @@ func (r *BigRing) InvNTTInPlace(coeffs []*big.Int) {
 
 // NormalizeInPlace normalizes a vector of bigints in-place.
 func (r *BigRing) NormalizeInPlace(coeffs []*big.Int) {
+	quo := big.NewInt(0)
 	for i := 0; i < r.degree; i++ {
 		coeffs[i].Mul(coeffs[i], r.degreeInv)
-		coeffs[i].Mod(coeffs[i], r.modulus)
+		r.mod(coeffs[i], quo)
 	}
 }

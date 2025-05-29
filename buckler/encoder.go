@@ -15,8 +15,9 @@ type Encoder struct {
 
 	UniformSampler *celpc.UniformSampler
 
-	twInv     []*big.Int
-	degreeInv *big.Int
+	twInv       []*big.Int
+	degreeInv   *big.Int
+	barretConst *big.Int
 }
 
 // NewEncoder creates a new Encoder.
@@ -47,14 +48,18 @@ func NewEncoder(params celpc.Parameters, embedDegree int) *Encoder {
 
 	degreeInv := big.NewInt(0).ModInverse(big.NewInt(int64(params.Degree())), params.Modulus())
 
+	barretExp := big.NewInt(0).Lsh(big.NewInt(1), uint(2*params.Modulus().BitLen()))
+	barretConst := big.NewInt(0).Div(barretExp, params.Modulus())
+
 	return &Encoder{
 		Parameters:  params,
 		EmbedDegree: embedDegree,
 
 		UniformSampler: celpc.NewUniformSampler(params),
 
-		twInv:     twInv,
-		degreeInv: degreeInv,
+		twInv:       twInv,
+		degreeInv:   degreeInv,
+		barretConst: barretConst,
 	}
 }
 
@@ -66,8 +71,9 @@ func (e *Encoder) ShallowCopy() *Encoder {
 
 		UniformSampler: celpc.NewUniformSampler(e.Parameters),
 
-		twInv:     e.twInv,
-		degreeInv: e.degreeInv,
+		twInv:       e.twInv,
+		degreeInv:   e.degreeInv,
+		barretConst: e.barretConst,
 	}
 }
 
@@ -89,7 +95,7 @@ func (e *Encoder) EncodeAssign(x []*big.Int, pOut bigring.BigPoly) {
 		pOut.Coeffs[i].SetInt64(0)
 	}
 
-	u, v := big.NewInt(0), big.NewInt(0)
+	u, v, quo := big.NewInt(0), big.NewInt(0), big.NewInt(0)
 
 	t := 1
 	for m := e.Parameters.Degree() >> 1; m >= 1; m >>= 1 {
@@ -107,7 +113,14 @@ func (e *Encoder) EncodeAssign(x []*big.Int, pOut bigring.BigPoly) {
 
 				pOut.Coeffs[j+t].Sub(u, v)
 				pOut.Coeffs[j+t].Mul(pOut.Coeffs[j+t], e.twInv[i])
-				pOut.Coeffs[j+t].Mod(pOut.Coeffs[j+t], e.Parameters.Modulus())
+
+				quo.Mul(pOut.Coeffs[j+t], e.barretConst)
+				quo.Rsh(quo, uint(2*e.Parameters.Modulus().BitLen()))
+				quo.Mul(quo, e.Parameters.Modulus())
+				pOut.Coeffs[j+t].Sub(pOut.Coeffs[j+t], quo)
+				if pOut.Coeffs[j+t].Cmp(e.Parameters.Modulus()) >= 0 {
+					pOut.Coeffs[j+t].Sub(pOut.Coeffs[j+t], e.Parameters.Modulus())
+				}
 			}
 		}
 		t <<= 1
@@ -115,7 +128,14 @@ func (e *Encoder) EncodeAssign(x []*big.Int, pOut bigring.BigPoly) {
 
 	for i := 0; i < e.Parameters.Degree(); i++ {
 		pOut.Coeffs[i].Mul(pOut.Coeffs[i], e.degreeInv)
-		pOut.Coeffs[i].Mod(pOut.Coeffs[i], e.Parameters.Modulus())
+
+		quo.Mul(pOut.Coeffs[i], e.barretConst)
+		quo.Rsh(quo, uint(2*e.Parameters.Modulus().BitLen()))
+		quo.Mul(quo, e.Parameters.Modulus())
+		pOut.Coeffs[i].Sub(pOut.Coeffs[i], quo)
+		if pOut.Coeffs[i].Cmp(e.Parameters.Modulus()) >= 0 {
+			pOut.Coeffs[i].Sub(pOut.Coeffs[i], e.Parameters.Modulus())
+		}
 	}
 }
 

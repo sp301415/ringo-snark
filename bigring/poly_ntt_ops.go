@@ -71,7 +71,7 @@ func (r *BigRing) ScalarMulAddNTTAssign(p BigNTTPoly, c *big.Int, pOut BigNTTPol
 	for i := 0; i < r.degree; i++ {
 		tmp.Mul(p.Coeffs[i], c)
 		pOut.Coeffs[i].Add(pOut.Coeffs[i], tmp)
-		pOut.Coeffs[i].Mod(pOut.Coeffs[i], r.modulus)
+		r.mod(pOut.Coeffs[i], tmp)
 	}
 }
 
@@ -81,7 +81,7 @@ func (r *BigRing) ScalarMulSubNTTAssign(p BigNTTPoly, c *big.Int, pOut BigNTTPol
 	for i := 0; i < r.degree; i++ {
 		tmp.Mul(p.Coeffs[i], c)
 		pOut.Coeffs[i].Sub(pOut.Coeffs[i], tmp)
-		pOut.Coeffs[i].Mod(pOut.Coeffs[i], r.modulus)
+		r.mod(pOut.Coeffs[i], tmp)
 	}
 }
 
@@ -94,9 +94,10 @@ func (r *BigRing) MulNTT(p0, p1 BigNTTPoly) BigNTTPoly {
 
 // MulNTTAssign assigns pOut = p0 * p1.
 func (r *BigRing) MulNTTAssign(p0, p1, pOut BigNTTPoly) {
+	quo := big.NewInt(0)
 	for i := 0; i < r.degree; i++ {
 		pOut.Coeffs[i].Mul(p0.Coeffs[i], p1.Coeffs[i])
-		pOut.Coeffs[i].Mod(pOut.Coeffs[i], r.modulus)
+		r.mod(pOut.Coeffs[i], quo)
 	}
 }
 
@@ -106,7 +107,7 @@ func (r *BigRing) MulAddNTTAssign(p0, p1 BigNTTPoly, pOut BigNTTPoly) {
 	for i := 0; i < r.degree; i++ {
 		tmp.Mul(p0.Coeffs[i], p1.Coeffs[i])
 		pOut.Coeffs[i].Add(pOut.Coeffs[i], tmp)
-		pOut.Coeffs[i].Mod(pOut.Coeffs[i], r.modulus)
+		r.mod(pOut.Coeffs[i], tmp)
 	}
 }
 
@@ -116,7 +117,7 @@ func (r *BigRing) MulSubNTTAssign(p0, p1 BigNTTPoly, pOut BigNTTPoly) {
 	for i := 0; i < r.degree; i++ {
 		tmp.Mul(p0.Coeffs[i], p1.Coeffs[i])
 		pOut.Coeffs[i].Sub(pOut.Coeffs[i], tmp)
-		pOut.Coeffs[i].Mod(pOut.Coeffs[i], r.modulus)
+		r.mod(pOut.Coeffs[i], tmp)
 	}
 }
 
