@@ -14,7 +14,7 @@ import (
 
 // In this example, we show how to prove the follwing relations:
 //
-// 	X * Y = Z
+//  X * Y = Z
 //  |X| <= 5
 //
 // Where X, Z are secret and Y is public.
@@ -126,7 +126,7 @@ func main() {
 		ZNTT: ZNTT.Coeffs,
 	}
 	now := time.Now()
-	proof, err := prover.ProveParallel(ck, &assignment)
+	proof, err := prover.Prove(ck, &assignment)
 	fmt.Println("Prover time:", time.Since(now))
 	if err != nil {
 		panic(err)

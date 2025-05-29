@@ -37,6 +37,8 @@ For more examples, see `examples/` folder.
 
 // Just like gnark, we define a circuit type.
 type MultCircuit struct {
+	NTTTransformer buckler.TransposeTransformer
+
 	YNTT buckler.PublicWitness
 
 	XCoeffs buckler.Witness
@@ -49,9 +51,9 @@ type MultCircuit struct {
 // Again, just like gnark, we define a special method to constraint the circuit.
 func (c *MultCircuit) Define(ctx *buckler.Context) {
 	// XNTT = NTT(X)
-	ctx.AddNTTConstraint(c.XCoeffs, c.XNTT)
+	ctx.AddLinearConstraint(c.NTTTransformer, c.XCoeffs, c.XNTT)
 	// ZNTT = NTT(Z)
-	ctx.AddNTTConstraint(c.ZCoeffs, c.ZNTT)
+	ctx.AddLinearConstraint(c.NTTTransformer, c.ZCoeffs, c.ZNTT)
 
 	// XNTT * YNTT - ZNTT = 0
 	var multConstraint buckler.ArithmeticConstraint
@@ -66,28 +68,7 @@ func (c *MultCircuit) Define(ctx *buckler.Context) {
 func main() {
 	// First, we should define the Polynomial Commitment Parameters.
 	paramsLogN13LogQ212 := celpc.ParametersLiteral{
-		AjtaiSize:     1,
-		AjtaiRandSize: 1 + 1,
-
-		Degree:           1 << 13,
-		BigIntCommitSize: 1 << 11,
-
-		ModulusBase: 9694,
-		Digits:      16,
-
-		RingDegree:     1 << 11,
-		LogRingModulus: []int{55, 55},
-
-		CommitStdDev:       10,
-		OpeningProofStdDev: 32,
-		BlindStdDev:        math.Exp2(19),
-
-		CommitRandStdDev:       20,
-		OpeningProofRandStdDev: 64,
-		BlindRandStdDev:        math.Exp2(20),
-
-		OpenProofBound: math.Exp2(32.754070623437386),
-		EvalBound:      math.Exp2(48.75847312606874),
+		/* Excluded for brevity */
 	}.Compile()
 
 	// Now, generate the witness.
@@ -109,7 +90,10 @@ func main() {
 
 	// We compile an empty circuit, and get prover and verifier.
 	// Ideally, this should be done by the prover and verifier, respectively.
-	var c MultCircuit
+	c := MultCircuit{
+		// All non-witness fields should be set for correct compilation.
+		NTTTransformer: buckler.NewNTTTransformer(ringQ),
+	}
 	prover, verifier, err := buckler.Compile(paramsLogN13LogQ212, &c)
 	if err != nil {
 		panic(err)
@@ -126,17 +110,13 @@ func main() {
 		XNTT: XNTT.Coeffs,
 		ZNTT: ZNTT.Coeffs,
 	}
-	now := time.Now()
 	proof, err := prover.Prove(ck, &assignment)
-	fmt.Println("Prover time:", time.Since(now))
 	if err != nil {
 		panic(err)
 	}
 
 	// Verify the proof.
-	now = time.Now()
 	vf := verifier.Verify(ck, proof)
-	fmt.Println("Verifier time:", time.Since(now))
 	fmt.Println("Verification result:", vf)
 }
 ```

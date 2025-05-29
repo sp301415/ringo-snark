@@ -26,6 +26,8 @@ import (
 // In our example, we set t = 2^16 + 1.
 
 type CiphertextCircuit struct {
+	NTTTransformer buckler.TransposeTransformer
+
 	Degree           int
 	PlaintextModulus uint64
 	ErrBound         uint64
@@ -43,8 +45,8 @@ type CiphertextCircuit struct {
 }
 
 func (c *CiphertextCircuit) Define(ctx *buckler.Context) {
-	ctx.AddNTTConstraint(c.MessageCoeffs, c.MessageNTT)
-	ctx.AddNTTConstraint(c.ErrorCoeffs, c.ErrorNTT)
+	ctx.AddLinearConstraint(c.NTTTransformer, c.MessageCoeffs, c.MessageNTT)
+	ctx.AddLinearConstraint(c.NTTTransformer, c.ErrorCoeffs, c.ErrorNTT)
 
 	// Body + Mask * sk - Message - Error = 0
 	var ctConstraint buckler.ArithmeticConstraint
@@ -188,6 +190,8 @@ func main() {
 	// Now we are ready to generate the proof.
 	c := CiphertextCircuit{
 		// All non-witness fields should be set for correct compilation.
+		NTTTransformer: buckler.NewNTTTransformer(bigringQ),
+
 		Degree:           bfvParamsLogN13LogQ240.N(),
 		PlaintextModulus: bfvParamsLogN13LogQ240.PlaintextModulus(),
 		Delta:            delta,
@@ -200,9 +204,6 @@ func main() {
 	ck := celpc.GenAjtaiCommitKey(celpcParamsLogN13LogQ212)
 
 	assignment := CiphertextCircuit{
-		Degree:           c.Degree,
-		PlaintextModulus: c.PlaintextModulus,
-
 		CiphertextNTT: [2]buckler.PublicWitness{ctNTT[0].Coeffs, ctNTT[1].Coeffs},
 
 		SecretKeyNTT: skNTT.Coeffs,

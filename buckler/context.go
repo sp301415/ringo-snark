@@ -3,7 +3,6 @@ package buckler
 import (
 	"math/big"
 	"reflect"
-	"slices"
 
 	"github.com/sp301415/ringo-snark/celpc"
 )
@@ -108,33 +107,6 @@ func (ctx *Context) AddLinearConstraint(transformer TransposeTransformer, wIn, w
 		ctx.linTransformers = append(ctx.linTransformers, transformer)
 	}
 	ctx.linCheckConstraints[transformer] = append(ctx.linCheckConstraints[transformer], [2]int64{wIn[0].Int64(), wOut[0].Int64()})
-}
-
-// AddNTTConstraint adds an NTT constraint to the context.
-func (ctx *Context) AddNTTConstraint(w, wNTT Witness) {
-	linCheckDeg := 2 * ctx.ringDegree
-	if ctx.maxDegree < linCheckDeg {
-		ctx.maxDegree = linCheckDeg
-	}
-
-	ctx.nttConstraints = append(ctx.nttConstraints, [2]int64{w[0].Int64(), wNTT[0].Int64()})
-}
-
-// AddAutomorphismNTTConstraint adds an automorphism X -> X^d over NTT constraint to the context.
-func (ctx *Context) AddAutomorphismNTTConstraint(wNTT Witness, d int, wAutNTT Witness) {
-	linCheckDeg := 2 * ctx.ringDegree
-	if ctx.maxDegree < linCheckDeg {
-		ctx.maxDegree = linCheckDeg
-	}
-
-	d %= 2 * ctx.ringDegree
-	idx := slices.Index(ctx.autConstraintsIdx, d)
-	if idx == -1 {
-		ctx.autConstraintsIdx = append(ctx.autConstraintsIdx, d)
-		ctx.autConstraints = append(ctx.autConstraints, [][2]int64{{wNTT[0].Int64(), wAutNTT[0].Int64()}})
-	} else {
-		ctx.autConstraints[idx] = append(ctx.autConstraints[idx], [2]int64{wNTT[0].Int64(), wAutNTT[0].Int64()})
-	}
 }
 
 // AddInfNormConstraintBig adds an infinity-norm constraint to the context.
