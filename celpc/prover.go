@@ -28,14 +28,13 @@ type Prover struct {
 }
 
 type proverBuffer struct {
-	expBuf *big.Int
-
 	bigBlind      []*big.Int
 	bigBlindShift []*big.Int
 
 	bigMask   []*big.Int
 	challenge ring.Poly
 
+	exp     *big.Int
 	xEcd    ring.Poly
 	xPowEcd ring.Poly
 
@@ -86,14 +85,13 @@ func newProverBuffer(params Parameters) proverBuffer {
 	}
 
 	return proverBuffer{
-		expBuf: big.NewInt(0).Set(params.modulus),
-
 		bigBlind:      bigBlind,
 		bigBlindShift: bigBlindShift,
 
 		bigMask:   bigMask,
 		challenge: params.ringQ.NewPoly(),
 
+		exp:     big.NewInt(0).Set(params.modulus),
 		xEcd:    params.ringQ.NewPoly(),
 		xPowEcd: params.ringQ.NewPoly(),
 
@@ -423,7 +421,7 @@ func (p *Prover) EvaluateAssign(x *big.Int, open Opening, evalPfOut EvaluationPr
 	p.buffer.xPow.Mod(x, p.Parameters.modulus)
 	p.Encoder.EncodeAssign([]*big.Int{p.buffer.xPow}, p.buffer.xEcd)
 
-	p.buffer.xPowSkip.Exp(x, p.buffer.expBuf.SetUint64(uint64(p.Parameters.bigIntCommitSize)), p.Parameters.modulus)
+	p.buffer.xPowSkip.Exp(x, p.buffer.exp.SetUint64(uint64(p.Parameters.bigIntCommitSize)), p.Parameters.modulus)
 	p.buffer.xPow.SetUint64(1)
 
 	for i := 0; i < p.Parameters.polyCommitSize; i++ {

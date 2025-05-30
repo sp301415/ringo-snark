@@ -143,7 +143,7 @@ func (e *encoderBase) DecodeAssign(p ring.Poly, vOut []*big.Int) {
 	e.RNSReconstructor.ReconstructAssign(p, e.buffer.coeffBalanced)
 
 	for i := 0; i < e.Parameters.slots; i++ {
-		vOut[i].SetInt64(0)
+		vOut[i].SetUint64(0)
 		for j := e.Parameters.digits - 1; j >= 0; j-- {
 			vOut[i].Mul(vOut[i], e.baseBig)
 			vOut[i].Add(vOut[i], e.buffer.coeffBalanced[j*e.Parameters.slots+i])
