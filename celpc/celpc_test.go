@@ -193,3 +193,29 @@ func BenchmarkCommitment(b *testing.B) {
 		})
 	}
 }
+
+func BenchmarkProfile(b *testing.B) {
+	params := celpc.ParamsLogN19LogP256.Compile()
+
+	ck := celpc.GenAjtaiCommitKey(params)
+	prover := celpc.NewProver(params, ck)
+	oracle := celpc.NewRandomOracle(params)
+
+	v := bigring.BigPoly{Coeffs: make([]*big.Int, params.Degree())}
+	for i := 0; i < v.Degree(); i++ {
+		v.Coeffs[i] = big.NewInt(0)
+		oracle.SampleModAssign(v.Coeffs[i])
+	}
+
+	// com := celpc.NewCommitment(params, params.Degree())
+	// open := celpc.NewOpening(params, params.Degree())
+	_, open := prover.Commit(v)
+	// openPf := prover.ProveOpening([]celpc.Commitment{com}, []celpc.Opening{open})
+	evalPf := celpc.NewEvaluationProof(params)
+	x := oracle.SampleMod()
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		prover.EvaluateAssign(x, open, evalPf)
+	}
+}

@@ -86,15 +86,6 @@ func (p ParametersLiteral) Compile() Parameters {
 		panic(err)
 	}
 
-	rnsGadget := make([]*big.Int, ringQ.ModuliChainLength())
-	qFull := ringQ.Modulus()
-	for i := 0; i <= ringQ.Level(); i++ {
-		qi := big.NewInt(0).SetUint64(ringQ.SubRings[i].Modulus)
-		qDiv := big.NewInt(0).Div(qFull, qi)
-		qInv := big.NewInt(0).ModInverse(qDiv, qi)
-		rnsGadget[i] = big.NewInt(0).Mul(qDiv, qInv)
-	}
-
 	prime := big.NewInt(0).Exp(big.NewInt(int64(p.ModulusBase)), big.NewInt(int64(p.Digits)), nil)
 	prime.Add(prime, big.NewInt(1))
 	if !prime.ProbablyPrime(0) {
@@ -114,8 +105,7 @@ func (p ParametersLiteral) Compile() Parameters {
 		modulus:     prime,
 		slots:       p.RingDegree / p.Digits,
 
-		ringQ:     ringQ,
-		rnsGadget: rnsGadget,
+		ringQ: ringQ,
 
 		commitStdDev:       p.CommitStdDev,
 		openingProofStdDev: p.OpeningProofStdDev,
@@ -138,17 +128,16 @@ type Parameters struct {
 	// ajtaiRandSize is the size of the randomness used in Ajtai Commitment.
 	// Denoted as mu + nu in the paper.
 	ajtaiRandSize int
-	// ajtaiCommitSize
 
 	// degree is the degree of the committing polynomial.
 	// Denoted as N in the paper.
 	// Note that we can commit to a larger degree polynomial, and this value is just a recommendation.
 	// This is usful for batch commitments.
 	degree int
-	// bigIntCommitLength is the input length of the bigint vector for Ajtai Commitment.
+	// bigIntCommitSize is the input length of the bigint vector for Ajtai Commitment.
 	// Denoted as n in the paper.
 	bigIntCommitSize int
-	// polyVecCommitLength is the input length of the polynomial vector for Ajtai Commitment.
+	// bigPolyCommitSize is the input length of the polynomial vector for Ajtai Commitment.
 	// Denoted as l in the paper.
 	// Equals to n / s = n * r / d.
 	polyCommitSize int
@@ -169,8 +158,6 @@ type Parameters struct {
 
 	// ringQ is the internal ring R_q.
 	ringQ *ring.Ring
-	// rnsGadget is a gadget vector used for reconstructing the polynomial to bigint.
-	rnsGadget []*big.Int
 
 	// commitStdDev is the standard deviation of randomized encoding used in Ajtai Commitment.
 	// Denoted as s1 in the paper.
@@ -246,11 +233,6 @@ func (p Parameters) Slots() int {
 // RingQ returns the internal ring R_q.
 func (p Parameters) RingQ() *ring.Ring {
 	return p.ringQ
-}
-
-// RNSGadget returns a gadget vector used for reconstructing the polynomial to bigint.
-func (p Parameters) RNSGadget() []*big.Int {
-	return p.rnsGadget
 }
 
 // Repetition returns the repetition count for Proof Of Knowledge protocol.

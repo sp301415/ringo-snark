@@ -9,12 +9,21 @@ import (
 // encoderBase computes the encoding of a polynomial.
 type encoderBase struct {
 	Parameters Parameters
+	*RNSReconstructor
 
 	// baseBig is the big integer representation of the base.
 	baseBig *big.Int
 	// deltaInv is a constnat used in randomized encoding.
 	// Equals to [-1/p, -b/p, ..., -b^(r-1)/p].
 	deltaInv []float64
+
+	buffer encoderBaseBuffer
+}
+
+type encoderBaseBuffer struct {
+	coeffBalanced []*big.Int
+	quo           *big.Int
+	rem           *big.Int
 }
 
 // newEncoderBase creates a new encoderBase.
@@ -33,10 +42,40 @@ func newEncoderBase(params Parameters) *encoderBase {
 	}
 
 	return &encoderBase{
-		Parameters: params,
+		Parameters:       params,
+		RNSReconstructor: NewRNSReconstructor(params),
 
 		baseBig:  big.NewInt(int64(params.modulusBase)),
 		deltaInv: deltaInv,
+
+		buffer: newEncoderBaseBuffer(params),
+	}
+}
+
+// newEncoderBaseBuffer creates a new encoderBaseBuffer.
+func newEncoderBaseBuffer(params Parameters) encoderBaseBuffer {
+	coeffBalanced := make([]*big.Int, params.ringQ.N())
+	for i := 0; i < params.ringQ.N(); i++ {
+		coeffBalanced[i] = big.NewInt(0).Set(params.ringQ.Modulus())
+	}
+
+	return encoderBaseBuffer{
+		coeffBalanced: coeffBalanced,
+		quo:           big.NewInt(0).Set(params.modulus),
+		rem:           big.NewInt(0).Set(params.modulus),
+	}
+}
+
+// ShallowCopy returns a copy of encoderBase that is thread-safe.
+func (e *encoderBase) ShallowCopy() *encoderBase {
+	return &encoderBase{
+		Parameters:       e.Parameters,
+		RNSReconstructor: e.RNSReconstructor.ShallowCopy(),
+
+		baseBig:  e.baseBig,
+		deltaInv: e.deltaInv,
+
+		buffer: newEncoderBaseBuffer(e.Parameters),
 	}
 }
 
@@ -51,17 +90,16 @@ func (e *encoderBase) Encode(v []*big.Int) ring.Poly {
 func (e *encoderBase) EncodeAssign(v []*big.Int, pOut ring.Poly) {
 	pOut.Zero()
 
-	coeff, rem := big.NewInt(0), big.NewInt(0)
 	for i := 0; i < len(v); i++ {
-		coeff.Mod(v[i], e.Parameters.modulus)
+		e.buffer.quo.Mod(v[i], e.Parameters.modulus)
 		for j := 0; j < e.Parameters.digits-1; j++ {
-			coeff.DivMod(coeff, e.baseBig, rem)
-			r := rem.Uint64()
+			e.buffer.quo.DivMod(e.buffer.quo, e.baseBig, e.buffer.rem)
+			r := e.buffer.rem.Uint64()
 			for k := 0; k <= e.Parameters.ringQ.Level(); k++ {
 				pOut.Coeffs[k][j*e.Parameters.slots+i] = r
 			}
 		}
-		r := coeff.Uint64()
+		r := e.buffer.quo.Uint64()
 		for k := 0; k <= e.Parameters.ringQ.Level(); k++ {
 			pOut.Coeffs[k][(e.Parameters.digits-1)*e.Parameters.slots+i] = r
 		}
@@ -102,17 +140,13 @@ func (e *encoderBase) Decode(p ring.Poly) []*big.Int {
 // DecodeAssign decodes a polynomial to a BigInt vector and writes it to vOut.
 // pNTT should be in NTT form.
 func (e *encoderBase) DecodeAssign(p ring.Poly, vOut []*big.Int) {
-	pDcdBig := make([]*big.Int, e.Parameters.ringQ.N())
-	for i := 0; i < e.Parameters.ringQ.N(); i++ {
-		pDcdBig[i] = big.NewInt(0)
-	}
-	polyToBigIntCenteredAssign(e.Parameters, p, pDcdBig)
+	e.RNSReconstructor.ReconstructAssign(p, e.buffer.coeffBalanced)
 
 	for i := 0; i < e.Parameters.slots; i++ {
 		vOut[i].SetInt64(0)
 		for j := e.Parameters.digits - 1; j >= 0; j-- {
 			vOut[i].Mul(vOut[i], e.baseBig)
-			vOut[i].Add(vOut[i], pDcdBig[j*e.Parameters.slots+i])
+			vOut[i].Add(vOut[i], e.buffer.coeffBalanced[j*e.Parameters.slots+i])
 		}
 		vOut[i].Mod(vOut[i], e.Parameters.modulus)
 	}
@@ -141,6 +175,17 @@ func (e *encoderBase) DecodeChunkAssign(p []ring.Poly, vOut []*big.Int) {
 type Encoder struct {
 	*encoderBase
 	GaussianSampler *COSACSampler
+
+	buffer encoderBuffer
+}
+
+type encoderBuffer struct {
+	fpSample     []float64
+	pSample      ring.Poly
+	pSampleShift ring.Poly
+
+	quo *big.Int
+	rem *big.Int
 }
 
 // NewEncoder creates a new Encoder.
@@ -148,19 +193,30 @@ func NewEncoder(params Parameters) *Encoder {
 	return &Encoder{
 		encoderBase:     newEncoderBase(params),
 		GaussianSampler: NewCOSACSampler(params),
+
+		buffer: newEncoderBuffer(params),
+	}
+}
+
+// newEncoderBuffer creates a new encoderBuffer.
+func newEncoderBuffer(params Parameters) encoderBuffer {
+	return encoderBuffer{
+		fpSample:     make([]float64, params.ringQ.N()),
+		pSample:      params.ringQ.NewPoly(),
+		pSampleShift: params.ringQ.NewPoly(),
+
+		quo: big.NewInt(0).Set(params.modulus),
+		rem: big.NewInt(0).Set(params.modulus),
 	}
 }
 
 // ShallowCopy returns a copy of Encoder that is thread-safe.
 func (e *Encoder) ShallowCopy() *Encoder {
 	return &Encoder{
-		encoderBase: &encoderBase{
-			Parameters: e.Parameters,
-
-			baseBig:  e.baseBig,
-			deltaInv: e.deltaInv,
-		},
+		encoderBase:     e.encoderBase.ShallowCopy(),
 		GaussianSampler: NewCOSACSampler(e.Parameters),
+
+		buffer: newEncoderBuffer(e.Parameters),
 	}
 }
 
@@ -174,49 +230,62 @@ func (e *Encoder) RandomEncode(v []*big.Int, stdDev float64) ring.Poly {
 // RandomEncodeAssign encodes a bigint vector to a polynomial with randomization and writes it to pOut.
 func (e *Encoder) RandomEncodeAssign(v []*big.Int, stdDev float64, pOut ring.Poly) {
 	pOut.Zero()
-	coeff, rem := big.NewInt(0), big.NewInt(0)
+
 	for i := 0; i < len(v); i++ {
-		coeff.Mod(v[i], e.Parameters.modulus)
+		e.buffer.quo.Mod(v[i], e.Parameters.modulus)
 		for j := 0; j < e.Parameters.digits-1; j++ {
-			coeff.DivMod(coeff, e.baseBig, rem)
+			e.buffer.quo.DivMod(e.buffer.quo, e.baseBig, e.buffer.rem)
+			r := e.buffer.rem.Uint64()
 			for k := 0; k <= e.Parameters.ringQ.Level(); k++ {
-				pOut.Coeffs[k][j*e.Parameters.slots+i] = rem.Uint64()
+				pOut.Coeffs[k][j*e.Parameters.slots+i] = r
 			}
 		}
+		r := e.buffer.quo.Uint64()
 		for k := 0; k <= e.Parameters.ringQ.Level(); k++ {
-			pOut.Coeffs[k][(e.Parameters.digits-1)*e.Parameters.slots+i] = coeff.Uint64()
+			pOut.Coeffs[k][(e.Parameters.digits-1)*e.Parameters.slots+i] = r
 		}
 	}
 
-	fpSample := make([]float64, e.Parameters.ringQ.N())
+	for i := 0; i < e.Parameters.ringQ.N(); i++ {
+		e.buffer.fpSample[i] = 0
+	}
+
 	for i := 0; i < e.Parameters.digits; i++ {
 		d := e.Parameters.ringQ.N() - (i+1)*e.Parameters.slots
-		for j := 0; j < e.Parameters.ringQ.N()-d; j++ {
-			fpSample[j+d] += e.deltaInv[i] * float64(pOut.Coeffs[0][j])
+		for j, jj := 0, d; jj < e.Parameters.ringQ.N(); j, jj = j+1, jj+1 {
+			e.buffer.fpSample[jj] += e.deltaInv[i] * float64(pOut.Coeffs[0][j])
 		}
-		for j := e.Parameters.ringQ.N() - d; j < e.Parameters.ringQ.N(); j++ {
-			fpSample[j+d-e.Parameters.ringQ.N()] -= e.deltaInv[i] * float64(pOut.Coeffs[0][j])
+		for j, jj := e.Parameters.ringQ.N()-d, 0; j < e.Parameters.ringQ.N(); j, jj = j+1, jj+1 {
+			e.buffer.fpSample[jj] -= e.deltaInv[i] * float64(pOut.Coeffs[0][j])
 		}
 	}
 
-	pSample := e.Parameters.ringQ.NewPoly()
 	for i := 0; i < e.Parameters.ringQ.N(); i++ {
-		c := e.GaussianSampler.Sample(-fpSample[i], stdDev)
+		c := e.GaussianSampler.Sample(-e.buffer.fpSample[i], stdDev)
 		if c >= 0 {
 			for k := 0; k <= e.Parameters.ringQ.Level(); k++ {
-				pSample.Coeffs[k][i] = uint64(c)
+				e.buffer.pSample.Coeffs[k][i] = uint64(c)
 			}
 		} else {
 			for k := 0; k <= e.Parameters.ringQ.Level(); k++ {
-				pSample.Coeffs[k][i] = uint64(c + int64(e.Parameters.ringQ.SubRings[k].Modulus))
+				e.buffer.pSample.Coeffs[k][i] = uint64(c + int64(e.Parameters.ringQ.SubRings[k].Modulus))
 			}
 		}
 	}
-	pSampleShift := e.Parameters.ringQ.NewPoly()
-	e.Parameters.ringQ.MultByMonomial(pSample, e.Parameters.slots, pSampleShift)
-	e.Parameters.ringQ.MulScalarThenSub(pSample, uint64(e.Parameters.modulusBase), pSampleShift)
 
-	e.Parameters.ringQ.Add(pOut, pSampleShift, pOut)
+	for i, ii := 0, e.Parameters.slots; ii < e.Parameters.ringQ.N(); i, ii = i+1, ii+1 {
+		for k := 0; k <= e.Parameters.ringQ.Level(); k++ {
+			e.buffer.pSampleShift.Coeffs[k][ii] = e.buffer.pSample.Coeffs[k][i]
+		}
+	}
+	for i, ii := e.Parameters.ringQ.N()-e.Parameters.slots, 0; i < e.Parameters.ringQ.N(); i, ii = i+1, ii+1 {
+		for k := 0; k <= e.Parameters.ringQ.Level(); k++ {
+			e.buffer.pSampleShift.Coeffs[k][ii] = e.Parameters.ringQ.SubRings[k].Modulus - e.buffer.pSample.Coeffs[k][i]
+		}
+	}
+	e.Parameters.ringQ.MulScalarThenSub(e.buffer.pSample, uint64(e.Parameters.modulusBase), e.buffer.pSampleShift)
+
+	e.Parameters.ringQ.Add(pOut, e.buffer.pSampleShift, pOut)
 	e.Parameters.ringQ.NTT(pOut, pOut)
 	e.Parameters.ringQ.MForm(pOut, pOut)
 }
@@ -244,6 +313,8 @@ func (e *Encoder) RandomEncodeChunkAssign(v []*big.Int, stdDev float64, pOut []r
 type EncoderFixedStdDev struct {
 	*encoderBase
 	GaussianSampler *TwinCDTSampler
+
+	buffer encoderBuffer
 }
 
 // NewEncoderFixedStdDev creates a new EncoderFixedStdDev.
@@ -251,19 +322,18 @@ func NewEncoderFixedStdDev(params Parameters, stdDev float64) *EncoderFixedStdDe
 	return &EncoderFixedStdDev{
 		encoderBase:     newEncoderBase(params),
 		GaussianSampler: NewTwinCDTSampler(params, stdDev),
+
+		buffer: newEncoderBuffer(params),
 	}
 }
 
 // ShallowCopy returns a copy of Encoder that is thread-safe.
 func (e *EncoderFixedStdDev) ShallowCopy() *EncoderFixedStdDev {
 	return &EncoderFixedStdDev{
-		encoderBase: &encoderBase{
-			Parameters: e.Parameters,
-
-			baseBig:  e.baseBig,
-			deltaInv: e.deltaInv,
-		},
+		encoderBase:     e.encoderBase.ShallowCopy(),
 		GaussianSampler: e.GaussianSampler.ShallowCopy(),
+
+		buffer: newEncoderBuffer(e.Parameters),
 	}
 }
 
@@ -277,49 +347,62 @@ func (e *EncoderFixedStdDev) RandomEncode(v []*big.Int) ring.Poly {
 // RandomEncodeAssign encodes a bigint vector to a polynomial with randomization and writes it to pOut.
 func (e *EncoderFixedStdDev) RandomEncodeAssign(v []*big.Int, pOut ring.Poly) {
 	pOut.Zero()
-	coeff, rem := big.NewInt(0), big.NewInt(0)
+
 	for i := 0; i < len(v); i++ {
-		coeff.Mod(v[i], e.Parameters.modulus)
+		e.buffer.quo.Mod(v[i], e.Parameters.modulus)
 		for j := 0; j < e.Parameters.digits-1; j++ {
-			coeff.DivMod(coeff, e.baseBig, rem)
+			e.buffer.quo.DivMod(e.buffer.quo, e.baseBig, e.buffer.rem)
+			r := e.buffer.rem.Uint64()
 			for k := 0; k <= e.Parameters.ringQ.Level(); k++ {
-				pOut.Coeffs[k][j*e.Parameters.slots+i] = rem.Uint64()
+				pOut.Coeffs[k][j*e.Parameters.slots+i] = r
 			}
 		}
+		r := e.buffer.quo.Uint64()
 		for k := 0; k <= e.Parameters.ringQ.Level(); k++ {
-			pOut.Coeffs[k][(e.Parameters.digits-1)*e.Parameters.slots+i] = coeff.Uint64()
+			pOut.Coeffs[k][(e.Parameters.digits-1)*e.Parameters.slots+i] = r
 		}
 	}
 
-	fpSample := make([]float64, e.Parameters.ringQ.N())
+	for i := 0; i < e.Parameters.ringQ.N(); i++ {
+		e.buffer.fpSample[i] = 0
+	}
+
 	for i := 0; i < e.Parameters.digits; i++ {
 		d := e.Parameters.ringQ.N() - (i+1)*e.Parameters.slots
-		for j := 0; j < e.Parameters.ringQ.N()-d; j++ {
-			fpSample[j+d] += e.deltaInv[i] * float64(pOut.Coeffs[0][j])
+		for j, jj := 0, d; jj < e.Parameters.ringQ.N(); j, jj = j+1, jj+1 {
+			e.buffer.fpSample[jj] += e.deltaInv[i] * float64(pOut.Coeffs[0][j])
 		}
-		for j := e.Parameters.ringQ.N() - d; j < e.Parameters.ringQ.N(); j++ {
-			fpSample[j+d-e.Parameters.ringQ.N()] -= e.deltaInv[i] * float64(pOut.Coeffs[0][j])
+		for j, jj := e.Parameters.ringQ.N()-d, 0; j < e.Parameters.ringQ.N(); j, jj = j+1, jj+1 {
+			e.buffer.fpSample[jj] -= e.deltaInv[i] * float64(pOut.Coeffs[0][j])
 		}
 	}
 
-	pSample := e.Parameters.ringQ.NewPoly()
 	for i := 0; i < e.Parameters.ringQ.N(); i++ {
-		c := e.GaussianSampler.Sample(-fpSample[i])
+		c := e.GaussianSampler.Sample(-e.buffer.fpSample[i])
 		if c >= 0 {
 			for k := 0; k <= e.Parameters.ringQ.Level(); k++ {
-				pSample.Coeffs[k][i] = uint64(c)
+				e.buffer.pSample.Coeffs[k][i] = uint64(c)
 			}
 		} else {
 			for k := 0; k <= e.Parameters.ringQ.Level(); k++ {
-				pSample.Coeffs[k][i] = uint64(c + int64(e.Parameters.ringQ.SubRings[k].Modulus))
+				e.buffer.pSample.Coeffs[k][i] = uint64(c + int64(e.Parameters.ringQ.SubRings[k].Modulus))
 			}
 		}
 	}
-	pSampleShift := e.Parameters.ringQ.NewPoly()
-	e.Parameters.ringQ.MultByMonomial(pSample, e.Parameters.slots, pSampleShift)
-	e.Parameters.ringQ.MulScalarThenSub(pSample, uint64(e.Parameters.modulusBase), pSampleShift)
 
-	e.Parameters.ringQ.Add(pOut, pSampleShift, pOut)
+	for i, ii := 0, e.Parameters.slots; ii < e.Parameters.ringQ.N(); i, ii = i+1, ii+1 {
+		for k := 0; k <= e.Parameters.ringQ.Level(); k++ {
+			e.buffer.pSampleShift.Coeffs[k][ii] = e.buffer.pSample.Coeffs[k][i]
+		}
+	}
+	for i, ii := e.Parameters.ringQ.N()-e.Parameters.slots, 0; i < e.Parameters.ringQ.N(); i, ii = i+1, ii+1 {
+		for k := 0; k <= e.Parameters.ringQ.Level(); k++ {
+			e.buffer.pSampleShift.Coeffs[k][ii] = e.Parameters.ringQ.SubRings[k].Modulus - e.buffer.pSample.Coeffs[k][i]
+		}
+	}
+	e.Parameters.ringQ.MulScalarThenSub(e.buffer.pSample, uint64(e.Parameters.modulusBase), e.buffer.pSampleShift)
+
+	e.Parameters.ringQ.Add(pOut, e.buffer.pSampleShift, pOut)
 	e.Parameters.ringQ.NTT(pOut, pOut)
 	e.Parameters.ringQ.MForm(pOut, pOut)
 }

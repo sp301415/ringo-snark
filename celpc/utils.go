@@ -6,6 +6,62 @@ import (
 	"github.com/tuneinsight/lattigo/v6/ring"
 )
 
+// RNSReconstructor reconstructs a polynomial from its RNS representation.
+type RNSReconstructor struct {
+	params Parameters
+
+	rnsGadget []*big.Int
+	qHalf     *big.Int
+
+	buffer rnsReconstructorBuffer
+}
+
+type rnsReconstructorBuffer struct {
+	pInv  ring.Poly
+	coeff *big.Int
+}
+
+// NewRNSReconstructor creates a new RNSReconstructor.
+func NewRNSReconstructor(params Parameters) *RNSReconstructor {
+	rnsGadget := make([]*big.Int, params.ringQ.ModuliChainLength())
+	qFull := params.ringQ.Modulus()
+	for i := 0; i <= params.ringQ.Level(); i++ {
+		qi := big.NewInt(0).SetUint64(params.ringQ.SubRings[i].Modulus)
+		qDiv := big.NewInt(0).Div(qFull, qi)
+		qInv := big.NewInt(0).ModInverse(qDiv, qi)
+		rnsGadget[i] = big.NewInt(0).Mul(qDiv, qInv)
+	}
+
+	return &RNSReconstructor{
+		params: params,
+
+		rnsGadget: rnsGadget,
+		qHalf:     big.NewInt(0).Rsh(params.ringQ.Modulus(), 1),
+
+		buffer: newRNSReconstructorBuffer(params),
+	}
+}
+
+// newRNSReconstructorBuffer creates a new rnsReconstructorBuffer.
+func newRNSReconstructorBuffer(params Parameters) rnsReconstructorBuffer {
+	return rnsReconstructorBuffer{
+		pInv:  params.ringQ.NewPoly(),
+		coeff: big.NewInt(0).Set(params.ringQ.Modulus()),
+	}
+}
+
+// ShallowCopy returns a shallow copy of the RNSReconstructor that is thread-safe.
+func (r *RNSReconstructor) ShallowCopy() *RNSReconstructor {
+	return &RNSReconstructor{
+		params: r.params,
+
+		rnsGadget: r.rnsGadget,
+		qHalf:     r.qHalf,
+
+		buffer: newRNSReconstructorBuffer(r.params),
+	}
+}
+
 func toBalanced(x uint64, q uint64) int64 {
 	if x > q>>1 {
 		return int64(x) - int64(q)
@@ -13,21 +69,16 @@ func toBalanced(x uint64, q uint64) int64 {
 	return int64(x)
 }
 
-// polyToBigIntCenteredAssign converts a polynomial to a big.Int vector.
-func polyToBigIntCenteredAssign(params Parameters, p ring.Poly, v []*big.Int) {
-	pInv := params.ringQ.NewPoly()
-	params.ringQ.IMForm(p, pInv)
-	params.ringQ.INTT(pInv, pInv)
+// ReconstructAssign converts a polynomial to a big.Int vector.
+func (r *RNSReconstructor) ReconstructAssign(p ring.Poly, v []*big.Int) {
+	r.params.ringQ.IMForm(p, r.buffer.pInv)
+	r.params.ringQ.INTT(r.buffer.pInv, r.buffer.pInv)
 
-	qFull := params.ringQ.Modulus()
-	qHalf := big.NewInt(0).Rsh(qFull, 1)
-
-	c := big.NewInt(0)
-	for i := 0; i < params.ringQ.N(); i++ {
+	for i := 0; i < r.params.ringQ.N(); i++ {
 		isSmall := true
-		cInt64 := toBalanced(pInv.Coeffs[0][i], params.ringQ.SubRings[0].Modulus)
-		for j := 1; j <= params.ringQ.Level(); j++ {
-			if cInt64 != toBalanced(pInv.Coeffs[j][i], params.ringQ.SubRings[j].Modulus) {
+		cInt64 := toBalanced(r.buffer.pInv.Coeffs[0][i], r.params.ringQ.SubRings[0].Modulus)
+		for j := 1; j <= r.params.ringQ.Level(); j++ {
+			if cInt64 != toBalanced(r.buffer.pInv.Coeffs[j][i], r.params.ringQ.SubRings[j].Modulus) {
 				isSmall = false
 				break
 			}
@@ -39,14 +90,14 @@ func polyToBigIntCenteredAssign(params Parameters, p ring.Poly, v []*big.Int) {
 		}
 
 		v[i].SetInt64(0)
-		for j := 0; j <= params.ringQ.Level(); j++ {
-			c.SetUint64(pInv.Coeffs[j][i])
-			c.Mul(c, params.rnsGadget[j])
-			v[i].Add(v[i], c)
+		for j := 0; j <= r.params.ringQ.Level(); j++ {
+			r.buffer.coeff.SetUint64(r.buffer.pInv.Coeffs[j][i])
+			r.buffer.coeff.Mul(r.buffer.coeff, r.rnsGadget[j])
+			v[i].Add(v[i], r.buffer.coeff)
 		}
-		v[i].Mod(v[i], qFull)
-		if v[i].Cmp(qHalf) == 1 {
-			v[i].Sub(v[i], qFull)
+		v[i].Mod(v[i], r.params.ringQ.Modulus())
+		if v[i].Cmp(r.qHalf) >= 0 {
+			v[i].Sub(v[i], r.params.ringQ.Modulus())
 		}
 	}
 }

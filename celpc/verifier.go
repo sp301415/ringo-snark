@@ -48,7 +48,7 @@ func (v *Verifier) VerifyOpeningProof(comVec []Commitment, openPf OpeningProof) 
 	for i := 0; i < v.Parameters.Repetition(); i++ {
 		norm := big.NewInt(0)
 		for j := 0; j < v.Parameters.polyCommitSize; j++ {
-			polyToBigIntCenteredAssign(v.Parameters, openPf.ResponseMask[i][j], coeffs)
+			v.Encoder.ReconstructAssign(openPf.ResponseMask[i][j], coeffs)
 			for k := 0; k < v.Parameters.ringQ.N(); k++ {
 				coeffs[k].Mul(coeffs[k], coeffs[k])
 				norm.Add(norm, coeffs[k])
@@ -56,7 +56,7 @@ func (v *Verifier) VerifyOpeningProof(comVec []Commitment, openPf OpeningProof) 
 		}
 
 		for j := 0; j < v.Parameters.ajtaiRandSize; j++ {
-			polyToBigIntCenteredAssign(v.Parameters, openPf.ResponseRand[i][j], coeffs)
+			v.Encoder.ReconstructAssign(openPf.ResponseRand[i][j], coeffs)
 			for k := 0; k < v.Parameters.ringQ.N(); k++ {
 				coeffs[k].Mul(coeffs[k], coeffs[k])
 				norm.Add(norm, coeffs[k])
@@ -117,14 +117,14 @@ func (v *Verifier) VerifyEvaluation(x *big.Int, com Commitment, evalPf Evaluatio
 	}
 	norm := big.NewInt(0)
 	for i := 0; i < v.Parameters.polyCommitSize; i++ {
-		polyToBigIntCenteredAssign(v.Parameters, evalPf.Mask[i], coeffs)
+		v.Encoder.ReconstructAssign(evalPf.Mask[i], coeffs)
 		for j := 0; j < v.Parameters.ringQ.N(); j++ {
 			coeffs[j].Mul(coeffs[j], coeffs[j])
 			norm.Add(norm, coeffs[j])
 		}
 	}
 	for i := 0; i < v.Parameters.ajtaiRandSize; i++ {
-		polyToBigIntCenteredAssign(v.Parameters, evalPf.Rand[i], coeffs)
+		v.Encoder.ReconstructAssign(evalPf.Rand[i], coeffs)
 		for j := 0; j < v.Parameters.ringQ.N(); j++ {
 			coeffs[j].Mul(coeffs[j], coeffs[j])
 			norm.Add(norm, coeffs[j])
