@@ -1,7 +1,6 @@
 package celpc
 
 import (
-	"math"
 	"math/big"
 
 	"github.com/tuneinsight/lattigo/v6/ring"
@@ -174,53 +173,50 @@ func (e *Encoder) RandomEncode(v []*big.Int, stdDev float64) ring.Poly {
 
 // RandomEncodeAssign encodes a bigint vector to a polynomial with randomization and writes it to pOut.
 func (e *Encoder) RandomEncodeAssign(v []*big.Int, stdDev float64, pOut ring.Poly) {
-	fpEcd := make([]float64, pOut.N())
+	pOut.Zero()
 	coeff, rem := big.NewInt(0), big.NewInt(0)
 	for i := 0; i < len(v); i++ {
 		coeff.Mod(v[i], e.Parameters.modulus)
 		for j := 0; j < e.Parameters.digits-1; j++ {
 			coeff.DivMod(coeff, e.baseBig, rem)
-			fpEcd[j*e.Parameters.slots+i], _ = rem.Float64()
+			for k := 0; k <= e.Parameters.ringQ.Level(); k++ {
+				pOut.Coeffs[k][j*e.Parameters.slots+i] = rem.Uint64()
+			}
 		}
-		fpEcd[(e.Parameters.digits-1)*e.Parameters.slots+i], _ = coeff.Float64()
+		for k := 0; k <= e.Parameters.ringQ.Level(); k++ {
+			pOut.Coeffs[k][(e.Parameters.digits-1)*e.Parameters.slots+i] = coeff.Uint64()
+		}
 	}
 
 	fpSample := make([]float64, e.Parameters.ringQ.N())
 	for i := 0; i < e.Parameters.digits; i++ {
 		d := e.Parameters.ringQ.N() - (i+1)*e.Parameters.slots
 		for j := 0; j < e.Parameters.ringQ.N()-d; j++ {
-			fpSample[j+d] += e.deltaInv[i] * fpEcd[j]
+			fpSample[j+d] += e.deltaInv[i] * float64(pOut.Coeffs[0][j])
 		}
 		for j := e.Parameters.ringQ.N() - d; j < e.Parameters.ringQ.N(); j++ {
-			fpSample[j+d-e.Parameters.ringQ.N()] -= e.deltaInv[i] * fpEcd[j]
+			fpSample[j+d-e.Parameters.ringQ.N()] -= e.deltaInv[i] * float64(pOut.Coeffs[0][j])
 		}
 	}
 
+	pSample := e.Parameters.ringQ.NewPoly()
 	for i := 0; i < e.Parameters.ringQ.N(); i++ {
-		fpSample[i] = e.GaussianSampler.SampleCoset(fpSample[i], stdDev)
-	}
-
-	baseFloat := float64(e.Parameters.modulusBase)
-	for i := 0; i < e.Parameters.ringQ.N()-e.Parameters.slots; i++ {
-		fpEcd[i+e.Parameters.slots] = fpSample[i] - baseFloat*fpSample[i+e.Parameters.slots]
-	}
-	for i := e.Parameters.ringQ.N() - e.Parameters.slots; i < e.Parameters.ringQ.N(); i++ {
-		fpEcd[i+e.Parameters.slots-e.Parameters.ringQ.N()] = -fpSample[i] - baseFloat*fpSample[i+e.Parameters.slots-e.Parameters.ringQ.N()]
-	}
-
-	for i := 0; i < e.Parameters.ringQ.N(); i++ {
-		c := int64(math.Round(fpEcd[i]))
+		c := e.GaussianSampler.Sample(-fpSample[i], stdDev)
 		if c >= 0 {
 			for k := 0; k <= e.Parameters.ringQ.Level(); k++ {
-				pOut.Coeffs[k][i] = uint64(c)
+				pSample.Coeffs[k][i] = uint64(c)
 			}
 		} else {
 			for k := 0; k <= e.Parameters.ringQ.Level(); k++ {
-				pOut.Coeffs[k][i] = uint64(c + int64(e.Parameters.ringQ.SubRings[k].Modulus))
+				pSample.Coeffs[k][i] = uint64(c + int64(e.Parameters.ringQ.SubRings[k].Modulus))
 			}
 		}
 	}
+	pSampleShift := e.Parameters.ringQ.NewPoly()
+	e.Parameters.ringQ.MultByMonomial(pSample, e.Parameters.slots, pSampleShift)
+	e.Parameters.ringQ.MulScalarThenSub(pSample, uint64(e.Parameters.modulusBase), pSampleShift)
 
+	e.Parameters.ringQ.Add(pOut, pSampleShift, pOut)
 	e.Parameters.ringQ.NTT(pOut, pOut)
 	e.Parameters.ringQ.MForm(pOut, pOut)
 }
@@ -280,53 +276,50 @@ func (e *EncoderFixedStdDev) RandomEncode(v []*big.Int) ring.Poly {
 
 // RandomEncodeAssign encodes a bigint vector to a polynomial with randomization and writes it to pOut.
 func (e *EncoderFixedStdDev) RandomEncodeAssign(v []*big.Int, pOut ring.Poly) {
-	fpEcd := make([]float64, pOut.N())
+	pOut.Zero()
 	coeff, rem := big.NewInt(0), big.NewInt(0)
 	for i := 0; i < len(v); i++ {
 		coeff.Mod(v[i], e.Parameters.modulus)
 		for j := 0; j < e.Parameters.digits-1; j++ {
 			coeff.DivMod(coeff, e.baseBig, rem)
-			fpEcd[j*e.Parameters.slots+i], _ = rem.Float64()
+			for k := 0; k <= e.Parameters.ringQ.Level(); k++ {
+				pOut.Coeffs[k][j*e.Parameters.slots+i] = rem.Uint64()
+			}
 		}
-		fpEcd[(e.Parameters.digits-1)*e.Parameters.slots+i], _ = coeff.Float64()
+		for k := 0; k <= e.Parameters.ringQ.Level(); k++ {
+			pOut.Coeffs[k][(e.Parameters.digits-1)*e.Parameters.slots+i] = coeff.Uint64()
+		}
 	}
 
 	fpSample := make([]float64, e.Parameters.ringQ.N())
 	for i := 0; i < e.Parameters.digits; i++ {
 		d := e.Parameters.ringQ.N() - (i+1)*e.Parameters.slots
 		for j := 0; j < e.Parameters.ringQ.N()-d; j++ {
-			fpSample[j+d] += e.deltaInv[i] * fpEcd[j]
+			fpSample[j+d] += e.deltaInv[i] * float64(pOut.Coeffs[0][j])
 		}
 		for j := e.Parameters.ringQ.N() - d; j < e.Parameters.ringQ.N(); j++ {
-			fpSample[j+d-e.Parameters.ringQ.N()] -= e.deltaInv[i] * fpEcd[j]
+			fpSample[j+d-e.Parameters.ringQ.N()] -= e.deltaInv[i] * float64(pOut.Coeffs[0][j])
 		}
 	}
 
+	pSample := e.Parameters.ringQ.NewPoly()
 	for i := 0; i < e.Parameters.ringQ.N(); i++ {
-		fpSample[i] = e.GaussianSampler.SampleCoset(fpSample[i])
-	}
-
-	baseFloat := float64(e.Parameters.modulusBase)
-	for i := 0; i < e.Parameters.ringQ.N()-e.Parameters.slots; i++ {
-		fpEcd[i+e.Parameters.slots] = fpSample[i] - baseFloat*fpSample[i+e.Parameters.slots]
-	}
-	for i := e.Parameters.ringQ.N() - e.Parameters.slots; i < e.Parameters.ringQ.N(); i++ {
-		fpEcd[i+e.Parameters.slots-e.Parameters.ringQ.N()] = -fpSample[i] - baseFloat*fpSample[i+e.Parameters.slots-e.Parameters.ringQ.N()]
-	}
-
-	for i := 0; i < e.Parameters.ringQ.N(); i++ {
-		c := int64(math.Round(fpEcd[i]))
+		c := e.GaussianSampler.Sample(-fpSample[i])
 		if c >= 0 {
 			for k := 0; k <= e.Parameters.ringQ.Level(); k++ {
-				pOut.Coeffs[k][i] = uint64(c)
+				pSample.Coeffs[k][i] = uint64(c)
 			}
 		} else {
 			for k := 0; k <= e.Parameters.ringQ.Level(); k++ {
-				pOut.Coeffs[k][i] = uint64(c + int64(e.Parameters.ringQ.SubRings[k].Modulus))
+				pSample.Coeffs[k][i] = uint64(c + int64(e.Parameters.ringQ.SubRings[k].Modulus))
 			}
 		}
 	}
+	pSampleShift := e.Parameters.ringQ.NewPoly()
+	e.Parameters.ringQ.MultByMonomial(pSample, e.Parameters.slots, pSampleShift)
+	e.Parameters.ringQ.MulScalarThenSub(pSample, uint64(e.Parameters.modulusBase), pSampleShift)
 
+	e.Parameters.ringQ.Add(pOut, pSampleShift, pOut)
 	e.Parameters.ringQ.NTT(pOut, pOut)
 	e.Parameters.ringQ.MForm(pOut, pOut)
 }

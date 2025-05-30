@@ -267,37 +267,37 @@ func (p *Prover) Prove(ck celpc.AjtaiCommitKey, c Circuit) (Proof, error) {
 
 	p.oracle.Finalize()
 
-	evaluatePoint := p.oracle.SampleMod()
+	evaluationPoint := p.oracle.SampleMod()
 
 	evalProofs := make([]celpc.EvaluationProof, len(buf.commitments))
 	for i := 0; i < len(buf.commitments); i++ {
-		evalProofs[i] = p.polyProver.Evaluate(evaluatePoint, buf.openings[i])
+		evalProofs[i] = p.polyProver.Evaluate(evaluationPoint, buf.openings[i])
 	}
 
 	var rowCheckEvalProof RowCheckEvaluationProof
 	if p.ctx.HasRowCheck() {
 		rowCheckEvalProof = RowCheckEvaluationProof{
-			QuoEvalProof: p.polyProver.Evaluate(evaluatePoint, rowCheckOpen.QuoOpening),
+			QuoEvalProof: p.polyProver.Evaluate(evaluationPoint, rowCheckOpen.QuoOpening),
 		}
 	}
 
 	var linCheckEvalProof SumCheckEvaluationProof
 	if p.ctx.HasLinCheck() {
 		linCheckEvalProof = SumCheckEvaluationProof{
-			MaskEvalProof:     p.polyProver.Evaluate(evaluatePoint, linCheckMask.MaskOpening),
-			QuoEvalProof:      p.polyProver.Evaluate(evaluatePoint, linCheckOpen.QuoOpening),
-			RemEvalProof:      p.polyProver.Evaluate(evaluatePoint, linCheckOpen.RemOpening),
-			RemShiftEvalProof: p.polyProver.Evaluate(evaluatePoint, linCheckOpen.RemShiftOpening),
+			MaskEvalProof:     p.polyProver.Evaluate(evaluationPoint, linCheckMask.MaskOpening),
+			QuoEvalProof:      p.polyProver.Evaluate(evaluationPoint, linCheckOpen.QuoOpening),
+			RemEvalProof:      p.polyProver.Evaluate(evaluationPoint, linCheckOpen.RemOpening),
+			RemShiftEvalProof: p.polyProver.Evaluate(evaluationPoint, linCheckOpen.RemShiftOpening),
 		}
 	}
 
 	var sumCheckEvalProof SumCheckEvaluationProof
 	if p.ctx.HasSumCheck() {
 		sumCheckEvalProof = SumCheckEvaluationProof{
-			MaskEvalProof:     p.polyProver.Evaluate(evaluatePoint, sumCheckMask.MaskOpening),
-			QuoEvalProof:      p.polyProver.Evaluate(evaluatePoint, sumCheckOpen.QuoOpening),
-			RemEvalProof:      p.polyProver.Evaluate(evaluatePoint, sumCheckOpen.RemOpening),
-			RemShiftEvalProof: p.polyProver.Evaluate(evaluatePoint, sumCheckOpen.RemShiftOpening),
+			MaskEvalProof:     p.polyProver.Evaluate(evaluationPoint, sumCheckMask.MaskOpening),
+			QuoEvalProof:      p.polyProver.Evaluate(evaluationPoint, sumCheckOpen.QuoOpening),
+			RemEvalProof:      p.polyProver.Evaluate(evaluationPoint, sumCheckOpen.RemOpening),
+			RemShiftEvalProof: p.polyProver.Evaluate(evaluationPoint, sumCheckOpen.RemShiftOpening),
 		}
 	}
 

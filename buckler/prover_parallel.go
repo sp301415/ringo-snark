@@ -239,7 +239,7 @@ func (p *Prover) ProveParallel(ck celpc.AjtaiCommitKey, c Circuit) (Proof, error
 
 	p.oracle.Finalize()
 
-	evaluatePoint := p.oracle.SampleMod()
+	evaluationPoint := p.oracle.SampleMod()
 
 	evalJobs := make(chan int)
 	go func() {
@@ -256,7 +256,7 @@ func (p *Prover) ProveParallel(ck celpc.AjtaiCommitKey, c Circuit) (Proof, error
 		go func(i int) {
 			defer wg.Done()
 			for j := range evalJobs {
-				evalProofs[j] = proverPool[i].polyProver.EvaluateParallel(evaluatePoint, buf.openings[j])
+				evalProofs[j] = proverPool[i].polyProver.EvaluateParallel(evaluationPoint, buf.openings[j])
 			}
 		}(i)
 	}
@@ -266,27 +266,27 @@ func (p *Prover) ProveParallel(ck celpc.AjtaiCommitKey, c Circuit) (Proof, error
 	var rowCheckEvalProof RowCheckEvaluationProof
 	if p.ctx.HasRowCheck() {
 		rowCheckEvalProof = RowCheckEvaluationProof{
-			QuoEvalProof: p.polyProver.EvaluateParallel(evaluatePoint, rowCheckOpening.QuoOpening),
+			QuoEvalProof: p.polyProver.EvaluateParallel(evaluationPoint, rowCheckOpening.QuoOpening),
 		}
 	}
 
 	var linCheckEvalProof SumCheckEvaluationProof
 	if p.ctx.HasLinCheck() {
 		linCheckEvalProof = SumCheckEvaluationProof{
-			MaskEvalProof:     p.polyProver.EvaluateParallel(evaluatePoint, linCheckMask.MaskOpening),
-			QuoEvalProof:      p.polyProver.EvaluateParallel(evaluatePoint, linCheckOpen.QuoOpening),
-			RemEvalProof:      p.polyProver.EvaluateParallel(evaluatePoint, linCheckOpen.RemOpening),
-			RemShiftEvalProof: p.polyProver.EvaluateParallel(evaluatePoint, linCheckOpen.RemShiftOpening),
+			MaskEvalProof:     p.polyProver.EvaluateParallel(evaluationPoint, linCheckMask.MaskOpening),
+			QuoEvalProof:      p.polyProver.EvaluateParallel(evaluationPoint, linCheckOpen.QuoOpening),
+			RemEvalProof:      p.polyProver.EvaluateParallel(evaluationPoint, linCheckOpen.RemOpening),
+			RemShiftEvalProof: p.polyProver.EvaluateParallel(evaluationPoint, linCheckOpen.RemShiftOpening),
 		}
 	}
 
 	var sumCheckEvalProof SumCheckEvaluationProof
 	if p.ctx.HasSumCheck() {
 		sumCheckEvalProof = SumCheckEvaluationProof{
-			MaskEvalProof:     p.polyProver.EvaluateParallel(evaluatePoint, sumCheckMask.MaskOpening),
-			QuoEvalProof:      p.polyProver.EvaluateParallel(evaluatePoint, sumCheckOpen.QuoOpening),
-			RemEvalProof:      p.polyProver.EvaluateParallel(evaluatePoint, sumCheckOpen.RemOpening),
-			RemShiftEvalProof: p.polyProver.EvaluateParallel(evaluatePoint, sumCheckOpen.RemShiftOpening),
+			MaskEvalProof:     p.polyProver.EvaluateParallel(evaluationPoint, sumCheckMask.MaskOpening),
+			QuoEvalProof:      p.polyProver.EvaluateParallel(evaluationPoint, sumCheckOpen.QuoOpening),
+			RemEvalProof:      p.polyProver.EvaluateParallel(evaluationPoint, sumCheckOpen.RemOpening),
+			RemShiftEvalProof: p.polyProver.EvaluateParallel(evaluationPoint, sumCheckOpen.RemShiftOpening),
 		}
 	}
 
