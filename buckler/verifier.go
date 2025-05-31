@@ -236,8 +236,12 @@ func (v *Verifier) linCheck(batchConst *big.Int, linCheckVec []*big.Int, buf ver
 
 	batchedEval := big.NewInt(0)
 	constraintEval0, constraintEval1 := big.NewInt(0), big.NewInt(0)
+	linCheckVecTransformed := make([]*big.Int, v.Parameters.Degree())
+	for i := 0; i < v.Parameters.Degree(); i++ {
+		linCheckVecTransformed[i] = big.NewInt(0)
+	}
 	for _, transformer := range v.ctx.linTransformers {
-		linCheckVecTransformed := transformer.TransposeTransform(linCheckVec)
+		transformer.TransformAssign(linCheckVec, linCheckVecTransformed)
 		linCheckVecTransformedEcd := v.encoder.Encode(linCheckVecTransformed)
 		linCheckVecTransformedEcdEval := v.ringQ.Evaluate(linCheckVecTransformedEcd, buf.evaluationPoint)
 		for i := range v.ctx.linCheckConstraints[transformer] {

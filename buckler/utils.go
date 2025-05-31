@@ -29,6 +29,27 @@ func getDecomposeBase(n *big.Int) []*big.Int {
 	return base
 }
 
+func (p *Prover) bigSignedDecomposeAssign(x *big.Int, base []*big.Int, xOut []*big.Int) {
+	p.buffer.dcmpSigned.Set(x)
+	if p.buffer.dcmpSigned.Cmp(p.buffer.qHalf) > 0 {
+		p.buffer.dcmpSigned.Sub(p.buffer.dcmpSigned, p.buffer.qHalf)
+	}
+
+	for i := 0; i < len(xOut); i++ {
+		p.buffer.baseNeg.Neg(base[i])
+
+		if p.buffer.dcmpSigned.Cmp(base[i]) >= 0 {
+			xOut[i].SetInt64(1)
+			p.buffer.dcmpSigned.Sub(p.buffer.dcmpSigned, base[i])
+		} else if p.buffer.dcmpSigned.Cmp(p.buffer.baseNeg) <= 0 {
+			xOut[i].SetInt64(-1)
+			p.buffer.dcmpSigned.Add(p.buffer.dcmpSigned, base[i])
+		} else {
+			xOut[i].SetInt64(0)
+		}
+	}
+}
+
 // bigSignedDecompose ternary decomposes x.
 func bigSignedDecompose(x *big.Int, q *big.Int, base []*big.Int) []*big.Int {
 	dcmp := make([]*big.Int, len(base))

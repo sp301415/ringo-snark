@@ -88,14 +88,14 @@ func (r *BigRing) ScalarMulSubAssign(p BigPoly, c *big.Int, pOut BigPoly) {
 }
 
 // Automorphism returns pOut = p(X^d).
-func (r *BigRing) Automorphism(p BigPoly, d int) BigNTTPoly {
-	pOut := NewBigNTTPoly(r.degree)
+func (r *BigRing) Automorphism(p BigPoly, d int) BigPoly {
+	pOut := NewBigPoly(r.degree)
 	r.AutomorphismAssign(p, d, pOut)
 	return pOut
 }
 
 // AutomorphismAssign assigns pOut = p(X^d).
-func (r *BigRing) AutomorphismAssign(p BigPoly, d int, pOut BigNTTPoly) {
+func (r *BigRing) AutomorphismAssign(p BigPoly, d int, pOut BigPoly) {
 	d %= 2 * r.degree
 	if d < 0 {
 		d += 2 * r.degree
@@ -125,27 +125,20 @@ func (r *BigRing) Evaluate(p BigPoly, x *big.Int) *big.Int {
 }
 
 // QuoRemByVanishing returns quotient and remainder of p by the polynomial x^N - 1.
-func (r *BigRing) QuoRemByVanishing(p BigPoly, N int) (BigPoly, BigPoly) {
-	quo := r.NewPoly()
-	rem := p.Copy()
+func (r *BigRing) QuoRemByVanishingAssign(p BigPoly, N int, quo, rem BigPoly) {
+	quo.Clear()
+	rem.CopyFrom(p)
 
-	c := big.NewInt(0)
 	for i := r.Degree() - 1; i >= N; i-- {
-		c.Set(rem.Coeffs[i])
-		quo.Coeffs[i-N].Add(quo.Coeffs[i-N], c)
+		quo.Coeffs[i-N].Add(quo.Coeffs[i-N], rem.Coeffs[i])
 		if quo.Coeffs[i-N].Cmp(r.modulus) >= 0 {
 			quo.Coeffs[i-N].Sub(quo.Coeffs[i-N], r.modulus)
 		}
 
-		rem.Coeffs[i].Sub(rem.Coeffs[i], c)
-		if rem.Coeffs[i].Sign() < 0 {
-			rem.Coeffs[i].Add(rem.Coeffs[i], r.modulus)
-		}
-		rem.Coeffs[i-N].Add(rem.Coeffs[i-N], c)
+		rem.Coeffs[i-N].Add(rem.Coeffs[i-N], rem.Coeffs[i])
 		if rem.Coeffs[i-N].Cmp(r.modulus) >= 0 {
 			rem.Coeffs[i-N].Sub(rem.Coeffs[i-N], r.modulus)
 		}
+		rem.Coeffs[i].SetUint64(0)
 	}
-
-	return quo, rem
 }

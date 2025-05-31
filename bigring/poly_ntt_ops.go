@@ -67,21 +67,19 @@ func (r *BigRing) ScalarMulNTTAssign(p BigNTTPoly, c *big.Int, pOut BigNTTPoly) 
 
 // ScalarMulAddNTTAssign assigns pOut += p * c.
 func (r *BigRing) ScalarMulAddNTTAssign(p BigNTTPoly, c *big.Int, pOut BigNTTPoly) {
-	tmp := big.NewInt(0)
 	for i := 0; i < r.degree; i++ {
-		tmp.Mul(p.Coeffs[i], c)
-		pOut.Coeffs[i].Add(pOut.Coeffs[i], tmp)
-		r.mod(pOut.Coeffs[i], tmp)
+		r.buffer.mul.Mul(p.Coeffs[i], c)
+		pOut.Coeffs[i].Add(pOut.Coeffs[i], r.buffer.mul)
+		r.Mod(pOut.Coeffs[i])
 	}
 }
 
 // ScalarMulSubNTTAssign assigns pOut -= p * c.
 func (r *BigRing) ScalarMulSubNTTAssign(p BigNTTPoly, c *big.Int, pOut BigNTTPoly) {
-	tmp := big.NewInt(0)
 	for i := 0; i < r.degree; i++ {
-		tmp.Mul(p.Coeffs[i], c)
-		pOut.Coeffs[i].Sub(pOut.Coeffs[i], tmp)
-		r.mod(pOut.Coeffs[i], tmp)
+		r.buffer.mul.Mul(p.Coeffs[i], c)
+		pOut.Coeffs[i].Sub(pOut.Coeffs[i], r.buffer.mul)
+		r.Mod(pOut.Coeffs[i])
 	}
 }
 
@@ -94,30 +92,27 @@ func (r *BigRing) MulNTT(p0, p1 BigNTTPoly) BigNTTPoly {
 
 // MulNTTAssign assigns pOut = p0 * p1.
 func (r *BigRing) MulNTTAssign(p0, p1, pOut BigNTTPoly) {
-	quo := big.NewInt(0)
 	for i := 0; i < r.degree; i++ {
 		pOut.Coeffs[i].Mul(p0.Coeffs[i], p1.Coeffs[i])
-		r.mod(pOut.Coeffs[i], quo)
+		r.Mod(pOut.Coeffs[i])
 	}
 }
 
 // MulAddNTTAssign assigns pOut += p0 * p1.
 func (r *BigRing) MulAddNTTAssign(p0, p1 BigNTTPoly, pOut BigNTTPoly) {
-	tmp := big.NewInt(0)
 	for i := 0; i < r.degree; i++ {
-		tmp.Mul(p0.Coeffs[i], p1.Coeffs[i])
-		pOut.Coeffs[i].Add(pOut.Coeffs[i], tmp)
-		r.mod(pOut.Coeffs[i], tmp)
+		r.buffer.mul.Mul(p0.Coeffs[i], p1.Coeffs[i])
+		pOut.Coeffs[i].Add(pOut.Coeffs[i], r.buffer.mul)
+		r.Mod(pOut.Coeffs[i])
 	}
 }
 
 // MulSubNTTAssign assigns pOut -= p0 * p1.
 func (r *BigRing) MulSubNTTAssign(p0, p1 BigNTTPoly, pOut BigNTTPoly) {
-	tmp := big.NewInt(0)
 	for i := 0; i < r.degree; i++ {
-		tmp.Mul(p0.Coeffs[i], p1.Coeffs[i])
-		pOut.Coeffs[i].Sub(pOut.Coeffs[i], tmp)
-		r.mod(pOut.Coeffs[i], tmp)
+		r.buffer.mul.Mul(p0.Coeffs[i], p1.Coeffs[i])
+		pOut.Coeffs[i].Sub(pOut.Coeffs[i], r.buffer.mul)
+		r.Mod(pOut.Coeffs[i])
 	}
 }
 

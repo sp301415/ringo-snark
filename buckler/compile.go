@@ -77,6 +77,9 @@ func Compile(params celpc.Parameters, c Circuit) (*Prover, *Verifier, error) {
 	}
 
 	ctx := newContext(params, w)
+	ctx.prePublicWitnessCount = w.publicWitnessCount
+	ctx.preWitnessCount = w.witnessCount
+
 	c.Define(ctx)
 
 	logEmbedDegree := int(math.Ceil(math.Log2(float64(ctx.maxDegree))))
@@ -98,6 +101,11 @@ func Compile(params celpc.Parameters, c Circuit) (*Prover, *Verifier, error) {
 		oracle: celpc.NewRandomOracle(params),
 
 		ctx: ctx,
+
+		buffer:         newProverBuffer(params, ringQ, ctx),
+		rowCheckBuffer: newRowCheckBuffer(params, ringQ, ctx),
+		linCheckBuffer: newLinCheckBuffer(params, ringQ, ctx),
+		sumCheckBuffer: newSumCheckBuffer(params, ringQ, ctx),
 	}
 
 	verifier := &Verifier{

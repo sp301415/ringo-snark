@@ -18,6 +18,15 @@ type Encoder struct {
 	twInv       []*big.Int
 	degreeInv   *big.Int
 	barretConst *big.Int
+	qBitLen     uint
+
+	buffer encoderBuffer
+}
+
+type encoderBuffer struct {
+	quo *big.Int
+	u   *big.Int
+	v   *big.Int
 }
 
 // NewEncoder creates a new Encoder.
@@ -60,6 +69,18 @@ func NewEncoder(params celpc.Parameters, embedDegree int) *Encoder {
 		twInv:       twInv,
 		degreeInv:   degreeInv,
 		barretConst: barretConst,
+		qBitLen:     uint(params.Modulus().BitLen()),
+
+		buffer: newEncoderBuffer(params),
+	}
+}
+
+// newEncoderBuffer creates a new encoderBuffer.
+func newEncoderBuffer(params celpc.Parameters) encoderBuffer {
+	return encoderBuffer{
+		quo: big.NewInt(0).Set(params.Modulus()),
+		u:   big.NewInt(0).Set(params.Modulus()),
+		v:   big.NewInt(0).Set(params.Modulus()),
 	}
 }
 
@@ -74,6 +95,9 @@ func (e *Encoder) ShallowCopy() *Encoder {
 		twInv:       e.twInv,
 		degreeInv:   e.degreeInv,
 		barretConst: e.barretConst,
+		qBitLen:     e.qBitLen,
+
+		buffer: newEncoderBuffer(e.Parameters),
 	}
 }
 
@@ -86,7 +110,7 @@ func (e *Encoder) Encode(x []*big.Int) bigring.BigPoly {
 }
 
 // EncodeAssign encodes a bigint vector to a polynomial and writes it to pOut.
-// v should have length Parameters.Degree.
+// x should have length Parameters.Degree.
 func (e *Encoder) EncodeAssign(x []*big.Int, pOut bigring.BigPoly) {
 	for i := 0; i < e.Parameters.Degree(); i++ {
 		pOut.Coeffs[i].Set(x[i])
@@ -95,29 +119,27 @@ func (e *Encoder) EncodeAssign(x []*big.Int, pOut bigring.BigPoly) {
 		pOut.Coeffs[i].SetInt64(0)
 	}
 
-	u, v, quo := big.NewInt(0), big.NewInt(0), big.NewInt(0)
-
 	t := 1
 	for m := e.Parameters.Degree() >> 1; m >= 1; m >>= 1 {
 		for i := 0; i < m; i++ {
 			j1 := 2 * i * t
 			j2 := j1 + t
 			for j := j1; j < j2; j++ {
-				u.Set(pOut.Coeffs[j])
-				v.Set(pOut.Coeffs[j+t])
+				e.buffer.u.Set(pOut.Coeffs[j])
+				e.buffer.v.Set(pOut.Coeffs[j+t])
 
-				pOut.Coeffs[j].Add(u, v)
+				pOut.Coeffs[j].Add(e.buffer.u, e.buffer.v)
 				if pOut.Coeffs[j].Cmp(e.Parameters.Modulus()) >= 0 {
 					pOut.Coeffs[j].Sub(pOut.Coeffs[j], e.Parameters.Modulus())
 				}
 
-				pOut.Coeffs[j+t].Sub(u, v)
+				pOut.Coeffs[j+t].Sub(e.buffer.u, e.buffer.v)
 				pOut.Coeffs[j+t].Mul(pOut.Coeffs[j+t], e.twInv[i])
 
-				quo.Mul(pOut.Coeffs[j+t], e.barretConst)
-				quo.Rsh(quo, uint(2*e.Parameters.Modulus().BitLen()))
-				quo.Mul(quo, e.Parameters.Modulus())
-				pOut.Coeffs[j+t].Sub(pOut.Coeffs[j+t], quo)
+				e.buffer.quo.Mul(pOut.Coeffs[j+t], e.barretConst)
+				e.buffer.quo.Rsh(e.buffer.quo, e.qBitLen<<1)
+				e.buffer.quo.Mul(e.buffer.quo, e.Parameters.Modulus())
+				pOut.Coeffs[j+t].Sub(pOut.Coeffs[j+t], e.buffer.quo)
 				if pOut.Coeffs[j+t].Cmp(e.Parameters.Modulus()) >= 0 {
 					pOut.Coeffs[j+t].Sub(pOut.Coeffs[j+t], e.Parameters.Modulus())
 				}
@@ -129,10 +151,10 @@ func (e *Encoder) EncodeAssign(x []*big.Int, pOut bigring.BigPoly) {
 	for i := 0; i < e.Parameters.Degree(); i++ {
 		pOut.Coeffs[i].Mul(pOut.Coeffs[i], e.degreeInv)
 
-		quo.Mul(pOut.Coeffs[i], e.barretConst)
-		quo.Rsh(quo, uint(2*e.Parameters.Modulus().BitLen()))
-		quo.Mul(quo, e.Parameters.Modulus())
-		pOut.Coeffs[i].Sub(pOut.Coeffs[i], quo)
+		e.buffer.quo.Mul(pOut.Coeffs[i], e.barretConst)
+		e.buffer.quo.Rsh(e.buffer.quo, e.qBitLen<<1)
+		e.buffer.quo.Mul(e.buffer.quo, e.Parameters.Modulus())
+		pOut.Coeffs[i].Sub(pOut.Coeffs[i], e.buffer.quo)
 		if pOut.Coeffs[i].Cmp(e.Parameters.Modulus()) >= 0 {
 			pOut.Coeffs[i].Sub(pOut.Coeffs[i], e.Parameters.Modulus())
 		}

@@ -15,6 +15,9 @@ type Context struct {
 	publicWitnessCount int64
 	witnessCount       int64
 
+	prePublicWitnessCount int64
+	preWitnessCount       int64
+
 	circuitType reflect.Type
 	maxDegree   int
 

@@ -12,96 +12,72 @@ import (
 	"github.com/sp301415/ringo-snark/celpc"
 )
 
-// Prove proves the circuit in given assignment in parallel.
 func (p *Prover) ProveParallel(ck celpc.AjtaiCommitKey, c Circuit) (Proof, error) {
 	p.oracle.Reset()
 	p.polyProver.Commiter = celpc.NewAjtaiCommiter(p.Parameters, ck)
-	buf := p.newBuffer()
+	witnessData := p.newWitnessData()
 
 	if p.ctx.circuitType != reflect.TypeOf(c).Elem() {
 		return Proof{}, fmt.Errorf("circuit type mismatch")
 	}
 
-	walker := &walker{}
-	if err := walker.walkForProve(p, reflect.ValueOf(c), buf.publicWitnesses, buf.witnesses); err != nil {
+	wk := &walker{}
+	if err := wk.walkForProve(p, reflect.ValueOf(c), witnessData.publicWitnesses, witnessData.witnesses); err != nil {
 		return Proof{}, err
 	}
 
 	for wID, wDcmpIDs := range p.ctx.InfDecomposedWitness {
-		w := buf.witnesses[wID]
-		dcmpBound := p.ctx.InfDecomposeBound[wID]
-		dcmpBase := getDecomposeBase(dcmpBound)
-
-		wDcmp := make([]Witness, len(dcmpBase))
-		for i := 0; i < len(dcmpBase); i++ {
-			wDcmp[i] = make(Witness, p.Parameters.Degree())
-		}
-
 		for i := 0; i < p.Parameters.Degree(); i++ {
-			coeffDcmp := bigSignedDecompose(w[i], p.Parameters.Modulus(), dcmpBase)
-			for j := 0; j < len(dcmpBase); j++ {
-				wDcmp[j][i] = coeffDcmp[j]
+			p.bigSignedDecomposeAssign(witnessData.witnesses[wID][i], p.buffer.infDcmpBase[wID], p.buffer.infDcmp[wID])
+			for j, wDcmpID := range wDcmpIDs {
+				witnessData.witnesses[wDcmpID[0].Int64()][i].Set(p.buffer.infDcmp[wID][j])
 			}
-		}
-
-		for i, wDcmpID := range wDcmpIDs {
-			buf.witnesses[wDcmpID[0].Int64()] = wDcmp[i]
 		}
 	}
 
 	for wID := range p.ctx.TwoDecomposeBound {
-		dcmpBase := getDecomposeBase(p.ctx.TwoDecomposeBound[wID])
-
-		pwBase := PublicWitness(p.ringQ.NewPoly().Coeffs)
-		pwMask := PublicWitness(p.ringQ.NewPoly().Coeffs)
-		for i := 0; i < len(dcmpBase); i++ {
-			pwBase[i].Set(dcmpBase[i])
-			pwMask[i].SetInt64(1)
-		}
-
 		pwBaseID := p.ctx.TwoDecomposeBase[wID][0].Int64()
-		buf.publicWitnesses[pwBaseID] = pwBase
 		pwMaskID := p.ctx.TwoDecomposeMask[wID][0].Int64()
-		buf.publicWitnesses[pwMaskID] = pwMask
+		for i := range p.buffer.twoDcmpBase[wID] {
+			witnessData.publicWitnesses[pwBaseID][i].Set(p.buffer.twoDcmpBase[wID][i])
+			witnessData.publicWitnesses[pwMaskID][i].SetInt64(1)
+		}
 
-		w := buf.witnesses[wID]
-		wSqNorm, sq := big.NewInt(0), big.NewInt(0)
+		p.buffer.sqNorm.SetUint64(0)
 		for i := 0; i < p.Parameters.Degree(); i++ {
-			sq.Mul(w[i], w[i])
-			wSqNorm.Add(wSqNorm, sq)
+			p.buffer.sqNormSum.Mul(witnessData.witnesses[wID][i], witnessData.witnesses[wID][i])
+			p.buffer.sqNorm.Add(p.buffer.sqNorm, p.buffer.sqNormSum)
 		}
-
-		wSqNormDcmp := bigSignedDecompose(wSqNorm, p.Parameters.Modulus(), dcmpBase)
-		wDcmp := Witness(p.ringQ.NewPoly().Coeffs)
-		for i := 0; i < len(wSqNormDcmp); i++ {
-			wDcmp[i].Set(wSqNormDcmp[i])
-		}
-
 		wDcmpID := p.ctx.TwoDecomposedWitness[wID][0].Int64()
-		buf.witnesses[wDcmpID] = wDcmp
+		p.bigSignedDecomposeAssign(p.buffer.sqNorm, p.buffer.twoDcmpBase[wID], witnessData.witnesses[wDcmpID][:len(p.buffer.twoDcmpBase[wID])])
 	}
 
-	workSize := min(runtime.NumCPU(), len(buf.witnesses))
-	proverPool := make([]*Prover, workSize)
-	for i := 0; i < workSize; i++ {
-		proverPool[i] = p.ShallowCopy()
+	commitWorkSize := min(runtime.NumCPU(), int(p.ctx.publicWitnessCount+p.ctx.witnessCount))
+	encoderPool := make([]*Encoder, commitWorkSize)
+	ringQPool := make([]*bigring.BigRing, commitWorkSize)
+	polyProverPool := make([]*celpc.Prover, commitWorkSize)
+	for i := 0; i < commitWorkSize; i++ {
+		encoderPool[i] = p.encoder.ShallowCopy()
+		ringQPool[i] = p.ringQ.ShallowCopy()
+		polyProverPool[i] = p.polyProver.ShallowCopy()
 	}
 
 	type commitJob struct {
 		idx      int
 		isPublic bool
 	}
-	commitJobs := make(chan commitJob)
+
+	commitJobChan := make(chan commitJob)
 	go func() {
-		defer close(commitJobs)
-		for i := 0; i < len(buf.witnesses); i++ {
-			commitJobs <- commitJob{
+		defer close(commitJobChan)
+		for i := range witnessData.witnesses {
+			commitJobChan <- commitJob{
 				idx:      i,
 				isPublic: false,
 			}
 		}
-		for i := 0; i < len(buf.publicWitnesses); i++ {
-			commitJobs <- commitJob{
+		for i := range witnessData.publicWitnesses {
+			commitJobChan <- commitJob{
 				idx:      i,
 				isPublic: true,
 			}
@@ -109,23 +85,30 @@ func (p *Prover) ProveParallel(ck celpc.AjtaiCommitKey, c Circuit) (Proof, error
 	}()
 
 	var wg sync.WaitGroup
-	wg.Add(workSize)
+	wg.Add(commitWorkSize)
 
 	witnessCommitDeg := p.Parameters.Degree() + p.Parameters.BigIntCommitSize()
-	for i := 0; i < workSize; i++ {
-		go func(i int) {
+	commitments := make([]celpc.Commitment, p.ctx.witnessCount)
+	openings := make([]celpc.Opening, p.ctx.witnessCount)
+	for i := 0; i < commitWorkSize; i++ {
+		go func(idx int) {
 			defer wg.Done()
-			for job := range commitJobs {
-				j := job.idx
-				if job.isPublic {
-					pwEcd := proverPool[i].encoder.Encode(buf.publicWitnesses[j])
-					buf.publicWitnessEncodings[j] = p.ringQ.ToNTTPoly(pwEcd)
-				} else {
-					wEcd := proverPool[i].encoder.RandomEncode(buf.witnesses[j])
-					buf.witnessEncodings[j] = p.ringQ.ToNTTPoly(wEcd)
 
-					wCommit := bigring.BigPoly{Coeffs: wEcd.Coeffs[:witnessCommitDeg]}
-					buf.commitments[j], buf.openings[j] = proverPool[i].polyProver.CommitParallel(wCommit)
+			pEcd := p.ringQ.NewPoly()
+			encoder := encoderPool[idx]
+			ringQ := ringQPool[idx]
+			polyProver := polyProverPool[idx]
+
+			for job := range commitJobChan {
+				i := job.idx
+				if job.isPublic {
+					encoder.EncodeAssign(witnessData.publicWitnesses[i], pEcd)
+					ringQ.ToNTTPolyAssign(pEcd, witnessData.publicWitnessEncodings[i])
+				} else {
+					encoder.RandomEncodeAssign(witnessData.witnesses[i], pEcd)
+					ringQ.ToNTTPolyAssign(pEcd, witnessData.witnessEncodings[i])
+
+					commitments[i], openings[i] = polyProver.CommitParallel(bigring.BigPoly{Coeffs: pEcd.Coeffs[:witnessCommitDeg]})
 				}
 			}
 		}(i)
@@ -133,28 +116,81 @@ func (p *Prover) ProveParallel(ck celpc.AjtaiCommitKey, c Circuit) (Proof, error
 
 	wg.Wait()
 
-	openingProof := p.polyProver.ProveOpeningParallel(buf.commitments, buf.openings)
+	openingProof := p.polyProver.ProveOpeningParallel(commitments, openings)
 
-	for i := 0; i < len(buf.commitments); i++ {
-		p.oracle.WriteCommitment(buf.commitments[i])
+	for i := range commitments {
+		p.oracle.WriteCommitment(commitments[i])
 	}
 	p.oracle.WriteOpeningProof(openingProof)
 
+	rowCheckProver := &Prover{
+		Parameters: p.Parameters,
+
+		ringQ: p.ringQ.ShallowCopy(),
+
+		polyProver: p.polyProver.ShallowCopy(),
+
+		ctx: p.ctx,
+
+		rowCheckBuffer: newRowCheckBuffer(p.Parameters, p.ringQ, p.ctx),
+	}
+
+	linCheckProver := &Prover{
+		Parameters: p.Parameters,
+
+		ringQ: p.ringQ.ShallowCopy(),
+
+		encoder:    p.encoder.ShallowCopy(),
+		polyProver: p.polyProver.ShallowCopy(),
+
+		ctx: p.ctx,
+
+		buffer:         p.buffer,
+		linCheckBuffer: newLinCheckBuffer(p.Parameters, p.ringQ, p.ctx),
+	}
+
+	sumCheckProver := &Prover{
+		Parameters: p.Parameters,
+
+		ringQ: p.ringQ.ShallowCopy(),
+
+		encoder:    p.encoder.ShallowCopy(),
+		polyProver: p.polyProver.ShallowCopy(),
+
+		ctx: p.ctx,
+
+		sumCheckBuffer: newSumCheckBuffer(p.Parameters, p.ringQ, p.ctx),
+	}
+
+	wg.Add(2)
+
 	var linCheckMaskCommit SumCheckMaskCommitment
 	var linCheckMask sumCheckMask
-	if p.ctx.HasLinCheck() {
-		linCheckMaskCommit, linCheckMask = p.sumCheckMaskParallel(2 * p.Parameters.Degree())
+	go func() {
+		defer wg.Done()
+		if p.ctx.HasLinCheck() {
+			linCheckMaskCommit, linCheckMask = linCheckProver.sumCheckMaskParallel(2 * p.Parameters.Degree())
+		}
+	}()
 
+	var sumCheckMaskCommit SumCheckMaskCommitment
+	var sumCheckMask sumCheckMask
+	go func() {
+		defer wg.Done()
+		if p.ctx.HasSumCheck() {
+			sumCheckMaskCommit, sumCheckMask = sumCheckProver.sumCheckMaskParallel(p.ctx.maxDegree)
+		}
+	}()
+
+	wg.Wait()
+
+	if p.ctx.HasLinCheck() {
 		p.oracle.WriteCommitment(linCheckMaskCommit.MaskCommitment)
 		p.oracle.WriteOpeningProof(linCheckMaskCommit.OpeningProof)
 		p.oracle.WriteBigInt(linCheckMaskCommit.MaskSum)
 	}
 
-	var sumCheckMaskCommit SumCheckMaskCommitment
-	var sumCheckMask sumCheckMask
 	if p.ctx.HasSumCheck() {
-		sumCheckMaskCommit, sumCheckMask = p.sumCheckMask(p.ctx.maxDegree)
-
 		p.oracle.WriteCommitment(sumCheckMaskCommit.MaskCommitment)
 		p.oracle.WriteOpeningProof(sumCheckMaskCommit.OpeningProof)
 		p.oracle.WriteBigInt(sumCheckMaskCommit.MaskSum)
@@ -162,58 +198,63 @@ func (p *Prover) ProveParallel(ck celpc.AjtaiCommitKey, c Circuit) (Proof, error
 
 	p.oracle.Finalize()
 
-	var batchRowCheckConst *big.Int
 	if p.ctx.HasRowCheck() {
-		batchRowCheckConst = p.oracle.SampleMod()
-	}
-
-	var batchLinConst *big.Int
-	var batchLinVec []*big.Int
-	if p.ctx.HasLinCheck() {
-		batchLinConst = p.oracle.SampleMod()
-		batchLinVec = make([]*big.Int, p.Parameters.Degree())
-		batchLinVec[0] = p.oracle.SampleMod()
-		for i := 1; i < p.Parameters.Degree(); i++ {
-			batchLinVec[i] = big.NewInt(0).Mul(batchLinVec[i-1], batchLinVec[0])
-			batchLinVec[i].Mod(batchLinVec[i], p.Parameters.Modulus())
+		p.oracle.SampleModAssign(rowCheckProver.rowCheckBuffer.batchConstPow[0])
+		for i := 1; i < len(rowCheckProver.rowCheckBuffer.batchConstPow); i++ {
+			rowCheckProver.rowCheckBuffer.batchConstPow[i].Mul(rowCheckProver.rowCheckBuffer.batchConstPow[i-1], rowCheckProver.rowCheckBuffer.batchConstPow[0])
+			rowCheckProver.rowCheckBuffer.batchConstPow[i].Mod(rowCheckProver.rowCheckBuffer.batchConstPow[i], p.Parameters.Modulus())
 		}
 	}
 
-	var batchSumCheckConst *big.Int
-	if p.ctx.HasSumCheck() {
-		batchSumCheckConst = p.oracle.SampleMod()
+	if p.ctx.HasLinCheck() {
+		p.oracle.SampleModAssign(linCheckProver.linCheckBuffer.batchConstPow[0])
+		for i := 1; i < len(linCheckProver.linCheckBuffer.batchConstPow); i++ {
+			linCheckProver.linCheckBuffer.batchConstPow[i].Mul(linCheckProver.linCheckBuffer.batchConstPow[i-1], linCheckProver.linCheckBuffer.batchConstPow[0])
+			linCheckProver.linCheckBuffer.batchConstPow[i].Mod(linCheckProver.linCheckBuffer.batchConstPow[i], p.Parameters.Modulus())
+		}
+
+		p.oracle.SampleModAssign(linCheckProver.linCheckBuffer.linCheckVec[0])
+		for i := 1; i < len(linCheckProver.linCheckBuffer.linCheckVec); i++ {
+			linCheckProver.linCheckBuffer.linCheckVec[i].Mul(linCheckProver.linCheckBuffer.linCheckVec[i-1], linCheckProver.linCheckBuffer.linCheckVec[0])
+			linCheckProver.linCheckBuffer.linCheckVec[i].Mod(linCheckProver.linCheckBuffer.linCheckVec[i], p.Parameters.Modulus())
+		}
 	}
 
-	if len(proverPool) < 3 {
-		proverPool = []*Prover{p.ShallowCopy(), p.ShallowCopy(), p.ShallowCopy()}
+	if p.ctx.HasSumCheck() {
+		p.oracle.SampleModAssign(sumCheckProver.sumCheckBuffer.batchConstPow[0])
+		for i := 1; i < len(sumCheckProver.sumCheckBuffer.batchConstPow); i++ {
+			sumCheckProver.sumCheckBuffer.batchConstPow[i].Mul(sumCheckProver.sumCheckBuffer.batchConstPow[i-1], sumCheckProver.sumCheckBuffer.batchConstPow[0])
+			sumCheckProver.sumCheckBuffer.batchConstPow[i].Mod(sumCheckProver.sumCheckBuffer.batchConstPow[i], p.Parameters.Modulus())
+		}
 	}
+
 	wg.Add(3)
 
 	var rowCheckCommit RowCheckCommitment
-	var rowCheckOpening rowCheckOpening
+	var rowCheckOpen rowCheckOpening
 	go func() {
+		defer wg.Done()
 		if p.ctx.HasRowCheck() {
-			rowCheckCommit, rowCheckOpening = proverPool[0].rowCheckParallel(batchRowCheckConst, buf)
+			rowCheckCommit, rowCheckOpen = rowCheckProver.rowCheckParallel(rowCheckProver.rowCheckBuffer.batchConstPow, witnessData)
 		}
-		wg.Done()
 	}()
 
 	var linCheckCommit SumCheckCommitment
 	var linCheckOpen sumCheckOpening
 	go func() {
+		defer wg.Done()
 		if p.ctx.HasLinCheck() {
-			linCheckCommit, linCheckOpen = proverPool[1].linCheckParallel(batchLinConst, batchLinVec, linCheckMask, buf)
+			linCheckCommit, linCheckOpen = linCheckProver.linCheckParallel(linCheckProver.linCheckBuffer.batchConstPow, linCheckProver.linCheckBuffer.linCheckVec, linCheckMask, witnessData)
 		}
-		wg.Done()
 	}()
 
 	var sumCheckCommit SumCheckCommitment
 	var sumCheckOpen sumCheckOpening
 	go func() {
+		defer wg.Done()
 		if p.ctx.HasSumCheck() {
-			sumCheckCommit, sumCheckOpen = proverPool[2].sumCheckParallel(batchSumCheckConst, sumCheckMask, buf)
+			sumCheckCommit, sumCheckOpen = sumCheckProver.sumCheckParallel(sumCheckProver.sumCheckBuffer.batchConstPow, sumCheckMask, witnessData)
 		}
-		wg.Done()
 	}()
 
 	wg.Wait()
@@ -239,60 +280,74 @@ func (p *Prover) ProveParallel(ck celpc.AjtaiCommitKey, c Circuit) (Proof, error
 
 	p.oracle.Finalize()
 
-	evaluationPoint := p.oracle.SampleMod()
+	p.oracle.SampleModAssign(p.buffer.evalPoint)
 
-	evalJobs := make(chan int)
+	evalWorkSize := min(runtime.NumCPU(), int(p.ctx.witnessCount))
+	evalJobChan := make(chan int)
 	go func() {
-		defer close(evalJobs)
-		for i := 0; i < len(buf.commitments); i++ {
-			evalJobs <- i
+		defer close(evalJobChan)
+		for i := 0; i < int(p.ctx.witnessCount); i++ {
+			evalJobChan <- i
 		}
 	}()
 
-	wg.Add(workSize)
+	evalProofs := make([]celpc.EvaluationProof, len(commitments))
 
-	evalProofs := make([]celpc.EvaluationProof, len(buf.commitments))
-	for i := 0; i < workSize; i++ {
-		go func(i int) {
+	wg.Add(evalWorkSize + 3)
+
+	for i := 0; i < evalWorkSize; i++ {
+		go func(idx int) {
 			defer wg.Done()
-			for j := range evalJobs {
-				evalProofs[j] = proverPool[i].polyProver.EvaluateParallel(evaluationPoint, buf.openings[j])
+
+			polyProver := polyProverPool[idx]
+
+			for i := range evalJobChan {
+				evalProofs[i] = polyProver.EvaluateParallel(p.buffer.evalPoint, openings[i])
 			}
 		}(i)
 	}
 
-	wg.Wait()
-
 	var rowCheckEvalProof RowCheckEvaluationProof
-	if p.ctx.HasRowCheck() {
-		rowCheckEvalProof = RowCheckEvaluationProof{
-			QuoEvalProof: p.polyProver.EvaluateParallel(evaluationPoint, rowCheckOpening.QuoOpening),
+	go func() {
+		defer wg.Done()
+		if p.ctx.HasRowCheck() {
+			rowCheckEvalProof = RowCheckEvaluationProof{
+				QuoEvalProof: rowCheckProver.polyProver.EvaluateParallel(p.buffer.evalPoint, rowCheckOpen.QuoOpening),
+			}
 		}
-	}
+	}()
 
 	var linCheckEvalProof SumCheckEvaluationProof
-	if p.ctx.HasLinCheck() {
-		linCheckEvalProof = SumCheckEvaluationProof{
-			MaskEvalProof:     p.polyProver.EvaluateParallel(evaluationPoint, linCheckMask.MaskOpening),
-			QuoEvalProof:      p.polyProver.EvaluateParallel(evaluationPoint, linCheckOpen.QuoOpening),
-			RemEvalProof:      p.polyProver.EvaluateParallel(evaluationPoint, linCheckOpen.RemOpening),
-			RemShiftEvalProof: p.polyProver.EvaluateParallel(evaluationPoint, linCheckOpen.RemShiftOpening),
+	go func() {
+		defer wg.Done()
+		if p.ctx.HasLinCheck() {
+			linCheckEvalProof = SumCheckEvaluationProof{
+				MaskEvalProof:     linCheckProver.polyProver.EvaluateParallel(p.buffer.evalPoint, linCheckMask.MaskOpening),
+				QuoEvalProof:      linCheckProver.polyProver.EvaluateParallel(p.buffer.evalPoint, linCheckOpen.QuoOpening),
+				RemEvalProof:      linCheckProver.polyProver.EvaluateParallel(p.buffer.evalPoint, linCheckOpen.RemOpening),
+				RemShiftEvalProof: linCheckProver.polyProver.EvaluateParallel(p.buffer.evalPoint, linCheckOpen.RemShiftOpening),
+			}
 		}
-	}
+	}()
 
 	var sumCheckEvalProof SumCheckEvaluationProof
-	if p.ctx.HasSumCheck() {
-		sumCheckEvalProof = SumCheckEvaluationProof{
-			MaskEvalProof:     p.polyProver.EvaluateParallel(evaluationPoint, sumCheckMask.MaskOpening),
-			QuoEvalProof:      p.polyProver.EvaluateParallel(evaluationPoint, sumCheckOpen.QuoOpening),
-			RemEvalProof:      p.polyProver.EvaluateParallel(evaluationPoint, sumCheckOpen.RemOpening),
-			RemShiftEvalProof: p.polyProver.EvaluateParallel(evaluationPoint, sumCheckOpen.RemShiftOpening),
+	go func() {
+		defer wg.Done()
+		if p.ctx.HasSumCheck() {
+			sumCheckEvalProof = SumCheckEvaluationProof{
+				MaskEvalProof:     sumCheckProver.polyProver.Evaluate(p.buffer.evalPoint, sumCheckMask.MaskOpening),
+				QuoEvalProof:      sumCheckProver.polyProver.Evaluate(p.buffer.evalPoint, sumCheckOpen.QuoOpening),
+				RemEvalProof:      sumCheckProver.polyProver.Evaluate(p.buffer.evalPoint, sumCheckOpen.RemOpening),
+				RemShiftEvalProof: sumCheckProver.polyProver.Evaluate(p.buffer.evalPoint, sumCheckOpen.RemShiftOpening),
+			}
 		}
-	}
+	}()
+
+	wg.Wait()
 
 	return Proof{
-		PublicWitness: buf.publicWitnesses,
-		Witness:       buf.commitments,
+		PublicWitness: witnessData.publicWitnesses,
+		Witness:       commitments,
 		OpeningProof:  openingProof,
 
 		LinCheckMaskCommitment: linCheckMaskCommit,
@@ -309,13 +364,8 @@ func (p *Prover) ProveParallel(ck celpc.AjtaiCommitKey, c Circuit) (Proof, error
 	}, nil
 }
 
-func (p *Prover) evaluateCircuitParallel(batchConst *big.Int, constraints []ArithmeticConstraint, buf proverBuffer) bigring.BigPoly {
-	batchConstsPow := make([]*big.Int, len(constraints))
-	batchConstsPow[0] = big.NewInt(0).Set(batchConst)
-	for i := 1; i < len(batchConstsPow); i++ {
-		batchConstsPow[i] = big.NewInt(0).Mul(batchConstsPow[i-1], batchConst)
-		batchConstsPow[i].Mod(batchConstsPow[i], p.Parameters.Modulus())
-	}
+func (p *Prover) evaluateCircuitParallelAssign(batchConstPow []*big.Int, constraints []ArithmeticConstraint, witnessData witnessData, termNTT, evalNTT, batchedNTT bigring.BigNTTPoly, batchedOut bigring.BigPoly) {
+	batchedNTT.Clear()
 
 	workSize := min(runtime.NumCPU(), p.ringQ.Degree())
 
@@ -330,35 +380,30 @@ func (p *Prover) evaluateCircuitParallel(batchConst *big.Int, constraints []Arit
 	var wg sync.WaitGroup
 	wg.Add(workSize)
 
-	batchedNTT := p.ringQ.NewNTTPoly()
 	for i := 0; i < workSize; i++ {
 		go func() {
 			defer wg.Done()
+
 			for k := range batchJobs {
 				for c, constraint := range constraints {
-					constraintEvalNTT := big.NewInt(0)
-					termNTT := big.NewInt(0)
-
-					for i := 0; i < len(constraint.witness); i++ {
-						termNTT.Set(constraint.coeffsBig[i])
+					evalNTT.Coeffs[k].SetInt64(0)
+					for i := range constraint.witness {
+						termNTT.Coeffs[k].Set(constraint.coeffsBig[i])
 
 						if constraint.coeffsPublicWitness[i] != -1 {
-							pwEcdNTT := buf.publicWitnessEncodings[constraint.coeffsPublicWitness[i]].Coeffs[k]
-							termNTT.Mul(termNTT, pwEcdNTT)
-							termNTT.Mod(termNTT, p.Parameters.Modulus())
+							termNTT.Coeffs[k].Mul(termNTT.Coeffs[k], witnessData.publicWitnessEncodings[constraint.coeffsPublicWitness[i]].Coeffs[k])
+							termNTT.Coeffs[k].Mod(termNTT.Coeffs[k], p.Parameters.Modulus())
 						}
 
-						for j := 0; j < len(constraint.witness[i]); j++ {
-							witnessEcdNTT := buf.witnessEncodings[constraint.witness[i][j]].Coeffs[k]
-							termNTT.Mul(termNTT, witnessEcdNTT)
-							termNTT.Mod(termNTT, p.Parameters.Modulus())
+						for j := range constraint.witness[i] {
+							termNTT.Coeffs[k].Mul(termNTT.Coeffs[k], witnessData.witnessEncodings[constraint.witness[i][j]].Coeffs[k])
+							termNTT.Coeffs[k].Mod(termNTT.Coeffs[k], p.Parameters.Modulus())
 						}
 
-						constraintEvalNTT.Add(constraintEvalNTT, termNTT)
-						constraintEvalNTT.Mod(constraintEvalNTT, p.Parameters.Modulus())
+						evalNTT.Coeffs[k].Add(evalNTT.Coeffs[k], termNTT.Coeffs[k])
 					}
-					constraintEvalNTT.Mul(constraintEvalNTT, batchConstsPow[c])
-					batchedNTT.Coeffs[k].Add(batchedNTT.Coeffs[k], constraintEvalNTT)
+					evalNTT.Coeffs[k].Mul(evalNTT.Coeffs[k], batchConstPow[c])
+					batchedNTT.Coeffs[k].Add(batchedNTT.Coeffs[k], evalNTT.Coeffs[k])
 					batchedNTT.Coeffs[k].Mod(batchedNTT.Coeffs[k], p.Parameters.Modulus())
 				}
 			}
@@ -367,20 +412,21 @@ func (p *Prover) evaluateCircuitParallel(batchConst *big.Int, constraints []Arit
 
 	wg.Wait()
 
-	batched := p.ringQ.ToPoly(batchedNTT)
-	return batched
+	p.ringQ.ToPolyAssign(batchedNTT, batchedOut)
 }
 
-func (p *Prover) rowCheckParallel(batchConst *big.Int, buf proverBuffer) (RowCheckCommitment, rowCheckOpening) {
-	batched := p.evaluateCircuitParallel(batchConst, p.ctx.arithConstraints, buf)
+func (p *Prover) rowCheckParallel(batchConstPow []*big.Int, witnessData witnessData) (RowCheckCommitment, rowCheckOpening) {
+	p.evaluateCircuitParallelAssign(
+		batchConstPow, p.ctx.arithConstraints, witnessData,
+		p.rowCheckBuffer.termNTT, p.rowCheckBuffer.evalNTT, p.rowCheckBuffer.batchedNTT, p.rowCheckBuffer.batched)
+	p.ringQ.QuoRemByVanishingAssign(p.rowCheckBuffer.batched, p.Parameters.Degree(), p.rowCheckBuffer.quo, p.rowCheckBuffer.rem)
 
-	quo, _ := p.ringQ.QuoRemByVanishing(batched, p.Parameters.Degree())
 	quoDeg := p.ctx.maxDegree - p.Parameters.Degree()
 	quoCommitDeg := int(math.Ceil(float64(quoDeg)/float64(p.Parameters.BigIntCommitSize()))) * p.Parameters.BigIntCommitSize()
 
 	var com RowCheckCommitment
 	var open rowCheckOpening
-	com.QuoCommitment, open.QuoOpening = p.polyProver.CommitParallel(bigring.BigPoly{Coeffs: quo.Coeffs[:quoCommitDeg]})
+	com.QuoCommitment, open.QuoOpening = p.polyProver.CommitParallel(bigring.BigPoly{Coeffs: p.rowCheckBuffer.quo.Coeffs[:quoCommitDeg]})
 	com.OpeningProof = p.polyProver.ProveOpeningParallel([]celpc.Commitment{com.QuoCommitment}, []celpc.Opening{open.QuoOpening})
 
 	return com, open
@@ -410,19 +456,20 @@ func (p *Prover) sumCheckMaskParallel(maskDeg int) (SumCheckMaskCommitment, sumC
 	return com, open
 }
 
-func (p *Prover) linCheckParallel(batchConst *big.Int, linCheckVec []*big.Int, linCheckMask sumCheckMask, buf proverBuffer) (SumCheckCommitment, sumCheckOpening) {
-	linCheckVecEcd := p.encoder.Encode(linCheckVec)
-	linCheckVecEcdNTT := p.ringQ.ToNTTPoly(linCheckVecEcd)
+func (p *Prover) linCheckParallel(batchConstPow []*big.Int, linCheckVec []*big.Int, linCheckMask sumCheckMask, witnessData witnessData) (SumCheckCommitment, sumCheckOpening) {
+	p.encoder.EncodeAssign(linCheckVec, p.buffer.pEcd)
+	p.ringQ.ToNTTPolyAssign(p.buffer.pEcd, p.linCheckBuffer.linCheckVecEcdNTT)
 
-	linCheckTransformedEcdNTTs := make([]bigring.BigNTTPoly, len(p.ctx.linTransformers))
+	lincheckVecTransEcdNTTs := make([]bigring.BigNTTPoly, len(p.ctx.linTransformers))
 	for i, transformer := range p.ctx.linTransformers {
-		linCheckVecTransformed := transformer.TransposeTransform(linCheckVec)
-		linCheckVecTransformedEcd := p.encoder.Encode(linCheckVecTransformed)
-		linCheckTransformedEcdNTTs[i] = p.ringQ.ToNTTPoly(linCheckVecTransformedEcd)
+		transformer.TransformAssign(linCheckVec, p.linCheckBuffer.linCheckVecTrans)
+		p.encoder.EncodeAssign(p.linCheckBuffer.linCheckVecTrans, p.buffer.pEcd)
+		lincheckVecTransEcdNTTs[i] = p.ringQ.ToNTTPoly(p.buffer.pEcd)
 	}
 
-	workSize := min(runtime.NumCPU(), p.ringQ.Degree())
+	p.linCheckBuffer.batchedNTT.Clear()
 
+	workSize := min(runtime.NumCPU(), p.ringQ.Degree())
 	batchJobs := make(chan int)
 	go func() {
 		defer close(batchJobs)
@@ -434,29 +481,27 @@ func (p *Prover) linCheckParallel(batchConst *big.Int, linCheckVec []*big.Int, l
 	var wg sync.WaitGroup
 	wg.Add(workSize)
 
-	batchedNTT := p.ringQ.NewNTTPoly()
 	for i := 0; i < workSize; i++ {
 		go func() {
 			defer wg.Done()
+
 			for k := range batchJobs {
-				batchConstPow := big.NewInt(0).Set(batchConst)
-				constraintEval0, constraintEval1 := big.NewInt(0), big.NewInt(0)
+				powIdx := 0
 				for t, transformer := range p.ctx.linTransformers {
 					for i := range p.ctx.linCheckConstraints[transformer] {
-						wEcdIn := buf.witnessEncodings[p.ctx.linCheckConstraints[transformer][i][0]].Coeffs[k]
-						wEcdOut := buf.witnessEncodings[p.ctx.linCheckConstraints[transformer][i][1]].Coeffs[k]
+						wEcdIn := witnessData.witnessEncodings[p.ctx.linCheckConstraints[transformer][i][0]]
+						wEcdOut := witnessData.witnessEncodings[p.ctx.linCheckConstraints[transformer][i][1]]
 
-						constraintEval0.Mul(wEcdIn, linCheckTransformedEcdNTTs[t].Coeffs[k])
-						constraintEval1.Mul(wEcdOut, linCheckVecEcdNTT.Coeffs[k])
-						constraintEval0.Sub(constraintEval0, constraintEval1)
-						constraintEval0.Mod(constraintEval0, p.Parameters.Modulus())
+						p.linCheckBuffer.evalNTT.Coeffs[k].Mul(wEcdIn.Coeffs[k], lincheckVecTransEcdNTTs[t].Coeffs[k])
+						p.buffer.pEcdNTT.Coeffs[k].Mul(wEcdOut.Coeffs[k], p.linCheckBuffer.linCheckVecEcdNTT.Coeffs[k])
+						p.linCheckBuffer.evalNTT.Coeffs[k].Sub(p.linCheckBuffer.evalNTT.Coeffs[k], p.buffer.pEcdNTT.Coeffs[k])
+						p.linCheckBuffer.evalNTT.Coeffs[k].Mod(p.linCheckBuffer.evalNTT.Coeffs[k], p.Parameters.Modulus())
 
-						constraintEval0.Mul(constraintEval0, batchConstPow)
-						batchedNTT.Coeffs[k].Add(batchedNTT.Coeffs[k], constraintEval0)
-						batchedNTT.Coeffs[k].Mod(batchedNTT.Coeffs[k], p.Parameters.Modulus())
+						p.linCheckBuffer.evalNTT.Coeffs[k].Mul(p.linCheckBuffer.evalNTT.Coeffs[k], batchConstPow[powIdx])
+						p.linCheckBuffer.batchedNTT.Coeffs[k].Add(p.linCheckBuffer.batchedNTT.Coeffs[k], p.linCheckBuffer.evalNTT.Coeffs[k])
+						p.linCheckBuffer.batchedNTT.Coeffs[k].Mod(p.linCheckBuffer.batchedNTT.Coeffs[k], p.Parameters.Modulus())
 
-						batchConstPow.Mul(batchConstPow, batchConst)
-						batchConstPow.Mod(batchConstPow, p.Parameters.Modulus())
+						powIdx++
 					}
 				}
 			}
@@ -465,25 +510,25 @@ func (p *Prover) linCheckParallel(batchConst *big.Int, linCheckVec []*big.Int, l
 
 	wg.Wait()
 
-	batched := p.ringQ.ToPoly(batchedNTT)
-	p.ringQ.AddAssign(batched, linCheckMask.Mask, batched)
+	p.ringQ.ToPolyAssign(p.linCheckBuffer.batchedNTT, p.linCheckBuffer.batched)
+	p.ringQ.AddAssign(p.linCheckBuffer.batched, linCheckMask.Mask, p.linCheckBuffer.batched)
 
-	quo, remShift := p.ringQ.QuoRemByVanishing(batched, p.Parameters.Degree())
-	remShift.Coeffs[0].SetInt64(0)
+	p.ringQ.QuoRemByVanishingAssign(p.linCheckBuffer.batched, p.Parameters.Degree(), p.linCheckBuffer.quo, p.linCheckBuffer.remShift)
+	p.linCheckBuffer.remShift.Coeffs[0].SetInt64(0)
 
 	quoCommitDeg := p.Parameters.Degree()
 	remCommitDeg := p.Parameters.Degree()
 
-	rem := p.ringQ.NewPoly()
 	for i, ii := 0, 1; ii < remCommitDeg; i, ii = i+1, ii+1 {
-		rem.Coeffs[i].Set(remShift.Coeffs[ii])
+		p.linCheckBuffer.rem.Coeffs[i].Set(p.linCheckBuffer.remShift.Coeffs[ii])
 	}
+	p.linCheckBuffer.rem.Coeffs[remCommitDeg-1].SetInt64(0)
 
 	var com SumCheckCommitment
 	var open sumCheckOpening
-	com.QuoCommitment, open.QuoOpening = p.polyProver.CommitParallel(bigring.BigPoly{Coeffs: quo.Coeffs[:quoCommitDeg]})
-	com.RemCommitment, open.RemOpening = p.polyProver.CommitParallel(bigring.BigPoly{Coeffs: rem.Coeffs[:remCommitDeg]})
-	com.RemShiftCommitment, open.RemShiftOpening = p.polyProver.CommitParallel(bigring.BigPoly{Coeffs: remShift.Coeffs[:remCommitDeg]})
+	com.QuoCommitment, open.QuoOpening = p.polyProver.CommitParallel(bigring.BigPoly{Coeffs: p.linCheckBuffer.quo.Coeffs[:quoCommitDeg]})
+	com.RemCommitment, open.RemOpening = p.polyProver.CommitParallel(bigring.BigPoly{Coeffs: p.linCheckBuffer.rem.Coeffs[:remCommitDeg]})
+	com.RemShiftCommitment, open.RemShiftOpening = p.polyProver.CommitParallel(bigring.BigPoly{Coeffs: p.linCheckBuffer.remShift.Coeffs[:remCommitDeg]})
 	com.OpeningProof = p.polyProver.ProveOpeningParallel(
 		[]celpc.Commitment{com.QuoCommitment, com.RemCommitment, com.RemShiftCommitment},
 		[]celpc.Opening{open.QuoOpening, open.RemOpening, open.RemShiftOpening},
@@ -492,27 +537,29 @@ func (p *Prover) linCheckParallel(batchConst *big.Int, linCheckVec []*big.Int, l
 	return com, open
 }
 
-func (p *Prover) sumCheckParallel(batchConst *big.Int, sumCheckMask sumCheckMask, buf proverBuffer) (SumCheckCommitment, sumCheckOpening) {
-	batched := p.evaluateCircuitParallel(batchConst, p.ctx.sumCheckConstraints, buf)
-	p.ringQ.AddAssign(batched, sumCheckMask.Mask, batched)
+func (p *Prover) sumCheckParallel(batchConstPow []*big.Int, sumCheckMask sumCheckMask, witnessData witnessData) (SumCheckCommitment, sumCheckOpening) {
+	p.evaluateCircuitParallelAssign(
+		batchConstPow, p.ctx.sumCheckConstraints, witnessData,
+		p.sumCheckBuffer.termNTT, p.sumCheckBuffer.evalNTT, p.sumCheckBuffer.batchedNTT, p.sumCheckBuffer.batched)
+	p.ringQ.AddAssign(p.sumCheckBuffer.batched, sumCheckMask.Mask, p.sumCheckBuffer.batched)
 
-	quo, remShift := p.ringQ.QuoRemByVanishing(batched, p.Parameters.Degree())
-	remShift.Coeffs[0].SetInt64(0)
+	p.ringQ.QuoRemByVanishingAssign(p.sumCheckBuffer.batched, p.Parameters.Degree(), p.sumCheckBuffer.quo, p.sumCheckBuffer.remShift)
+	p.sumCheckBuffer.remShift.Coeffs[0].SetInt64(0)
 
 	quoDeg := p.ctx.maxDegree - p.Parameters.Degree()
 	quoCommitDeg := int(math.Ceil(float64(quoDeg)/float64(p.Parameters.BigIntCommitSize()))) * p.Parameters.BigIntCommitSize()
 	remCommitDeg := p.Parameters.Degree()
 
-	rem := p.ringQ.NewPoly()
 	for i, ii := 0, 1; ii < remCommitDeg; i, ii = i+1, ii+1 {
-		rem.Coeffs[i].Set(remShift.Coeffs[ii])
+		p.sumCheckBuffer.rem.Coeffs[i].Set(p.sumCheckBuffer.remShift.Coeffs[ii])
 	}
+	p.sumCheckBuffer.rem.Coeffs[remCommitDeg-1].SetInt64(0)
 
 	var com SumCheckCommitment
 	var open sumCheckOpening
-	com.QuoCommitment, open.QuoOpening = p.polyProver.CommitParallel(bigring.BigPoly{Coeffs: quo.Coeffs[:quoCommitDeg]})
-	com.RemCommitment, open.RemOpening = p.polyProver.CommitParallel(bigring.BigPoly{Coeffs: rem.Coeffs[:remCommitDeg]})
-	com.RemShiftCommitment, open.RemShiftOpening = p.polyProver.CommitParallel(bigring.BigPoly{Coeffs: remShift.Coeffs[:remCommitDeg]})
+	com.QuoCommitment, open.QuoOpening = p.polyProver.CommitParallel(bigring.BigPoly{Coeffs: p.sumCheckBuffer.quo.Coeffs[:quoCommitDeg]})
+	com.RemCommitment, open.RemOpening = p.polyProver.CommitParallel(bigring.BigPoly{Coeffs: p.sumCheckBuffer.rem.Coeffs[:remCommitDeg]})
+	com.RemShiftCommitment, open.RemShiftOpening = p.polyProver.CommitParallel(bigring.BigPoly{Coeffs: p.sumCheckBuffer.remShift.Coeffs[:remCommitDeg]})
 	com.OpeningProof = p.polyProver.ProveOpeningParallel(
 		[]celpc.Commitment{com.QuoCommitment, com.RemCommitment, com.RemShiftCommitment},
 		[]celpc.Opening{open.QuoOpening, open.RemOpening, open.RemShiftOpening},

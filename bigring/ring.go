@@ -11,10 +11,21 @@ type BigRing struct {
 	degree      int
 	modulus     *big.Int
 	barretConst *big.Int
+	qBitLen     uint
 
 	tw        []*big.Int
 	twInv     []*big.Int
 	degreeInv *big.Int
+
+	buffer ringBuffer
+}
+
+type ringBuffer struct {
+	quo *big.Int
+	u   *big.Int
+	v   *big.Int
+
+	mul *big.Int
 }
 
 // NewBigRing creates a new BigRing.
@@ -55,10 +66,39 @@ func NewBigRing(N int, Q *big.Int) *BigRing {
 		degree:      N,
 		modulus:     Q,
 		barretConst: barretConst,
+		qBitLen:     uint(Q.BitLen()),
 
 		tw:        tw,
 		twInv:     twInv,
 		degreeInv: degreeInv,
+
+		buffer: newRingBuffer(Q),
+	}
+}
+
+// newRingBuffer creates a new ringBuffer.
+func newRingBuffer(Q *big.Int) ringBuffer {
+	return ringBuffer{
+		quo: big.NewInt(0).Set(Q),
+		u:   big.NewInt(0).Set(Q),
+		v:   big.NewInt(0).Set(Q),
+		mul: big.NewInt(0).Set(Q),
+	}
+}
+
+// ShallowCopy creates a copy of BigRing that is thread-safe.
+func (r *BigRing) ShallowCopy() *BigRing {
+	return &BigRing{
+		degree:      r.degree,
+		modulus:     r.modulus,
+		barretConst: r.barretConst,
+		qBitLen:     r.qBitLen,
+
+		tw:        r.tw,
+		twInv:     r.twInv,
+		degreeInv: r.degreeInv,
+
+		buffer: newRingBuffer(r.modulus),
 	}
 }
 
@@ -90,12 +130,12 @@ func (r *BigRing) NewNTTPoly() BigNTTPoly {
 	return BigNTTPoly{Coeffs: coeffs}
 }
 
-// mod reduces x using Barrett reduction.
-func (r *BigRing) mod(x, quo *big.Int) {
-	quo.Mul(x, r.barretConst)
-	quo.Rsh(quo, uint(2*r.modulus.BitLen()))
-	quo.Mul(quo, r.modulus)
-	x.Sub(x, quo)
+// Mod reduces x using Barrett reduction.
+func (r *BigRing) Mod(x *big.Int) {
+	r.buffer.quo.Mul(x, r.barretConst)
+	r.buffer.quo.Rsh(r.buffer.quo, r.qBitLen<<1)
+	r.buffer.quo.Mul(r.buffer.quo, r.modulus)
+	x.Sub(x, r.buffer.quo)
 	if x.Cmp(r.modulus) >= 0 {
 		x.Sub(x, r.modulus)
 	}
@@ -134,8 +174,6 @@ func (r *BigRing) ToPolyAssign(p BigNTTPoly, pOut BigPoly) {
 
 // NTTInPlace computes the NTT of a bigint vector in-place.
 func (r *BigRing) NTTInPlace(coeffs []*big.Int) {
-	u, v, quo := big.NewInt(0), big.NewInt(0), big.NewInt(0)
-
 	t := r.degree
 	for m := 1; m < r.degree; m <<= 1 {
 		t >>= 1
@@ -143,18 +181,18 @@ func (r *BigRing) NTTInPlace(coeffs []*big.Int) {
 			j1 := 2 * i * t
 			j2 := j1 + t
 			for j := j1; j < j2; j++ {
-				u.Set(coeffs[j])
-				v.Set(coeffs[j+t])
+				r.buffer.u.Set(coeffs[j])
+				r.buffer.v.Set(coeffs[j+t])
 
-				v.Mul(v, r.tw[m+i])
-				r.mod(v, quo)
+				r.buffer.v.Mul(r.buffer.v, r.tw[m+i])
+				r.Mod(r.buffer.v)
 
-				coeffs[j].Add(u, v)
+				coeffs[j].Add(r.buffer.u, r.buffer.v)
 				if coeffs[j].Cmp(r.modulus) >= 0 {
 					coeffs[j].Sub(coeffs[j], r.modulus)
 				}
 
-				coeffs[j+t].Sub(u, v)
+				coeffs[j+t].Sub(r.buffer.u, r.buffer.v)
 				if coeffs[j+t].Sign() < 0 {
 					coeffs[j+t].Add(coeffs[j+t], r.modulus)
 				}
@@ -170,25 +208,23 @@ func (r *BigRing) NTTInPlace(coeffs []*big.Int) {
 func (r *BigRing) InvNTTInPlace(coeffs []*big.Int) {
 	num.BitReverseInPlace(coeffs)
 
-	u, v, quo := big.NewInt(0), big.NewInt(0), big.NewInt(0)
-
 	t := 1
 	for m := r.degree >> 1; m >= 1; m >>= 1 {
 		for i := 0; i < m; i++ {
 			j1 := 2 * i * t
 			j2 := j1 + t
 			for j := j1; j < j2; j++ {
-				u.Set(coeffs[j])
-				v.Set(coeffs[j+t])
+				r.buffer.u.Set(coeffs[j])
+				r.buffer.v.Set(coeffs[j+t])
 
-				coeffs[j].Add(u, v)
+				coeffs[j].Add(r.buffer.u, r.buffer.v)
 				if coeffs[j].Cmp(r.modulus) >= 0 {
 					coeffs[j].Sub(coeffs[j], r.modulus)
 				}
 
-				coeffs[j+t].Sub(u, v)
+				coeffs[j+t].Sub(r.buffer.u, r.buffer.v)
 				coeffs[j+t].Mul(coeffs[j+t], r.twInv[m+i])
-				r.mod(coeffs[j+t], quo)
+				r.Mod(coeffs[j+t])
 			}
 		}
 		t <<= 1
@@ -197,9 +233,8 @@ func (r *BigRing) InvNTTInPlace(coeffs []*big.Int) {
 
 // NormalizeInPlace normalizes a vector of bigints in-place.
 func (r *BigRing) NormalizeInPlace(coeffs []*big.Int) {
-	quo := big.NewInt(0)
 	for i := 0; i < r.degree; i++ {
 		coeffs[i].Mul(coeffs[i], r.degreeInv)
-		r.mod(coeffs[i], quo)
+		r.Mod(coeffs[i])
 	}
 }

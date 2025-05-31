@@ -9,7 +9,7 @@ import (
 
 // TransposeTransformer implements the linear transformation x -> M^T*x for some matrix M.
 type TransposeTransformer interface {
-	TransposeTransform([]*big.Int) []*big.Int
+	TransformAssign(xIn, xOut []*big.Int)
 }
 
 type nttTransformer struct {
@@ -23,17 +23,11 @@ func NewNTTTransformer(ringQ *bigring.BigRing) TransposeTransformer {
 	}
 }
 
-func (t *nttTransformer) TransposeTransform(v []*big.Int) []*big.Int {
-	if len(v) != t.ringQ.Degree() {
-		panic("invalid vector length for NTT transformation")
-	}
-
-	vOut := make([]*big.Int, t.ringQ.Degree())
+func (t *nttTransformer) TransformAssign(xIn, xOut []*big.Int) {
 	for i := 0; i < t.ringQ.Degree(); i++ {
-		vOut[i] = big.NewInt(0).Set(v[t.ringQ.Degree()-1-i])
+		xOut[i].Set(xIn[t.ringQ.Degree()-1-i])
 	}
-	t.ringQ.InvNTTInPlace(vOut)
-	return vOut
+	t.ringQ.InvNTTInPlace(xOut)
 }
 
 type autTransformer struct {
@@ -52,13 +46,8 @@ func NewAutTransformer(ringQ *bigring.BigRing, autIdx int) TransposeTransformer 
 	}
 }
 
-func (t *autTransformer) TransposeTransform(v []*big.Int) []*big.Int {
-	if len(v) != t.ringQ.Degree() {
-		panic("invalid vector length for automorphism transformation")
-	}
-
-	vOut := t.ringQ.Automorphism(bigring.BigPoly{Coeffs: v}, t.autIdxInv).Coeffs
-	return vOut
+func (t *autTransformer) TransformAssign(vIn, vOut []*big.Int) {
+	t.ringQ.AutomorphismAssign(bigring.BigPoly{Coeffs: vIn}, t.autIdxInv, bigring.BigPoly{Coeffs: vOut})
 }
 
 type autNTTTransformer struct {
@@ -77,11 +66,6 @@ func NewAutNTTTransformer(ringQ *bigring.BigRing, autIdx int) TransposeTransform
 	}
 }
 
-func (t *autNTTTransformer) TransposeTransform(v []*big.Int) []*big.Int {
-	if len(v) != t.ringQ.Degree() {
-		panic("invalid vector length for automorphism transformation")
-	}
-
-	vOut := t.ringQ.AutomorphismNTT(bigring.BigNTTPoly{Coeffs: v}, t.autIdxInv).Coeffs
-	return vOut
+func (t *autNTTTransformer) TransformAssign(xIn, xOut []*big.Int) {
+	t.ringQ.AutomorphismNTTAssign(bigring.BigNTTPoly{Coeffs: xIn}, t.autIdxInv, bigring.BigNTTPoly{Coeffs: xOut})
 }
