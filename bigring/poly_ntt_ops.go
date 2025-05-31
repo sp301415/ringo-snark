@@ -1,6 +1,8 @@
 package bigring
 
-import "math/big"
+import (
+	"math/big"
+)
 
 // AddNTT returns pOut = p0 + p1.
 func (r *BigRing) AddNTT(p0, p1 BigNTTPoly) BigNTTPoly {

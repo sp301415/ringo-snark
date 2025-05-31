@@ -59,8 +59,8 @@ func NewBigRing(N int, Q *big.Int) *BigRing {
 
 	degreeInv := big.NewInt(0).ModInverse(big.NewInt(int64(N)), Q)
 
-	barretExp := big.NewInt(0).Lsh(big.NewInt(1), uint(2*Q.BitLen()))
-	barretConst := big.NewInt(0).Div(barretExp, Q)
+	barretExp := big.NewInt(0).Lsh(big.NewInt(1), uint((Q.BitLen()<<1)+1))
+	barretConst := big.NewInt(0).Quo(barretExp, Q)
 
 	return &BigRing{
 		degree:      N,
@@ -138,7 +138,7 @@ func (r *BigRing) Mod(x *big.Int) {
 	}
 
 	r.buffer.quo.Mul(x, r.barretConst)
-	r.buffer.quo.Rsh(r.buffer.quo, r.qBitLen<<1)
+	r.buffer.quo.Rsh(r.buffer.quo, (r.qBitLen<<1)+1)
 	r.buffer.quo.Mul(r.buffer.quo, r.modulus)
 	x.Sub(x, r.buffer.quo)
 	if x.Cmp(r.modulus) >= 0 {

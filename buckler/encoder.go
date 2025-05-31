@@ -57,7 +57,7 @@ func NewEncoder(params celpc.Parameters, embedDegree int) *Encoder {
 
 	degreeInv := big.NewInt(0).ModInverse(big.NewInt(int64(params.Degree())), params.Modulus())
 
-	barretExp := big.NewInt(0).Lsh(big.NewInt(1), uint(2*params.Modulus().BitLen()))
+	barretExp := big.NewInt(0).Lsh(big.NewInt(1), uint((params.Modulus().BitLen()<<1)+1))
 	barretConst := big.NewInt(0).Div(barretExp, params.Modulus())
 
 	return &Encoder{
@@ -136,12 +136,16 @@ func (e *Encoder) EncodeAssign(x []*big.Int, pOut bigring.BigPoly) {
 				pOut.Coeffs[j+t].Sub(e.buffer.u, e.buffer.v)
 				pOut.Coeffs[j+t].Mul(pOut.Coeffs[j+t], e.twInv[i])
 
-				e.buffer.quo.Mul(pOut.Coeffs[j+t], e.barretConst)
-				e.buffer.quo.Rsh(e.buffer.quo, e.qBitLen<<1)
-				e.buffer.quo.Mul(e.buffer.quo, e.Parameters.Modulus())
-				pOut.Coeffs[j+t].Sub(pOut.Coeffs[j+t], e.buffer.quo)
-				if pOut.Coeffs[j+t].Cmp(e.Parameters.Modulus()) >= 0 {
-					pOut.Coeffs[j+t].Sub(pOut.Coeffs[j+t], e.Parameters.Modulus())
+				if pOut.Coeffs[j+t].Sign() < 0 {
+					pOut.Coeffs[j+t].Mod(pOut.Coeffs[j+t], e.Parameters.Modulus())
+				} else {
+					e.buffer.quo.Mul(pOut.Coeffs[j+t], e.barretConst)
+					e.buffer.quo.Rsh(e.buffer.quo, (e.qBitLen<<1)+1)
+					e.buffer.quo.Mul(e.buffer.quo, e.Parameters.Modulus())
+					pOut.Coeffs[j+t].Sub(pOut.Coeffs[j+t], e.buffer.quo)
+					if pOut.Coeffs[j+t].Cmp(e.Parameters.Modulus()) >= 0 {
+						pOut.Coeffs[j+t].Sub(pOut.Coeffs[j+t], e.Parameters.Modulus())
+					}
 				}
 			}
 		}
@@ -151,12 +155,16 @@ func (e *Encoder) EncodeAssign(x []*big.Int, pOut bigring.BigPoly) {
 	for i := 0; i < e.Parameters.Degree(); i++ {
 		pOut.Coeffs[i].Mul(pOut.Coeffs[i], e.degreeInv)
 
-		e.buffer.quo.Mul(pOut.Coeffs[i], e.barretConst)
-		e.buffer.quo.Rsh(e.buffer.quo, e.qBitLen<<1)
-		e.buffer.quo.Mul(e.buffer.quo, e.Parameters.Modulus())
-		pOut.Coeffs[i].Sub(pOut.Coeffs[i], e.buffer.quo)
-		if pOut.Coeffs[i].Cmp(e.Parameters.Modulus()) >= 0 {
-			pOut.Coeffs[i].Sub(pOut.Coeffs[i], e.Parameters.Modulus())
+		if pOut.Coeffs[i].Sign() < 0 {
+			pOut.Coeffs[i].Mod(pOut.Coeffs[i], e.Parameters.Modulus())
+		} else {
+			e.buffer.quo.Mul(pOut.Coeffs[i], e.barretConst)
+			e.buffer.quo.Rsh(e.buffer.quo, (e.qBitLen<<1)+1)
+			e.buffer.quo.Mul(e.buffer.quo, e.Parameters.Modulus())
+			pOut.Coeffs[i].Sub(pOut.Coeffs[i], e.buffer.quo)
+			if pOut.Coeffs[i].Cmp(e.Parameters.Modulus()) >= 0 {
+				pOut.Coeffs[i].Sub(pOut.Coeffs[i], e.Parameters.Modulus())
+			}
 		}
 	}
 }

@@ -63,27 +63,25 @@ func (r *BigRing) ScalarMul(p BigPoly, c *big.Int) BigPoly {
 func (r *BigRing) ScalarMulAssign(p BigPoly, c *big.Int, pOut BigPoly) {
 	for i := 0; i < r.degree; i++ {
 		pOut.Coeffs[i].Mul(p.Coeffs[i], c)
-		pOut.Coeffs[i].Mod(pOut.Coeffs[i], r.modulus)
+		r.Mod(pOut.Coeffs[i])
 	}
 }
 
 // ScalarMulAddAssign assigns pOut += p * c.
 func (r *BigRing) ScalarMulAddAssign(p BigPoly, c *big.Int, pOut BigPoly) {
-	tmp := big.NewInt(0)
 	for i := 0; i < r.degree; i++ {
-		tmp.Mul(p.Coeffs[i], c)
-		pOut.Coeffs[i].Add(pOut.Coeffs[i], tmp)
-		pOut.Coeffs[i].Mod(pOut.Coeffs[i], r.modulus)
+		r.buffer.mul.Mul(p.Coeffs[i], c)
+		pOut.Coeffs[i].Add(pOut.Coeffs[i], r.buffer.mul)
+		r.Mod(pOut.Coeffs[i])
 	}
 }
 
 // ScalarMulSubAssign assigns pOut -= p * c.
 func (r *BigRing) ScalarMulSubAssign(p BigPoly, c *big.Int, pOut BigPoly) {
-	tmp := big.NewInt(0)
 	for i := 0; i < r.degree; i++ {
-		tmp.Mul(p.Coeffs[i], c)
-		pOut.Coeffs[i].Sub(pOut.Coeffs[i], tmp)
-		pOut.Coeffs[i].Mod(pOut.Coeffs[i], r.modulus)
+		r.buffer.mul.Mul(p.Coeffs[i], c)
+		pOut.Coeffs[i].Sub(pOut.Coeffs[i], r.buffer.mul)
+		r.Mod(pOut.Coeffs[i])
 	}
 }
 
