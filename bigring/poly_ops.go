@@ -114,14 +114,13 @@ func (r *BigRing) AutomorphismAssign(p BigPoly, d int, pOut BigPoly) {
 }
 
 // Evaluate evaluates the polynomial p at x.
-func (r *BigRing) Evaluate(p BigPoly, x *big.Int) *big.Int {
-	rOut := big.NewInt(0)
+func (r *BigRing) EvaluateAssign(p BigPoly, x, xOut *big.Int) {
+	xOut.SetUint64(0)
 	for i := r.degree - 1; i >= 0; i-- {
-		rOut.Mul(rOut, x)
-		rOut.Add(rOut, p.Coeffs[i])
-		rOut.Mod(rOut, r.modulus)
+		xOut.Mul(xOut, x)
+		xOut.Add(xOut, p.Coeffs[i])
+		r.Mod(xOut)
 	}
-	return rOut
 }
 
 // QuoRemByVanishing returns quotient and remainder of p by the polynomial x^N - 1.

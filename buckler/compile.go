@@ -120,6 +120,8 @@ func Compile(params celpc.Parameters, c Circuit) (*Prover, *Verifier, error) {
 		oracle: celpc.NewRandomOracle(params),
 
 		ctx: ctx,
+
+		buffer: newVerifierBuffer(params, ringQ, ctx),
 	}
 
 	return prover, verifier, nil

@@ -208,11 +208,9 @@ func main() {
 
 		SecretKeyNTT: skNTT.Coeffs,
 
-		Delta:         delta,
 		MessageNTT:    ptNTT.Coeffs,
 		MessageCoeffs: ptCoeffs.Coeffs,
 
-		ErrBound:    errBound,
 		ErrorNTT:    errNTT.Coeffs,
 		ErrorCoeffs: errCoeffs.Coeffs,
 	}
