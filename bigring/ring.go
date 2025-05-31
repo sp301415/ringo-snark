@@ -132,6 +132,11 @@ func (r *BigRing) NewNTTPoly() BigNTTPoly {
 
 // Mod reduces x using Barrett reduction.
 func (r *BigRing) Mod(x *big.Int) {
+	if x.Sign() < 0 {
+		x.Mod(x, r.modulus)
+		return
+	}
+
 	r.buffer.quo.Mul(x, r.barretConst)
 	r.buffer.quo.Rsh(r.buffer.quo, r.qBitLen<<1)
 	r.buffer.quo.Mul(r.buffer.quo, r.modulus)
@@ -223,6 +228,7 @@ func (r *BigRing) InvNTTInPlace(coeffs []*big.Int) {
 				}
 
 				coeffs[j+t].Sub(r.buffer.u, r.buffer.v)
+				coeffs[j+t].Add(coeffs[j+t], r.modulus)
 				coeffs[j+t].Mul(coeffs[j+t], r.twInv[m+i])
 				r.Mod(coeffs[j+t])
 			}

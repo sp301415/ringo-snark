@@ -61,7 +61,7 @@ func (r *BigRing) ScalarMulNTT(p BigNTTPoly, c *big.Int) BigNTTPoly {
 func (r *BigRing) ScalarMulNTTAssign(p BigNTTPoly, c *big.Int, pOut BigNTTPoly) {
 	for i := 0; i < r.degree; i++ {
 		pOut.Coeffs[i].Mul(p.Coeffs[i], c)
-		pOut.Coeffs[i].Mod(pOut.Coeffs[i], r.modulus)
+		r.Mod(pOut.Coeffs[i])
 	}
 }
 
