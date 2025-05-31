@@ -335,10 +335,10 @@ func (p *Prover) ProveParallel(ck celpc.AjtaiCommitKey, c Circuit) (Proof, error
 		defer wg.Done()
 		if p.ctx.HasSumCheck() {
 			sumCheckEvalProof = SumCheckEvaluationProof{
-				MaskEvalProof:     sumCheckProver.polyProver.Evaluate(p.buffer.evalPoint, sumCheckMask.MaskOpening),
-				QuoEvalProof:      sumCheckProver.polyProver.Evaluate(p.buffer.evalPoint, sumCheckOpen.QuoOpening),
-				RemEvalProof:      sumCheckProver.polyProver.Evaluate(p.buffer.evalPoint, sumCheckOpen.RemOpening),
-				RemShiftEvalProof: sumCheckProver.polyProver.Evaluate(p.buffer.evalPoint, sumCheckOpen.RemShiftOpening),
+				MaskEvalProof:     sumCheckProver.polyProver.EvaluateParallel(p.buffer.evalPoint, sumCheckMask.MaskOpening),
+				QuoEvalProof:      sumCheckProver.polyProver.EvaluateParallel(p.buffer.evalPoint, sumCheckOpen.QuoOpening),
+				RemEvalProof:      sumCheckProver.polyProver.EvaluateParallel(p.buffer.evalPoint, sumCheckOpen.RemOpening),
+				RemShiftEvalProof: sumCheckProver.polyProver.EvaluateParallel(p.buffer.evalPoint, sumCheckOpen.RemShiftOpening),
 			}
 		}
 	}()
