@@ -92,8 +92,8 @@ func Compile(params celpc.Parameters, c Circuit) (*Prover, *Verifier, error) {
 	prover := &Prover{
 		Parameters: params,
 
-		ringQ:     ringQ,
-		baseRingQ: baseRingQ,
+		ringQ:     ringQ.ShallowCopy(),
+		baseRingQ: baseRingQ.ShallowCopy(),
 
 		encoder:    encoder.ShallowCopy(),
 		polyProver: celpc.NewProver(params, celpc.AjtaiCommitKey{}),
@@ -111,8 +111,8 @@ func Compile(params celpc.Parameters, c Circuit) (*Prover, *Verifier, error) {
 	verifier := &Verifier{
 		Parameters: params,
 
-		ringQ:     ringQ,
-		baseRingQ: baseRingQ,
+		ringQ:     ringQ.ShallowCopy(),
+		baseRingQ: baseRingQ.ShallowCopy(),
 
 		encoder:      encoder.ShallowCopy(),
 		polyVerifier: celpc.NewVerifier(params, celpc.AjtaiCommitKey{}),
