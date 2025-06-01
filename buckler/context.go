@@ -25,8 +25,8 @@ type Context struct {
 	sumCheckConstraints []ArithmeticConstraint
 	sumCheckSums        []*big.Int
 
-	linTransformers     []TransposeTransformer
-	linCheckConstraints map[TransposeTransformer][][2]int64
+	linCheck            []LinearCheckTransformer
+	linCheckConstraints map[LinearCheckTransformer][][2]int64
 
 	InfDecomposeBound    map[int64]*big.Int
 	InfDecomposedWitness map[int64][]Witness
@@ -47,7 +47,7 @@ func newContext(params celpc.Parameters, walker *walker) *Context {
 		circuitType: walker.circuitType,
 		maxDegree:   params.Degree() + 1,
 
-		linCheckConstraints: make(map[TransposeTransformer][][2]int64),
+		linCheckConstraints: make(map[LinearCheckTransformer][][2]int64),
 
 		InfDecomposeBound:    make(map[int64]*big.Int),
 		InfDecomposedWitness: make(map[int64][]Witness),
@@ -96,14 +96,14 @@ func (ctx *Context) AddSumCheckConstraint(c ArithmeticConstraint, sum uint64) {
 }
 
 // AddLinearConstrait adds a linear constraint to the context.
-func (ctx *Context) AddLinearConstraint(transformer TransposeTransformer, wIn, wOut Witness) {
+func (ctx *Context) AddLinearConstraint(transformer LinearCheckTransformer, wIn, wOut Witness) {
 	linCheckDeg := 2 * ctx.ringDegree
 	if ctx.maxDegree < linCheckDeg {
 		ctx.maxDegree = linCheckDeg
 	}
 
 	if _, ok := ctx.linCheckConstraints[transformer]; !ok {
-		ctx.linTransformers = append(ctx.linTransformers, transformer)
+		ctx.linCheck = append(ctx.linCheck, transformer)
 	}
 	ctx.linCheckConstraints[transformer] = append(ctx.linCheckConstraints[transformer], [2]int64{wIn[0].Int64(), wOut[0].Int64()})
 }
@@ -200,5 +200,5 @@ func (ctx *Context) HasSumCheck() bool {
 
 // HasLinCheck returns true if the linear check is needed.
 func (ctx *Context) HasLinCheck() bool {
-	return len(ctx.linTransformers) > 0
+	return len(ctx.linCheck) > 0
 }

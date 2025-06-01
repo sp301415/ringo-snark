@@ -26,7 +26,7 @@ import (
 // In our example, we set t = 2^16 + 1.
 
 type CiphertextCircuit struct {
-	NTTTransformer buckler.TransposeTransformer
+	NTTTransformer buckler.LinearCheckTransformer
 
 	Degree           int
 	PlaintextModulus uint64

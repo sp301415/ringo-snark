@@ -56,7 +56,7 @@ func newVerifierBuffer(params celpc.Parameters, ringQ *bigring.BigRing, ctx *Con
 	}
 
 	batchConstLinCheckPow := make([]*big.Int, 0)
-	for _, transformer := range ctx.linTransformers {
+	for _, transformer := range ctx.linCheck {
 		for range ctx.linCheckConstraints[transformer] {
 			batchConstLinCheckPow = append(batchConstLinCheckPow, big.NewInt(0).Set(params.Modulus()))
 		}
@@ -301,7 +301,7 @@ func (v *Verifier) linCheck(batchConstPow []*big.Int, linCheckVec []*big.Int, ev
 
 	v.buffer.batched.SetUint64(0)
 	powIdx := 0
-	for _, transformer := range v.ctx.linTransformers {
+	for _, transformer := range v.ctx.linCheck {
 		transformer.TransformAssign(linCheckVec, v.buffer.linCheckVecTrans)
 		v.encoder.EncodeAssign(v.buffer.linCheckVecTrans, v.buffer.pEcd)
 		v.ringQ.EvaluateAssign(v.buffer.pEcd, evalPoint, v.buffer.linCheckVecTransEval)

@@ -39,8 +39,8 @@ var (
 )
 
 type TestCircuit struct {
-	NTTTransformer    buckler.TransposeTransformer
-	AutNTTTransformer buckler.TransposeTransformer
+	NTTTransformer    buckler.LinearCheckTransformer
+	AutNTTTransformer buckler.LinearCheckTransformer
 
 	XNTT buckler.PublicWitness
 

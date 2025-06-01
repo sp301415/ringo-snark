@@ -196,7 +196,7 @@ func newRowCheckBuffer(params celpc.Parameters, ringQ *bigring.BigRing, ctx *Con
 // newLinCheckBuffer creates a new linCheckBuffer.
 func newLinCheckBuffer(params celpc.Parameters, ringQ *bigring.BigRing, ctx *Context) linCheckBuffer {
 	batchConstPow := make([]*big.Int, 0)
-	for _, transformer := range ctx.linTransformers {
+	for _, transformer := range ctx.linCheck {
 		for range ctx.linCheckConstraints[transformer] {
 			batchConstPow = append(batchConstPow, big.NewInt(0).Set(params.Modulus()))
 		}
@@ -579,7 +579,7 @@ func (p *Prover) linCheck(batchConstPow []*big.Int, linCheckVec []*big.Int, linC
 
 	p.linCheckBuffer.batchedNTT.Clear()
 	powIdx := 0
-	for _, transformer := range p.ctx.linTransformers {
+	for _, transformer := range p.ctx.linCheck {
 		transformer.TransformAssign(linCheckVec, p.linCheckBuffer.linCheckVecTrans)
 		p.encoder.EncodeAssign(p.linCheckBuffer.linCheckVecTrans, p.buffer.pEcd)
 		p.ringQ.ToNTTPolyAssign(p.buffer.pEcd, p.linCheckBuffer.linCheckVecTransEcdNTT)

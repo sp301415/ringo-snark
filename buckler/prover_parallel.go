@@ -460,8 +460,8 @@ func (p *Prover) linCheckParallel(batchConstPow []*big.Int, linCheckVec []*big.I
 	p.encoder.EncodeAssign(linCheckVec, p.buffer.pEcd)
 	p.ringQ.ToNTTPolyAssign(p.buffer.pEcd, p.linCheckBuffer.linCheckVecEcdNTT)
 
-	lincheckVecTransEcdNTTs := make([]bigring.BigNTTPoly, len(p.ctx.linTransformers))
-	for i, transformer := range p.ctx.linTransformers {
+	lincheckVecTransEcdNTTs := make([]bigring.BigNTTPoly, len(p.ctx.linCheck))
+	for i, transformer := range p.ctx.linCheck {
 		transformer.TransformAssign(linCheckVec, p.linCheckBuffer.linCheckVecTrans)
 		p.encoder.EncodeAssign(p.linCheckBuffer.linCheckVecTrans, p.buffer.pEcd)
 		lincheckVecTransEcdNTTs[i] = p.ringQ.ToNTTPoly(p.buffer.pEcd)
@@ -487,7 +487,7 @@ func (p *Prover) linCheckParallel(batchConstPow []*big.Int, linCheckVec []*big.I
 
 			for k := range batchJobs {
 				powIdx := 0
-				for t, transformer := range p.ctx.linTransformers {
+				for t, transformer := range p.ctx.linCheck {
 					for i := range p.ctx.linCheckConstraints[transformer] {
 						wEcdIn := witnessData.witnessEncodings[p.ctx.linCheckConstraints[transformer][i][0]]
 						wEcdOut := witnessData.witnessEncodings[p.ctx.linCheckConstraints[transformer][i][1]]

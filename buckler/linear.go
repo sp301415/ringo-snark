@@ -7,8 +7,10 @@ import (
 	"github.com/sp301415/ringo-snark/num"
 )
 
-// TransposeTransformer implements the linear transformation x -> M^T*x for some matrix M.
-type TransposeTransformer interface {
+// LinearCheckTransformer implements the linear transformation x -> M^T*x for some matrix M.
+//
+// Note that we are computing the *transpose* of the matrix.
+type LinearCheckTransformer interface {
 	TransformAssign(xIn, xOut []*big.Int)
 }
 
@@ -17,7 +19,7 @@ type nttTransformer struct {
 }
 
 // NewNTTTransformer returns a TransposeTransformer for NTT.
-func NewNTTTransformer(ringQ *bigring.BigRing) TransposeTransformer {
+func NewNTTTransformer(ringQ *bigring.BigRing) LinearCheckTransformer {
 	return &nttTransformer{
 		ringQ: ringQ,
 	}
@@ -37,7 +39,7 @@ type autTransformer struct {
 }
 
 // NewAutTransformer returns a TransposeTransformer for an automorphism over coeff vector.
-func NewAutTransformer(ringQ *bigring.BigRing, autIdx int) TransposeTransformer {
+func NewAutTransformer(ringQ *bigring.BigRing, autIdx int) LinearCheckTransformer {
 	autIdxInv := int(num.ModInverse(uint64(autIdx), uint64(2*ringQ.Degree())))
 	return &autTransformer{
 		ringQ:     ringQ,
@@ -57,7 +59,7 @@ type autNTTTransformer struct {
 }
 
 // NewAutNTTTransformer returns a TransposeTransformer for an automorphism over NTT vector.
-func NewAutNTTTransformer(ringQ *bigring.BigRing, autIdx int) TransposeTransformer {
+func NewAutNTTTransformer(ringQ *bigring.BigRing, autIdx int) LinearCheckTransformer {
 	autIdxInv := int(num.ModInverse(uint64(autIdx), uint64(2*ringQ.Degree())))
 	return &autNTTTransformer{
 		ringQ:     ringQ,

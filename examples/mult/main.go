@@ -32,7 +32,7 @@ import (
 
 // Just like gnark, we define a circuit type.
 type MultCircuit struct {
-	NTTTransformer buckler.TransposeTransformer
+	NTTTransformer buckler.LinearCheckTransformer
 
 	YNTT buckler.PublicWitness
 
