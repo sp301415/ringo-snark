@@ -10,7 +10,7 @@ import (
 // StreamSampler sample values from uniform distribution.
 // This uses AES-256 as a underlying prng.
 type StreamSampler struct {
-	prngWriter cipher.Stream
+	prng cipher.Stream
 
 	buf [bufSize]byte
 	ptr int
@@ -30,24 +30,29 @@ func NewStreamSampler() *StreamSampler {
 		panic(err)
 	}
 
-	prngWriter := cipher.NewCTR(block, make([]byte, block.BlockSize()))
+	iv := make([]byte, block.BlockSize())
+	if _, err := rand.Read(iv); err != nil {
+		panic(err)
+	}
+
+	prng := cipher.NewCTR(block, iv)
 
 	return &StreamSampler{
-		prngWriter: prngWriter,
+		prng: prng,
 	}
 }
 
 // Read implements the [io.Reader] interface.
 func (s *StreamSampler) Read(p []byte) (n int, err error) {
 	c := make([]byte, len(p))
-	s.prngWriter.XORKeyStream(c, p)
+	s.prng.XORKeyStream(c, p)
 	return len(p), nil
 }
 
 // Sample uniformly samples a random uint64.
 func (s *StreamSampler) Sample() uint64 {
 	if s.ptr == bufSize {
-		s.prngWriter.XORKeyStream(s.buf[:], s.buf[:])
+		s.prng.XORKeyStream(s.buf[:], s.buf[:])
 		s.ptr = 0
 	}
 
