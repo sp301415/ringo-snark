@@ -14,7 +14,7 @@ import (
 type Prover struct {
 	Parameters Parameters
 
-	UniformSampler  *UniformSampler
+	StreamSampler   *StreamSampler
 	GaussianSampler *COSACSampler
 	Oracle          *RandomOracle
 
@@ -50,7 +50,7 @@ func NewProver(params Parameters, ck AjtaiCommitKey) *Prover {
 	return &Prover{
 		Parameters: params,
 
-		UniformSampler:  NewUniformSampler(params),
+		StreamSampler:   NewStreamSampler(params),
 		GaussianSampler: NewCOSACSampler(params),
 		Oracle:          NewRandomOracle(params),
 
@@ -108,7 +108,7 @@ func (p *Prover) ShallowCopy() *Prover {
 	return &Prover{
 		Parameters: p.Parameters,
 
-		UniformSampler:  NewUniformSampler(p.Parameters),
+		StreamSampler:   NewStreamSampler(p.Parameters),
 		GaussianSampler: NewCOSACSampler(p.Parameters),
 		Oracle:          NewRandomOracle(p.Parameters),
 
@@ -146,7 +146,7 @@ func (p *Prover) CommitAssign(pBig bigring.BigPoly, comOut Commitment, openOut O
 	p.buffer.bigBlind[p.Parameters.bigIntCommitSize-1].SetUint64(0)
 	p.buffer.bigBlindShift[0].SetUint64(0)
 	for i := 0; i < p.Parameters.bigIntCommitSize-1; i++ {
-		p.UniformSampler.SampleModAssign(p.buffer.bigBlind[i])
+		p.StreamSampler.SampleModAssign(p.buffer.bigBlind[i])
 		p.buffer.bigBlindShift[i+1].Sub(p.Parameters.modulus, p.buffer.bigBlind[i])
 	}
 
@@ -180,7 +180,7 @@ func (p *Prover) CommitParallelAssign(pBig bigring.BigPoly, comOut Commitment, o
 	p.buffer.bigBlind[p.Parameters.bigIntCommitSize-1].SetUint64(0)
 	p.buffer.bigBlindShift[0].SetUint64(0)
 	for i := 0; i < p.Parameters.bigIntCommitSize-1; i++ {
-		p.UniformSampler.SampleModAssign(p.buffer.bigBlind[i])
+		p.StreamSampler.SampleModAssign(p.buffer.bigBlind[i])
 		p.buffer.bigBlindShift[i+1].Sub(p.Parameters.modulus, p.buffer.bigBlind[i])
 	}
 
@@ -261,7 +261,7 @@ func (p *Prover) ProveOpeningAssign(comVec []Commitment, openVec []Opening, open
 	openingProofRandStdDev := math.Sqrt(float64(batchCount+1)) * p.Parameters.openingProofRandStdDev
 	for i := 0; i < p.Parameters.Repetition(); i++ {
 		for j := 0; j < p.Parameters.bigIntCommitSize; j++ {
-			p.UniformSampler.SampleModAssign(p.buffer.bigMask[j])
+			p.StreamSampler.SampleModAssign(p.buffer.bigMask[j])
 		}
 		p.Encoder.RandomEncodeChunkAssign(p.buffer.bigMask, openingProofStdDev, openPfOut.ResponseMask[i])
 		for j := 0; j < p.Parameters.ajtaiRandSize; j++ {
@@ -312,11 +312,11 @@ func (p *Prover) ProveOpeningParallelAssign(comVec []Commitment, openVec []Openi
 
 	commitWorkSize := min(runtime.NumCPU(), p.Parameters.Repetition())
 
-	uniformSamplerPool := make([]*UniformSampler, commitWorkSize)
+	uniformSamplerPool := make([]*StreamSampler, commitWorkSize)
 	gaussianSamplerPool := make([]*COSACSampler, commitWorkSize)
 	encoderPool := make([]*Encoder, commitWorkSize)
 	for i := 0; i < commitWorkSize; i++ {
-		uniformSamplerPool[i] = NewUniformSampler(p.Parameters)
+		uniformSamplerPool[i] = NewStreamSampler(p.Parameters)
 		gaussianSamplerPool[i] = NewCOSACSampler(p.Parameters)
 		encoderPool[i] = p.Encoder.ShallowCopy()
 	}

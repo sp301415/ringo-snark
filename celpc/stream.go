@@ -1,7 +1,6 @@
 package celpc
 
 import (
-	"crypto/rand"
 	"io"
 	"math/big"
 
@@ -9,27 +8,18 @@ import (
 	"github.com/tuneinsight/lattigo/v6/ring"
 )
 
-// UniformSampler samples values from uniform distribution.
-type UniformSampler struct {
+// StreamSampler samples values from uniform distribution using stream cipher.
+type StreamSampler struct {
 	Parameters Parameters
 
-	*csprng.UniformSampler
+	*csprng.StreamSampler
 
 	modBuf  []byte
 	msbMask byte
 }
 
-// NewUniformSampler creates a new UniformSampler.
-func NewUniformSampler(params Parameters) *UniformSampler {
-	seed := make([]byte, 16)
-	if _, err := rand.Read(seed); err != nil {
-		panic(err)
-	}
-	return NewUniformSamplerWithSeed(params, seed)
-}
-
-// NewUniformSamplerWithSeed creates a new UniformSampler with seed.
-func NewUniformSamplerWithSeed(params Parameters, seed []byte) *UniformSampler {
+// NewStreamSampler creates a new StreamSampler.
+func NewStreamSampler(params Parameters) *StreamSampler {
 	k := (params.modulus.BitLen() + 7) / 8
 	b := uint(params.modulus.BitLen() % 8)
 	if b == 0 {
@@ -39,9 +29,9 @@ func NewUniformSamplerWithSeed(params Parameters, seed []byte) *UniformSampler {
 	modBuf := make([]byte, k)
 	msbMask := byte((1 << b) - 1)
 
-	return &UniformSampler{
-		Parameters:     params,
-		UniformSampler: csprng.NewUniformSamplerWithSeed(seed),
+	return &StreamSampler{
+		Parameters:    params,
+		StreamSampler: csprng.NewStreamSampler(),
 
 		modBuf:  modBuf,
 		msbMask: msbMask,
@@ -49,23 +39,23 @@ func NewUniformSamplerWithSeed(params Parameters, seed []byte) *UniformSampler {
 }
 
 // SamplePolyAssign samples a polynomial uniformly from the ring and assigns it to pOut.
-func (s *UniformSampler) SamplePolyAssign(pOut ring.Poly) {
+func (s *StreamSampler) SamplePolyAssign(pOut ring.Poly) {
 	for i := 0; i <= pOut.Level(); i++ {
 		for j := 0; j < pOut.N(); j++ {
-			pOut.Coeffs[i][j] = s.SampleN(s.Parameters.ringQ.ModuliChain()[i])
+			pOut.Coeffs[i][j] = s.SampleN(s.Parameters.ringQ.SubRings[i].Modulus)
 		}
 	}
 }
 
 // SampleMod samples a uniformly random value modulo modulus.
-func (s *UniformSampler) SampleMod() *big.Int {
+func (s *StreamSampler) SampleMod() *big.Int {
 	r := big.NewInt(0)
 	s.SampleModAssign(r)
 	return r
 }
 
 // SampleModAssign samples a uniformly random value modulo modulus.
-func (s *UniformSampler) SampleModAssign(xOut *big.Int) {
+func (s *StreamSampler) SampleModAssign(xOut *big.Int) {
 	for {
 		_, err := io.ReadFull(s, s.modBuf)
 		if err != nil {

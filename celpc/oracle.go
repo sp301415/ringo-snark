@@ -1,21 +1,42 @@
 package celpc
 
 import (
+	"io"
 	"math/big"
 
 	"github.com/sp301415/ringo-snark/bigring"
+	"github.com/sp301415/ringo-snark/csprng"
 	"github.com/tuneinsight/lattigo/v6/ring"
 )
 
 // RandomOracle is a random oracle.
 type RandomOracle struct {
-	*UniformSampler
+	Parameters Parameters
+
+	*csprng.UniformSampler
+
+	modBuf  []byte
+	msbMask byte
 }
 
 // NewRandomOracle creates a new RandomOracle.
 func NewRandomOracle(params Parameters) *RandomOracle {
+	k := (params.modulus.BitLen() + 7) / 8
+	b := uint(params.modulus.BitLen() % 8)
+	if b == 0 {
+		b = 8
+	}
+
+	modBuf := make([]byte, k)
+	msbMask := byte((1 << b) - 1)
+
 	return &RandomOracle{
-		UniformSampler: NewUniformSamplerWithSeed(params, nil),
+		Parameters: params,
+
+		UniformSampler: csprng.NewUniformSampler(),
+
+		modBuf:  modBuf,
+		msbMask: msbMask,
 	}
 }
 
@@ -77,6 +98,30 @@ func (o *RandomOracle) WriteOpeningProof(op OpeningProof) {
 func (o *RandomOracle) WriteAjtaiCommitment(com AjtaiCommitment) {
 	for i := 0; i < len(com.Value); i++ {
 		o.WritePoly(com.Value[i])
+	}
+}
+
+// SampleMod samples a uniformly random value modulo modulus.
+func (s *RandomOracle) SampleMod() *big.Int {
+	r := big.NewInt(0)
+	s.SampleModAssign(r)
+	return r
+}
+
+// SampleModAssign samples a uniformly random value modulo modulus.
+func (s *RandomOracle) SampleModAssign(xOut *big.Int) {
+	for {
+		_, err := io.ReadFull(s, s.modBuf)
+		if err != nil {
+			panic(err)
+		}
+
+		s.modBuf[0] &= s.msbMask
+
+		xOut.SetBytes(s.modBuf)
+		if xOut.Cmp(s.Parameters.modulus) < 0 {
+			return
+		}
 	}
 }
 

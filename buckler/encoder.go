@@ -13,7 +13,7 @@ type Encoder struct {
 	Parameters  celpc.Parameters
 	EmbedDegree int
 
-	UniformSampler *celpc.UniformSampler
+	StreamSampler *celpc.StreamSampler
 
 	twInv       []*big.Int
 	degreeInv   *big.Int
@@ -64,7 +64,7 @@ func NewEncoder(params celpc.Parameters, embedDegree int) *Encoder {
 		Parameters:  params,
 		EmbedDegree: embedDegree,
 
-		UniformSampler: celpc.NewUniformSampler(params),
+		StreamSampler: celpc.NewStreamSampler(params),
 
 		twInv:       twInv,
 		degreeInv:   degreeInv,
@@ -90,7 +90,7 @@ func (e *Encoder) ShallowCopy() *Encoder {
 		Parameters:  e.Parameters,
 		EmbedDegree: e.EmbedDegree,
 
-		UniformSampler: celpc.NewUniformSampler(e.Parameters),
+		StreamSampler: celpc.NewStreamSampler(e.Parameters),
 
 		twInv:       e.twInv,
 		degreeInv:   e.degreeInv,
@@ -182,7 +182,7 @@ func (e *Encoder) RandomEncode(x []*big.Int) bigring.BigPoly {
 func (e *Encoder) RandomEncodeAssign(x []*big.Int, pOut bigring.BigPoly) {
 	e.EncodeAssign(x, pOut)
 
-	e.UniformSampler.SampleModAssign(pOut.Coeffs[e.Parameters.Degree()])
+	e.StreamSampler.SampleModAssign(pOut.Coeffs[e.Parameters.Degree()])
 	pOut.Coeffs[0].Sub(pOut.Coeffs[0], pOut.Coeffs[e.Parameters.Degree()])
 	if pOut.Coeffs[0].Sign() < 0 {
 		pOut.Coeffs[0].Add(pOut.Coeffs[0], e.Parameters.Modulus())

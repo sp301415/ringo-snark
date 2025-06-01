@@ -12,7 +12,7 @@ type AjtaiCommitKey struct {
 
 // GenAjtaiCommitKey generates a new AjtaiCommitKey.
 func GenAjtaiCommitKey(params Parameters) AjtaiCommitKey {
-	us := NewUniformSampler(params)
+	us := NewStreamSampler(params)
 
 	A0 := make([][]ring.Poly, params.ajtaiSize)
 	for i := 0; i < params.ajtaiSize; i++ {

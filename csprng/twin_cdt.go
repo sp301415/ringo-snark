@@ -13,7 +13,7 @@ const (
 // TwinCDTSampler samples from Discrete Gaussian Distribution
 // with varying center and fixed, small stdDev.
 type TwinCDTSampler struct {
-	baseSampler *UniformSampler
+	baseSampler *StreamSampler
 
 	stdDev float64
 	tables [cdtBase][]uint64
@@ -35,7 +35,7 @@ func NewTwinCDTSampler(stdDev float64) *TwinCDTSampler {
 	tailLo := -tailHi
 
 	return &TwinCDTSampler{
-		baseSampler: NewUniformSampler(),
+		baseSampler: NewStreamSampler(),
 
 		stdDev: stdDev,
 		tables: tables,
@@ -71,7 +71,7 @@ func computeCDT(center, sigma float64) []uint64 {
 // ShallowCopy creates a copy of Sampler that is thread-safe.
 func (s *TwinCDTSampler) ShallowCopy() *TwinCDTSampler {
 	return &TwinCDTSampler{
-		baseSampler: NewUniformSampler(),
+		baseSampler: NewStreamSampler(),
 
 		stdDev: s.stdDev,
 		tables: s.tables,

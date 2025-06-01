@@ -68,7 +68,7 @@ func (c *TestCircuit) Define(ctx *buckler.Context) {
 }
 
 func TestBuckler(t *testing.T) {
-	us := celpc.NewUniformSamplerWithSeed(params, nil)
+	us := celpc.NewStreamSampler(params)
 	ringQ := bigring.NewBigRing(params.Degree(), params.Modulus())
 	bound := uint64(4)
 

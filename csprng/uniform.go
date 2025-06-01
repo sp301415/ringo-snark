@@ -77,7 +77,7 @@ func (s *UniformSampler) Finalize() {
 	s.ptr = bufSize
 }
 
-// Sample uniformly samples a random integer of type T.
+// Sample uniformly samples a random uint64.
 func (s *UniformSampler) Sample() uint64 {
 	if s.ptr == bufSize {
 		if _, err := s.prngReader.Read(s.buf[:]); err != nil {

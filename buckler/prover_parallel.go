@@ -438,11 +438,11 @@ func (p *Prover) sumCheckMaskParallel(maskDeg int) (SumCheckMaskCommitment, sumC
 
 	open.Mask = p.ringQ.NewPoly()
 	for i := 0; i < p.Parameters.Degree(); i++ {
-		p.encoder.UniformSampler.SampleModAssign(open.Mask.Coeffs[i])
+		p.encoder.StreamSampler.SampleModAssign(open.Mask.Coeffs[i])
 	}
 	com.MaskSum = big.NewInt(0).Set(open.Mask.Coeffs[0])
 	for i := p.Parameters.Degree(); i < maskDeg; i++ {
-		p.encoder.UniformSampler.SampleModAssign(open.Mask.Coeffs[i])
+		p.encoder.StreamSampler.SampleModAssign(open.Mask.Coeffs[i])
 		open.Mask.Coeffs[i-p.Parameters.Degree()].Sub(open.Mask.Coeffs[i-p.Parameters.Degree()], open.Mask.Coeffs[i])
 		if open.Mask.Coeffs[i-p.Parameters.Degree()].Sign() < 0 {
 			open.Mask.Coeffs[i-p.Parameters.Degree()].Add(open.Mask.Coeffs[i-p.Parameters.Degree()], p.Parameters.Modulus())

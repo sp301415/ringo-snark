@@ -7,7 +7,7 @@ import (
 // COSACSampler samples from Discrete Gaussian Distribution
 // with varying center and stdDev.
 type COSACSampler struct {
-	baseSampler *UniformSampler
+	baseSampler *StreamSampler
 }
 
 // NewCOSACSampler creates a new COSACSampler.
@@ -15,7 +15,7 @@ type COSACSampler struct {
 // Panics when read from crypto/rand or blake2b initialization fails.
 func NewCOSACSampler() *COSACSampler {
 	return &COSACSampler{
-		baseSampler: NewUniformSampler(),
+		baseSampler: NewStreamSampler(),
 	}
 }
 
