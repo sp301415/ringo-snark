@@ -1,7 +1,6 @@
 package celpc
 
 import (
-	"io"
 	"math/big"
 
 	"github.com/sp301415/ringo-snark/csprng"
@@ -57,11 +56,7 @@ func (s *StreamSampler) SampleMod() *big.Int {
 // SampleModAssign samples a uniformly random value modulo modulus.
 func (s *StreamSampler) SampleModAssign(xOut *big.Int) {
 	for {
-		_, err := io.ReadFull(s, s.modBuf)
-		if err != nil {
-			panic(err)
-		}
-
+		s.Read(s.modBuf)
 		s.modBuf[0] &= s.msbMask
 
 		xOut.SetBytes(s.modBuf)

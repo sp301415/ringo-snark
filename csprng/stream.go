@@ -44,8 +44,7 @@ func NewStreamSampler() *StreamSampler {
 
 // Read implements the [io.Reader] interface.
 func (s *StreamSampler) Read(p []byte) (n int, err error) {
-	c := make([]byte, len(p))
-	s.prng.XORKeyStream(c, p)
+	s.prng.XORKeyStream(p, p)
 	return len(p), nil
 }
 
