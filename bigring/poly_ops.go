@@ -5,14 +5,14 @@ import (
 )
 
 // Add returns pOut = p0 + p1.
-func (r *BigRing) Add(p0, p1 BigPoly) BigPoly {
+func (r *baseBigRing) Add(p0, p1 BigPoly) BigPoly {
 	pOut := NewBigPoly(r.degree)
 	r.AddAssign(p0, p1, pOut)
 	return pOut
 }
 
 // AddAssign assigns pOut = p0 + p1.
-func (r *BigRing) AddAssign(p0, p1, pOut BigPoly) {
+func (r *baseBigRing) AddAssign(p0, p1, pOut BigPoly) {
 	for i := 0; i < r.degree; i++ {
 		pOut.Coeffs[i].Add(p0.Coeffs[i], p1.Coeffs[i])
 		if pOut.Coeffs[i].Cmp(r.modulus) >= 0 {
@@ -22,14 +22,14 @@ func (r *BigRing) AddAssign(p0, p1, pOut BigPoly) {
 }
 
 // Sub returns pOut = p0 - p1.
-func (r *BigRing) Sub(p0, p1 BigPoly) BigPoly {
+func (r *baseBigRing) Sub(p0, p1 BigPoly) BigPoly {
 	pOut := NewBigPoly(r.degree)
 	r.SubAssign(p0, p1, pOut)
 	return pOut
 }
 
 // SubAssign assigns pOut = p0 - p1.
-func (r *BigRing) SubAssign(p0, p1, pOut BigPoly) {
+func (r *baseBigRing) SubAssign(p0, p1, pOut BigPoly) {
 	for i := 0; i < r.degree; i++ {
 		pOut.Coeffs[i].Sub(p0.Coeffs[i], p1.Coeffs[i])
 		if pOut.Coeffs[i].Sign() < 0 {
@@ -39,28 +39,28 @@ func (r *BigRing) SubAssign(p0, p1, pOut BigPoly) {
 }
 
 // Neg returns pOut = -p.
-func (r *BigRing) Neg(p BigPoly) BigPoly {
+func (r *baseBigRing) Neg(p BigPoly) BigPoly {
 	pOut := NewBigPoly(r.degree)
 	r.NegAssign(p, pOut)
 	return pOut
 }
 
 // NegAssign assigns pOut = -p.
-func (r *BigRing) NegAssign(p, pOut BigPoly) {
+func (r *baseBigRing) NegAssign(p, pOut BigPoly) {
 	for i := 0; i < r.degree; i++ {
 		pOut.Coeffs[i].Sub(r.modulus, p.Coeffs[i])
 	}
 }
 
 // ScalarMul returns pOut = p * c.
-func (r *BigRing) ScalarMul(p BigPoly, c *big.Int) BigPoly {
+func (r *baseBigRing) ScalarMul(p BigPoly, c *big.Int) BigPoly {
 	pOut := NewBigPoly(r.degree)
 	r.ScalarMulAssign(p, c, pOut)
 	return pOut
 }
 
 // ScalarMulAssign assigns pOut = p * c.
-func (r *BigRing) ScalarMulAssign(p BigPoly, c *big.Int, pOut BigPoly) {
+func (r *baseBigRing) ScalarMulAssign(p BigPoly, c *big.Int, pOut BigPoly) {
 	for i := 0; i < r.degree; i++ {
 		pOut.Coeffs[i].Mul(p.Coeffs[i], c)
 		r.Mod(pOut.Coeffs[i])
@@ -68,7 +68,7 @@ func (r *BigRing) ScalarMulAssign(p BigPoly, c *big.Int, pOut BigPoly) {
 }
 
 // ScalarMulAddAssign assigns pOut += p * c.
-func (r *BigRing) ScalarMulAddAssign(p BigPoly, c *big.Int, pOut BigPoly) {
+func (r *baseBigRing) ScalarMulAddAssign(p BigPoly, c *big.Int, pOut BigPoly) {
 	for i := 0; i < r.degree; i++ {
 		r.buffer.mul.Mul(p.Coeffs[i], c)
 		pOut.Coeffs[i].Add(pOut.Coeffs[i], r.buffer.mul)
@@ -77,7 +77,7 @@ func (r *BigRing) ScalarMulAddAssign(p BigPoly, c *big.Int, pOut BigPoly) {
 }
 
 // ScalarMulSubAssign assigns pOut -= p * c.
-func (r *BigRing) ScalarMulSubAssign(p BigPoly, c *big.Int, pOut BigPoly) {
+func (r *baseBigRing) ScalarMulSubAssign(p BigPoly, c *big.Int, pOut BigPoly) {
 	for i := 0; i < r.degree; i++ {
 		r.buffer.mul.Mul(p.Coeffs[i], c)
 		pOut.Coeffs[i].Sub(pOut.Coeffs[i], r.buffer.mul)
@@ -86,14 +86,14 @@ func (r *BigRing) ScalarMulSubAssign(p BigPoly, c *big.Int, pOut BigPoly) {
 }
 
 // Automorphism returns pOut = p(X^d).
-func (r *BigRing) Automorphism(p BigPoly, d int) BigPoly {
+func (r *baseBigRing) Automorphism(p BigPoly, d int) BigPoly {
 	pOut := NewBigPoly(r.degree)
 	r.AutomorphismAssign(p, d, pOut)
 	return pOut
 }
 
 // AutomorphismAssign assigns pOut = p(X^d).
-func (r *BigRing) AutomorphismAssign(p BigPoly, d int, pOut BigPoly) {
+func (r *baseBigRing) AutomorphismAssign(p BigPoly, d int, pOut BigPoly) {
 	d %= 2 * r.degree
 	if d < 0 {
 		d += 2 * r.degree
@@ -112,7 +112,7 @@ func (r *BigRing) AutomorphismAssign(p BigPoly, d int, pOut BigPoly) {
 }
 
 // Evaluate evaluates the polynomial p at x.
-func (r *BigRing) EvaluateAssign(p BigPoly, x, xOut *big.Int) {
+func (r *baseBigRing) EvaluateAssign(p BigPoly, x, xOut *big.Int) {
 	xOut.SetUint64(0)
 	for i := r.degree - 1; i >= 0; i-- {
 		xOut.Mul(xOut, x)
@@ -122,7 +122,7 @@ func (r *BigRing) EvaluateAssign(p BigPoly, x, xOut *big.Int) {
 }
 
 // QuoRemByVanishing returns quotient and remainder of p by the polynomial x^N - 1.
-func (r *BigRing) QuoRemByVanishingAssign(p BigPoly, N int, quo, rem BigPoly) {
+func (r *baseBigRing) QuoRemByVanishingAssign(p BigPoly, N int, quo, rem BigPoly) {
 	quo.Clear()
 	rem.CopyFrom(p)
 

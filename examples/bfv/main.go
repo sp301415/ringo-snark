@@ -146,7 +146,7 @@ func main() {
 	ringQ.INTT(ct.Value[1], ct.Value[1])
 
 	// sk lives in R, so we can simply move it to big.Int.
-	bigringQ := bigring.NewBigRing(celpcParamsLogN13LogQ212.Degree(), celpcParamsLogN13LogQ212.Modulus())
+	bigringQ := bigring.NewCyclotomicRing(celpcParamsLogN13LogQ212.Degree(), celpcParamsLogN13LogQ212.Modulus())
 	skCoeffs := bigringQ.NewPoly()
 	ringQ.PolyToBigintCentered(sk.Value.Q, 1, skCoeffs.Coeffs)
 	skNTT := bigringQ.ToNTTPoly(skCoeffs)

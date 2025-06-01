@@ -6,13 +6,16 @@ import (
 	"github.com/sp301415/ringo-snark/num"
 )
 
-// BigRing is a negacyclic ring.
-type BigRing struct {
-	degree      int
-	modulus     *big.Int
-	barretConst *big.Int
-	qBitLen     uint
+type ringBuffer struct {
+	u *big.Int
+	v *big.Int
+}
 
+// CyclotomicRing is a cyclotomic ring.
+type CyclotomicRing struct {
+	*baseBigRing
+
+	root      *big.Int
 	tw        []*big.Int
 	twInv     []*big.Int
 	degreeInv *big.Int
@@ -20,23 +23,12 @@ type BigRing struct {
 	buffer ringBuffer
 }
 
-type ringBuffer struct {
-	quo *big.Int
-	u   *big.Int
-	v   *big.Int
-
-	mul *big.Int
-}
-
-// NewBigRing creates a new BigRing.
-func NewBigRing(N int, Q *big.Int) *BigRing {
+// NewCyclotomicRing creates a new CyclotomicRing with the given degree and modulus.
+func NewCyclotomicRing(N int, Q *big.Int) *CyclotomicRing {
 	QSubOne := big.NewInt(0).Sub(Q, big.NewInt(1))
 	if big.NewInt(0).Mod(QSubOne, big.NewInt(int64(2*N))).Sign() != 0 {
 		panic("no 2Nth root of unity")
 	}
-
-	tw := make([]*big.Int, N)
-	twInv := make([]*big.Int, N)
 
 	exp1 := big.NewInt(0).Sub(Q, big.NewInt(1))
 	exp1.Div(exp1, big.NewInt(2*int64(N)))
@@ -50,111 +42,74 @@ func NewBigRing(N int, Q *big.Int) *BigRing {
 		}
 	}
 
+	return NewCyclotomicRingFromRoot(N, Q, g)
+}
+
+// NewCyclotomicRingFromRoot creates a new CyclotomicRing from a given primitive 2Nth root of unity.
+func NewCyclotomicRingFromRoot(N int, Q *big.Int, root *big.Int) *CyclotomicRing {
+	rootPowN := big.NewInt(0).Exp(root, big.NewInt(int64(N)), Q)
+	rootPow2N := big.NewInt(0).Exp(root, big.NewInt(int64(2*N)), Q)
+	if rootPowN.Cmp(big.NewInt(1)) == 0 || rootPow2N.Cmp(big.NewInt(1)) != 0 {
+		panic("root is not a primitive 2Nth root of unity")
+	}
+
+	tw := make([]*big.Int, N)
+	twInv := make([]*big.Int, N)
 	for i := 0; i < N; i++ {
-		tw[i] = big.NewInt(0).Exp(g, big.NewInt(int64(i)), Q)
-		twInv[i] = big.NewInt(0).Exp(g, big.NewInt(int64(2*N-i)), Q)
+		tw[i] = big.NewInt(0).Exp(root, big.NewInt(int64(i)), Q)
+		twInv[i] = big.NewInt(0).Exp(root, big.NewInt(int64(2*N-i)), Q)
 	}
 	num.BitReverseInPlace(tw)
 	num.BitReverseInPlace(twInv)
 
 	degreeInv := big.NewInt(0).ModInverse(big.NewInt(int64(N)), Q)
 
-	barretExp := big.NewInt(0).Lsh(big.NewInt(1), uint((Q.BitLen()<<1)+1))
-	barretConst := big.NewInt(0).Quo(barretExp, Q)
+	return &CyclotomicRing{
+		baseBigRing: newBaseRing(N, Q),
 
-	return &BigRing{
-		degree:      N,
-		modulus:     Q,
-		barretConst: barretConst,
-		qBitLen:     uint(Q.BitLen()),
-
+		root:      root,
 		tw:        tw,
 		twInv:     twInv,
 		degreeInv: degreeInv,
 
-		buffer: newRingBuffer(Q),
+		buffer: ringBuffer{
+			u: big.NewInt(0),
+			v: big.NewInt(0),
+		},
 	}
 }
 
-// newRingBuffer creates a new ringBuffer.
-func newRingBuffer(Q *big.Int) ringBuffer {
-	return ringBuffer{
-		quo: big.NewInt(0).Set(Q),
-		u:   big.NewInt(0).Set(Q),
-		v:   big.NewInt(0).Set(Q),
-		mul: big.NewInt(0).Set(Q),
-	}
-}
+// ShallowCopy creates a shallow copy of CyclotomicRing that is thread-safe.
+func (r *CyclotomicRing) ShallowCopy() *CyclotomicRing {
+	return &CyclotomicRing{
+		baseBigRing: r.baseBigRing.ShallowCopy(),
 
-// ShallowCopy creates a copy of BigRing that is thread-safe.
-func (r *BigRing) ShallowCopy() *BigRing {
-	return &BigRing{
-		degree:      r.degree,
-		modulus:     r.modulus,
-		barretConst: r.barretConst,
-		qBitLen:     r.qBitLen,
-
+		root:      r.root,
 		tw:        r.tw,
 		twInv:     r.twInv,
 		degreeInv: r.degreeInv,
 
-		buffer: newRingBuffer(r.modulus),
+		buffer: ringBuffer{
+			u: big.NewInt(0),
+			v: big.NewInt(0),
+		},
 	}
 }
 
-// Degree returns the degree of the BigRing.
-func (r *BigRing) Degree() int {
-	return r.degree
-}
-
-// Modulus returns the modulus of the BigRing.
-func (r *BigRing) Modulus() *big.Int {
-	return r.modulus
-}
-
-// NewPoly creates a new BigPoly.
-func (r *BigRing) NewPoly() BigPoly {
-	coeffs := make([]*big.Int, r.degree)
-	for i := 0; i < r.degree; i++ {
-		coeffs[i] = big.NewInt(0)
-	}
-	return BigPoly{Coeffs: coeffs}
-}
-
-// NewNTTPoly creates a new BigNTTPoly.
-func (r *BigRing) NewNTTPoly() BigNTTPoly {
-	coeffs := make([]*big.Int, r.degree)
-	for i := 0; i < r.degree; i++ {
-		coeffs[i] = big.NewInt(0)
-	}
-	return BigNTTPoly{Coeffs: coeffs}
-}
-
-// Mod reduces x using Barrett reduction.
-func (r *BigRing) Mod(x *big.Int) {
-	if x.Sign() < 0 {
-		x.Mod(x, r.modulus)
-		return
-	}
-
-	r.buffer.quo.Mul(x, r.barretConst)
-	r.buffer.quo.Rsh(r.buffer.quo, (r.qBitLen<<1)+1)
-	r.buffer.quo.Mul(r.buffer.quo, r.modulus)
-	x.Sub(x, r.buffer.quo)
-	if x.Cmp(r.modulus) >= 0 {
-		x.Sub(x, r.modulus)
-	}
+// TwoNthRoot returns the 2Nth primitive root of unity.
+func (r *CyclotomicRing) TwoNthRoot() *big.Int {
+	return r.root
 }
 
 // ToNTTPoly computes NTT of p.
-func (r *BigRing) ToNTTPoly(p BigPoly) BigNTTPoly {
+func (r *CyclotomicRing) ToNTTPoly(p BigPoly) BigNTTPoly {
 	pOut := r.NewNTTPoly()
 	r.ToNTTPolyAssign(p, pOut)
 	return pOut
 }
 
 // ToNTTPolyAssign computes NTT of p and assigns it to pOut.
-func (r *BigRing) ToNTTPolyAssign(p BigPoly, pOut BigNTTPoly) {
+func (r *CyclotomicRing) ToNTTPolyAssign(p BigPoly, pOut BigNTTPoly) {
 	for i := 0; i < r.degree; i++ {
 		pOut.Coeffs[i].Set(p.Coeffs[i])
 	}
@@ -162,14 +117,14 @@ func (r *BigRing) ToNTTPolyAssign(p BigPoly, pOut BigNTTPoly) {
 }
 
 // ToPoly computes inverse NTT of p.
-func (r *BigRing) ToPoly(p BigNTTPoly) BigPoly {
+func (r *CyclotomicRing) ToPoly(p BigNTTPoly) BigPoly {
 	pOut := r.NewPoly()
 	r.ToPolyAssign(p, pOut)
 	return pOut
 }
 
 // ToPolyAssign computes inverse NTT of p and assigns it to pOut.
-func (r *BigRing) ToPolyAssign(p BigNTTPoly, pOut BigPoly) {
+func (r *CyclotomicRing) ToPolyAssign(p BigNTTPoly, pOut BigPoly) {
 	for i := 0; i < pOut.Degree(); i++ {
 		pOut.Coeffs[i].Set(p.Coeffs[i])
 	}
@@ -178,7 +133,7 @@ func (r *BigRing) ToPolyAssign(p BigNTTPoly, pOut BigPoly) {
 }
 
 // NTTInPlace computes the NTT of a bigint vector in-place.
-func (r *BigRing) NTTInPlace(coeffs []*big.Int) {
+func (r *CyclotomicRing) NTTInPlace(coeffs []*big.Int) {
 	t := r.degree
 	for m := 1; m < r.degree; m <<= 1 {
 		t >>= 1
@@ -210,7 +165,7 @@ func (r *BigRing) NTTInPlace(coeffs []*big.Int) {
 
 // InvNTTInPlace computes the inverse NTT of a bigint vector in-place,
 // without normalization.
-func (r *BigRing) InvNTTInPlace(coeffs []*big.Int) {
+func (r *CyclotomicRing) InvNTTInPlace(coeffs []*big.Int) {
 	num.BitReverseInPlace(coeffs)
 
 	t := 1
@@ -238,7 +193,7 @@ func (r *BigRing) InvNTTInPlace(coeffs []*big.Int) {
 }
 
 // NormalizeInPlace normalizes a vector of bigints in-place.
-func (r *BigRing) NormalizeInPlace(coeffs []*big.Int) {
+func (r *CyclotomicRing) NormalizeInPlace(coeffs []*big.Int) {
 	for i := 0; i < r.degree; i++ {
 		coeffs[i].Mul(coeffs[i], r.degreeInv)
 		r.Mod(coeffs[i])

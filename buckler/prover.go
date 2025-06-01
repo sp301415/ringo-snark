@@ -56,10 +56,12 @@ func (w *walker) walkForProve(prover *Prover, v reflect.Value, pw []PublicWitnes
 type Prover struct {
 	Parameters celpc.Parameters
 
-	ringQ     *bigring.BigRing
-	baseRingQ *bigring.BigRing
+	ringQ         *bigring.CyclicRing
+	linCheckRingQ *bigring.CyclicRing
 
-	encoder    *Encoder
+	encoder         *Encoder
+	linCheckEncoder *Encoder
+
 	polyProver *celpc.Prover
 
 	oracle *celpc.RandomOracle
@@ -104,6 +106,8 @@ type rowCheckBuffer struct {
 }
 
 type linCheckBuffer struct {
+	pEcd bigring.BigPoly
+
 	linCheckVec            []*big.Int
 	linCheckVecTrans       []*big.Int
 	linCheckVecEcdNTT      bigring.BigNTTPoly
@@ -132,7 +136,7 @@ type sumCheckBuffer struct {
 }
 
 // newProverBuffer creates a new proverBuffer.
-func newProverBuffer(params celpc.Parameters, ringQ *bigring.BigRing, ctx *Context) proverBuffer {
+func newProverBuffer(params celpc.Parameters, ringQ *bigring.CyclicRing, ctx *Context) proverBuffer {
 	infDcmpBase := make(map[int64][]*big.Int)
 	infDcmp := make(map[int64][]*big.Int)
 	for wID, dcmpBound := range ctx.InfDecomposeBound {
@@ -175,7 +179,7 @@ func newProverBuffer(params celpc.Parameters, ringQ *bigring.BigRing, ctx *Conte
 }
 
 // newRowCheckBuffer creates a new rowCheckBuffer.
-func newRowCheckBuffer(params celpc.Parameters, ringQ *bigring.BigRing, ctx *Context) rowCheckBuffer {
+func newRowCheckBuffer(params celpc.Parameters, ringQ *bigring.CyclicRing, ctx *Context) rowCheckBuffer {
 	batchConstPow := make([]*big.Int, len(ctx.arithConstraints))
 	for i := range batchConstPow {
 		batchConstPow[i] = big.NewInt(0).Set(params.Modulus())
@@ -194,7 +198,7 @@ func newRowCheckBuffer(params celpc.Parameters, ringQ *bigring.BigRing, ctx *Con
 }
 
 // newLinCheckBuffer creates a new linCheckBuffer.
-func newLinCheckBuffer(params celpc.Parameters, ringQ *bigring.BigRing, ctx *Context) linCheckBuffer {
+func newLinCheckBuffer(params celpc.Parameters, ringQ *bigring.CyclicRing, ctx *Context) linCheckBuffer {
 	batchConstPow := make([]*big.Int, 0)
 	for _, transformer := range ctx.linCheck {
 		for range ctx.linCheckConstraints[transformer] {
@@ -210,6 +214,8 @@ func newLinCheckBuffer(params celpc.Parameters, ringQ *bigring.BigRing, ctx *Con
 	}
 
 	return linCheckBuffer{
+		pEcd: ringQ.NewPoly(),
+
 		linCheckVec:            linCheckVec,
 		linCheckVecTrans:       linCheckVecTrans,
 		linCheckVecEcdNTT:      ringQ.NewNTTPoly(),
@@ -227,7 +233,7 @@ func newLinCheckBuffer(params celpc.Parameters, ringQ *bigring.BigRing, ctx *Con
 }
 
 // newSumCheckBuffer creates a new sumCheckBuffer.
-func newSumCheckBuffer(params celpc.Parameters, ringQ *bigring.BigRing, ctx *Context) sumCheckBuffer {
+func newSumCheckBuffer(params celpc.Parameters, ringQ *bigring.CyclicRing, ctx *Context) sumCheckBuffer {
 	batchConstPow := make([]*big.Int, len(ctx.sumCheckConstraints))
 	for i := range batchConstPow {
 		batchConstPow[i] = big.NewInt(0).Set(params.Modulus())
@@ -250,8 +256,9 @@ type witnessData struct {
 	publicWitnesses []PublicWitness
 	witnesses       []Witness
 
-	publicWitnessEncodings []bigring.BigNTTPoly
-	witnessEncodings       []bigring.BigNTTPoly
+	publicWitnessEncodings   []bigring.BigNTTPoly
+	witnessEncodings         []bigring.BigNTTPoly
+	linCheckWitnessEncodings map[int64]bigring.BigNTTPoly
 }
 
 func (p *Prover) newWitnessData() witnessData {
@@ -281,11 +288,20 @@ func (p *Prover) newWitnessData() witnessData {
 		witnessEncodings[i] = p.ringQ.NewNTTPoly()
 	}
 
+	linCheckWitnessEncodings := make(map[int64]bigring.BigNTTPoly)
+	for _, transformer := range p.ctx.linCheck {
+		for _, wIDs := range p.ctx.linCheckConstraints[transformer] {
+			linCheckWitnessEncodings[wIDs[0]] = p.linCheckRingQ.NewNTTPoly()
+			linCheckWitnessEncodings[wIDs[1]] = p.linCheckRingQ.NewNTTPoly()
+		}
+	}
+
 	return witnessData{
-		publicWitnesses:        publicWitnesses,
-		witnesses:              witnesses,
-		publicWitnessEncodings: publicWitnessEncodings,
-		witnessEncodings:       witnessEncodings,
+		publicWitnesses:          publicWitnesses,
+		witnesses:                witnesses,
+		publicWitnessEncodings:   publicWitnessEncodings,
+		witnessEncodings:         witnessEncodings,
+		linCheckWitnessEncodings: linCheckWitnessEncodings,
 	}
 }
 
@@ -294,8 +310,7 @@ func (p *Prover) ShallowCopy() *Prover {
 	return &Prover{
 		Parameters: p.Parameters,
 
-		ringQ:     p.ringQ.ShallowCopy(),
-		baseRingQ: p.baseRingQ.ShallowCopy(),
+		ringQ: p.ringQ.ShallowCopy(),
 
 		encoder:    p.encoder.ShallowCopy(),
 		polyProver: p.polyProver.ShallowCopy(),
@@ -360,6 +375,13 @@ func (p *Prover) Prove(ck celpc.AjtaiCommitKey, c Circuit) (Proof, error) {
 	for i := range witnessData.witnesses {
 		p.encoder.RandomEncodeAssign(witnessData.witnesses[i], p.buffer.pEcd)
 		p.ringQ.ToNTTPolyAssign(p.buffer.pEcd, witnessData.witnessEncodings[i])
+
+		if _, ok := witnessData.linCheckWitnessEncodings[int64(i)]; ok {
+			embedFactor := p.ringQ.Degree() / p.linCheckRingQ.Degree()
+			for j := 0; j < p.linCheckRingQ.Degree(); j++ {
+				witnessData.linCheckWitnessEncodings[int64(i)].Coeffs[j].Set(witnessData.witnessEncodings[i].Coeffs[j*embedFactor])
+			}
+		}
 
 		commitments[i], openings[i] = p.polyProver.Commit(bigring.BigPoly{Coeffs: p.buffer.pEcd.Coeffs[:witnessCommitDeg]})
 	}
@@ -574,30 +596,30 @@ func (p *Prover) sumCheckMask(maskDeg int) (SumCheckMaskCommitment, sumCheckMask
 }
 
 func (p *Prover) linCheck(batchConstPow []*big.Int, linCheckVec []*big.Int, linCheckMask sumCheckMask, witnessData witnessData) (SumCheckCommitment, sumCheckOpening) {
-	p.encoder.EncodeAssign(linCheckVec, p.buffer.pEcd)
-	p.ringQ.ToNTTPolyAssign(p.buffer.pEcd, p.linCheckBuffer.linCheckVecEcdNTT)
+	p.linCheckEncoder.EncodeAssign(linCheckVec, p.linCheckBuffer.pEcd)
+	p.linCheckRingQ.ToNTTPolyAssign(p.linCheckBuffer.pEcd, p.linCheckBuffer.linCheckVecEcdNTT)
 
 	p.linCheckBuffer.batchedNTT.Clear()
 	powIdx := 0
 	for _, transformer := range p.ctx.linCheck {
 		transformer.TransformAssign(linCheckVec, p.linCheckBuffer.linCheckVecTrans)
-		p.encoder.EncodeAssign(p.linCheckBuffer.linCheckVecTrans, p.buffer.pEcd)
-		p.ringQ.ToNTTPolyAssign(p.buffer.pEcd, p.linCheckBuffer.linCheckVecTransEcdNTT)
+		p.linCheckEncoder.EncodeAssign(p.linCheckBuffer.linCheckVecTrans, p.linCheckBuffer.pEcd)
+		p.linCheckRingQ.ToNTTPolyAssign(p.linCheckBuffer.pEcd, p.linCheckBuffer.linCheckVecTransEcdNTT)
 		for i := range p.ctx.linCheckConstraints[transformer] {
-			wEcdIn := witnessData.witnessEncodings[p.ctx.linCheckConstraints[transformer][i][0]]
-			wEcdOut := witnessData.witnessEncodings[p.ctx.linCheckConstraints[transformer][i][1]]
+			wEcdIn := witnessData.linCheckWitnessEncodings[p.ctx.linCheckConstraints[transformer][i][0]]
+			wEcdOut := witnessData.linCheckWitnessEncodings[p.ctx.linCheckConstraints[transformer][i][1]]
 
-			p.ringQ.MulNTTAssign(wEcdIn, p.linCheckBuffer.linCheckVecTransEcdNTT, p.linCheckBuffer.evalNTT)
-			p.ringQ.MulSubNTTAssign(wEcdOut, p.linCheckBuffer.linCheckVecEcdNTT, p.linCheckBuffer.evalNTT)
-			p.ringQ.ScalarMulAddNTTAssign(p.linCheckBuffer.evalNTT, batchConstPow[powIdx], p.linCheckBuffer.batchedNTT)
+			p.linCheckRingQ.MulNTTAssign(wEcdIn, p.linCheckBuffer.linCheckVecTransEcdNTT, p.linCheckBuffer.evalNTT)
+			p.linCheckRingQ.MulSubNTTAssign(wEcdOut, p.linCheckBuffer.linCheckVecEcdNTT, p.linCheckBuffer.evalNTT)
+			p.linCheckRingQ.ScalarMulAddNTTAssign(p.linCheckBuffer.evalNTT, batchConstPow[powIdx], p.linCheckBuffer.batchedNTT)
 
 			powIdx++
 		}
 	}
-	p.ringQ.ToPolyAssign(p.linCheckBuffer.batchedNTT, p.linCheckBuffer.batched)
-	p.ringQ.AddAssign(p.linCheckBuffer.batched, linCheckMask.Mask, p.linCheckBuffer.batched)
+	p.linCheckRingQ.ToPolyAssign(p.linCheckBuffer.batchedNTT, p.linCheckBuffer.batched)
+	p.linCheckRingQ.AddAssign(p.linCheckBuffer.batched, linCheckMask.Mask, p.linCheckBuffer.batched)
 
-	p.ringQ.QuoRemByVanishingAssign(p.linCheckBuffer.batched, p.Parameters.Degree(), p.linCheckBuffer.quo, p.linCheckBuffer.remShift)
+	p.linCheckRingQ.QuoRemByVanishingAssign(p.linCheckBuffer.batched, p.Parameters.Degree(), p.linCheckBuffer.quo, p.linCheckBuffer.remShift)
 	p.linCheckBuffer.remShift.Coeffs[0].SetInt64(0)
 
 	quoCommitDeg := p.Parameters.Degree()

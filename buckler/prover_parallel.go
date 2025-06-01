@@ -54,7 +54,7 @@ func (p *Prover) ProveParallel(ck celpc.AjtaiCommitKey, c Circuit) (Proof, error
 
 	commitWorkSize := min(runtime.NumCPU(), int(p.ctx.publicWitnessCount+p.ctx.witnessCount))
 	encoderPool := make([]*Encoder, commitWorkSize)
-	ringQPool := make([]*bigring.BigRing, commitWorkSize)
+	ringQPool := make([]*bigring.CyclicRing, commitWorkSize)
 	polyProverPool := make([]*celpc.Prover, commitWorkSize)
 	for i := 0; i < commitWorkSize; i++ {
 		encoderPool[i] = p.encoder.ShallowCopy()
@@ -108,6 +108,13 @@ func (p *Prover) ProveParallel(ck celpc.AjtaiCommitKey, c Circuit) (Proof, error
 					encoder.RandomEncodeAssign(witnessData.witnesses[i], pEcd)
 					ringQ.ToNTTPolyAssign(pEcd, witnessData.witnessEncodings[i])
 
+					if _, ok := witnessData.linCheckWitnessEncodings[int64(i)]; ok {
+						embedFactor := p.ringQ.Degree() / p.linCheckRingQ.Degree()
+						for j := 0; j < p.linCheckRingQ.Degree(); j++ {
+							witnessData.linCheckWitnessEncodings[int64(i)].Coeffs[j].Set(witnessData.witnessEncodings[i].Coeffs[j*embedFactor])
+						}
+					}
+
 					commitments[i], openings[i] = polyProver.CommitParallel(bigring.BigPoly{Coeffs: pEcd.Coeffs[:witnessCommitDeg]})
 				}
 			}
@@ -138,15 +145,18 @@ func (p *Prover) ProveParallel(ck celpc.AjtaiCommitKey, c Circuit) (Proof, error
 	linCheckProver := &Prover{
 		Parameters: p.Parameters,
 
-		ringQ: p.ringQ.ShallowCopy(),
+		ringQ:         p.ringQ.ShallowCopy(),
+		linCheckRingQ: p.linCheckRingQ.ShallowCopy(),
 
-		encoder:    p.encoder.ShallowCopy(),
+		encoder:         p.encoder.ShallowCopy(),
+		linCheckEncoder: p.linCheckEncoder.ShallowCopy(),
+
 		polyProver: p.polyProver.ShallowCopy(),
 
 		ctx: p.ctx,
 
 		buffer:         p.buffer,
-		linCheckBuffer: newLinCheckBuffer(p.Parameters, p.ringQ, p.ctx),
+		linCheckBuffer: newLinCheckBuffer(p.Parameters, p.linCheckRingQ, p.ctx),
 	}
 
 	sumCheckProver := &Prover{
@@ -154,7 +164,8 @@ func (p *Prover) ProveParallel(ck celpc.AjtaiCommitKey, c Circuit) (Proof, error
 
 		ringQ: p.ringQ.ShallowCopy(),
 
-		encoder:    p.encoder.ShallowCopy(),
+		encoder: p.encoder.ShallowCopy(),
+
 		polyProver: p.polyProver.ShallowCopy(),
 
 		ctx: p.ctx,
@@ -457,23 +468,23 @@ func (p *Prover) sumCheckMaskParallel(maskDeg int) (SumCheckMaskCommitment, sumC
 }
 
 func (p *Prover) linCheckParallel(batchConstPow []*big.Int, linCheckVec []*big.Int, linCheckMask sumCheckMask, witnessData witnessData) (SumCheckCommitment, sumCheckOpening) {
-	p.encoder.EncodeAssign(linCheckVec, p.buffer.pEcd)
-	p.ringQ.ToNTTPolyAssign(p.buffer.pEcd, p.linCheckBuffer.linCheckVecEcdNTT)
+	p.linCheckEncoder.EncodeAssign(linCheckVec, p.linCheckBuffer.pEcd)
+	p.linCheckRingQ.ToNTTPolyAssign(p.linCheckBuffer.pEcd, p.linCheckBuffer.linCheckVecEcdNTT)
 
 	lincheckVecTransEcdNTTs := make([]bigring.BigNTTPoly, len(p.ctx.linCheck))
 	for i, transformer := range p.ctx.linCheck {
 		transformer.TransformAssign(linCheckVec, p.linCheckBuffer.linCheckVecTrans)
-		p.encoder.EncodeAssign(p.linCheckBuffer.linCheckVecTrans, p.buffer.pEcd)
-		lincheckVecTransEcdNTTs[i] = p.ringQ.ToNTTPoly(p.buffer.pEcd)
+		p.linCheckEncoder.EncodeAssign(p.linCheckBuffer.linCheckVecTrans, p.linCheckBuffer.pEcd)
+		lincheckVecTransEcdNTTs[i] = p.linCheckRingQ.ToNTTPoly(p.linCheckBuffer.pEcd)
 	}
 
 	p.linCheckBuffer.batchedNTT.Clear()
 
-	workSize := min(runtime.NumCPU(), p.ringQ.Degree())
+	workSize := min(runtime.NumCPU(), p.linCheckRingQ.Degree())
 	batchJobs := make(chan int)
 	go func() {
 		defer close(batchJobs)
-		for i := 0; i < p.ringQ.Degree(); i++ {
+		for i := 0; i < p.linCheckRingQ.Degree(); i++ {
 			batchJobs <- i
 		}
 	}()
@@ -489,8 +500,8 @@ func (p *Prover) linCheckParallel(batchConstPow []*big.Int, linCheckVec []*big.I
 				powIdx := 0
 				for t, transformer := range p.ctx.linCheck {
 					for i := range p.ctx.linCheckConstraints[transformer] {
-						wEcdIn := witnessData.witnessEncodings[p.ctx.linCheckConstraints[transformer][i][0]]
-						wEcdOut := witnessData.witnessEncodings[p.ctx.linCheckConstraints[transformer][i][1]]
+						wEcdIn := witnessData.linCheckWitnessEncodings[p.ctx.linCheckConstraints[transformer][i][0]]
+						wEcdOut := witnessData.linCheckWitnessEncodings[p.ctx.linCheckConstraints[transformer][i][1]]
 
 						p.linCheckBuffer.evalNTT.Coeffs[k].Mul(wEcdIn.Coeffs[k], lincheckVecTransEcdNTTs[t].Coeffs[k])
 						p.buffer.pEcdNTT.Coeffs[k].Mul(wEcdOut.Coeffs[k], p.linCheckBuffer.linCheckVecEcdNTT.Coeffs[k])
@@ -510,10 +521,10 @@ func (p *Prover) linCheckParallel(batchConstPow []*big.Int, linCheckVec []*big.I
 
 	wg.Wait()
 
-	p.ringQ.ToPolyAssign(p.linCheckBuffer.batchedNTT, p.linCheckBuffer.batched)
-	p.ringQ.AddAssign(p.linCheckBuffer.batched, linCheckMask.Mask, p.linCheckBuffer.batched)
+	p.linCheckRingQ.ToPolyAssign(p.linCheckBuffer.batchedNTT, p.linCheckBuffer.batched)
+	p.linCheckRingQ.AddAssign(p.linCheckBuffer.batched, linCheckMask.Mask, p.linCheckBuffer.batched)
 
-	p.ringQ.QuoRemByVanishingAssign(p.linCheckBuffer.batched, p.Parameters.Degree(), p.linCheckBuffer.quo, p.linCheckBuffer.remShift)
+	p.linCheckRingQ.QuoRemByVanishingAssign(p.linCheckBuffer.batched, p.Parameters.Degree(), p.linCheckBuffer.quo, p.linCheckBuffer.remShift)
 	p.linCheckBuffer.remShift.Coeffs[0].SetInt64(0)
 
 	quoCommitDeg := p.Parameters.Degree()

@@ -11,8 +11,7 @@ import (
 type Verifier struct {
 	Parameters celpc.Parameters
 
-	ringQ     *bigring.BigRing
-	baseRingQ *bigring.BigRing
+	ringQ *bigring.CyclicRing
 
 	encoder      *Encoder
 	polyVerifier *celpc.Verifier
@@ -27,6 +26,7 @@ type Verifier struct {
 type verifierBuffer struct {
 	evalPoint   *big.Int
 	vanishPoint *big.Int
+	degreeInv   *big.Int
 
 	pEcd    bigring.BigPoly
 	pEcdNTT bigring.BigNTTPoly
@@ -49,7 +49,7 @@ type verifierBuffer struct {
 }
 
 // newVerifierBuffer initializes a new verifier buffer.
-func newVerifierBuffer(params celpc.Parameters, ringQ *bigring.BigRing, ctx *Context) verifierBuffer {
+func newVerifierBuffer(params celpc.Parameters, ringQ *bigring.CyclicRing, ctx *Context) verifierBuffer {
 	batchConstRowCheckPow := make([]*big.Int, len(ctx.arithConstraints))
 	for i := range batchConstRowCheckPow {
 		batchConstRowCheckPow[i] = big.NewInt(0).Set(params.Modulus())
@@ -77,6 +77,7 @@ func newVerifierBuffer(params celpc.Parameters, ringQ *bigring.BigRing, ctx *Con
 	return verifierBuffer{
 		evalPoint:   big.NewInt(0).Set(params.Modulus()),
 		vanishPoint: big.NewInt(0).Set(params.Modulus()),
+		degreeInv:   big.NewInt(0).Set(params.Modulus()),
 
 		pEcd:    ringQ.NewPoly(),
 		pEcdNTT: ringQ.NewNTTPoly(),
@@ -373,7 +374,9 @@ func (v *Verifier) sumCheck(batchConstPow []*big.Int, evalPoint, vanishPoint *bi
 		v.buffer.batchedSum.Add(v.buffer.batchedSum, v.buffer.eval)
 		v.buffer.batchedSum.Mod(v.buffer.batchedSum, v.Parameters.Modulus())
 	}
-	v.buffer.batchedSum.Mul(v.buffer.batchedSum, v.encoder.degreeInv)
+	v.buffer.degreeInv.SetUint64(uint64(v.Parameters.Degree()))
+	v.buffer.degreeInv.ModInverse(v.buffer.degreeInv, v.Parameters.Modulus())
+	v.buffer.batchedSum.Mul(v.buffer.batchedSum, v.buffer.degreeInv)
 
 	v.evaluateCircuitAssign(batchConstPow, v.ctx.sumCheckConstraints, pwEvals, pf, v.buffer.batched)
 	v.buffer.batched.Add(v.buffer.batched, pf.SumCheckEvaluationProof.MaskEvalProof.Value)

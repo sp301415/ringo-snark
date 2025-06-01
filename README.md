@@ -72,7 +72,7 @@ func main() {
 	}.Compile()
 
 	// Now, generate the witness.
-	ringQ := bigring.NewBigRing(paramsLogN13LogQ212.Degree(), paramsLogN13LogQ212.Modulus())
+	ringQ := bigring.NewCyclotomicRing(paramsLogN13LogQ212.Degree(), paramsLogN13LogQ212.Modulus())
 	X := ringQ.NewPoly()
 	Y := ringQ.NewPoly()
 	for i := 0; i < paramsLogN13LogQ212.Degree(); i++ {

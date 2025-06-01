@@ -77,17 +77,26 @@ func Compile(params celpc.Parameters, c Circuit) (*Prover, *Verifier, error) {
 	logEmbedDegree := int(math.Ceil(math.Log2(float64(ctx.maxDegree))))
 	embedDegree := 1 << logEmbedDegree
 
-	ringQ := bigring.NewBigRing(embedDegree, params.Modulus())
-	baseRingQ := bigring.NewBigRing(params.Degree(), params.Modulus())
+	ringQ := bigring.NewCyclicRing(embedDegree, params.Modulus())
 	encoder := NewEncoder(params, embedDegree)
+
+	embedFactor := embedDegree / params.Degree()
+	rootEmbed := ringQ.NthRoot()
+	root2N := big.NewInt(0).Exp(rootEmbed, big.NewInt(int64(embedFactor/2)), nil)
+	linCheckRingQ := bigring.NewCyclicRingFromRoot(params.Degree()<<1, params.Modulus(), root2N)
+
+	linCheckEncoder := encoder.ShallowCopy()
+	linCheckEncoder.EmbedDegree = 2 * params.Degree()
 
 	prover := &Prover{
 		Parameters: params,
 
-		ringQ:     ringQ.ShallowCopy(),
-		baseRingQ: baseRingQ.ShallowCopy(),
+		ringQ:         ringQ.ShallowCopy(),
+		linCheckRingQ: linCheckRingQ.ShallowCopy(),
 
-		encoder:    encoder.ShallowCopy(),
+		encoder:         encoder.ShallowCopy(),
+		linCheckEncoder: linCheckEncoder.ShallowCopy(),
+
 		polyProver: celpc.NewProver(params, celpc.AjtaiCommitKey{}),
 
 		oracle: celpc.NewRandomOracle(params),
@@ -96,15 +105,14 @@ func Compile(params celpc.Parameters, c Circuit) (*Prover, *Verifier, error) {
 
 		buffer:         newProverBuffer(params, ringQ, ctx),
 		rowCheckBuffer: newRowCheckBuffer(params, ringQ, ctx),
-		linCheckBuffer: newLinCheckBuffer(params, ringQ, ctx),
+		linCheckBuffer: newLinCheckBuffer(params, linCheckRingQ, ctx),
 		sumCheckBuffer: newSumCheckBuffer(params, ringQ, ctx),
 	}
 
 	verifier := &Verifier{
 		Parameters: params,
 
-		ringQ:     ringQ.ShallowCopy(),
-		baseRingQ: baseRingQ.ShallowCopy(),
+		ringQ: ringQ.ShallowCopy(),
 
 		encoder:      encoder.ShallowCopy(),
 		polyVerifier: celpc.NewVerifier(params, celpc.AjtaiCommitKey{}),
