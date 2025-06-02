@@ -7,8 +7,10 @@ import (
 )
 
 type ringBuffer struct {
-	u *big.Int
-	v *big.Int
+	u    *big.Int
+	v    *big.Int
+	uOut *big.Int
+	vOut *big.Int
 }
 
 // CyclotomicRing is a cyclotomic ring.
@@ -73,8 +75,10 @@ func NewCyclotomicRingFromRoot(N int, Q *big.Int, root *big.Int) *CyclotomicRing
 		degreeInv: degreeInv,
 
 		buffer: ringBuffer{
-			u: big.NewInt(0),
-			v: big.NewInt(0),
+			u:    big.NewInt(0),
+			v:    big.NewInt(0),
+			uOut: big.NewInt(0),
+			vOut: big.NewInt(0),
 		},
 	}
 }
@@ -90,8 +94,10 @@ func (r *CyclotomicRing) ShallowCopy() *CyclotomicRing {
 		degreeInv: r.degreeInv,
 
 		buffer: ringBuffer{
-			u: big.NewInt(0),
-			v: big.NewInt(0),
+			u:    big.NewInt(0),
+			v:    big.NewInt(0),
+			uOut: big.NewInt(0),
+			vOut: big.NewInt(0),
 		},
 	}
 }
@@ -144,15 +150,15 @@ func (r *CyclotomicRing) NTTInPlace(coeffs []*big.Int) {
 				r.buffer.u.Set(coeffs[j])
 				r.buffer.v.Set(coeffs[j+t])
 
-				r.buffer.v.Mul(r.buffer.v, r.tw[m+i])
-				r.Mod(r.buffer.v)
+				r.buffer.vOut.Mul(r.buffer.v, r.tw[m+i])
+				r.Mod(r.buffer.vOut)
 
-				coeffs[j].Add(r.buffer.u, r.buffer.v)
+				coeffs[j].Add(r.buffer.u, r.buffer.vOut)
 				if coeffs[j].Cmp(r.modulus) >= 0 {
 					coeffs[j].Sub(coeffs[j], r.modulus)
 				}
 
-				coeffs[j+t].Sub(r.buffer.u, r.buffer.v)
+				coeffs[j+t].Sub(r.buffer.u, r.buffer.vOut)
 				if coeffs[j+t].Sign() < 0 {
 					coeffs[j+t].Add(coeffs[j+t], r.modulus)
 				}
@@ -182,9 +188,9 @@ func (r *CyclotomicRing) InvNTTInPlace(coeffs []*big.Int) {
 					coeffs[j].Sub(coeffs[j], r.modulus)
 				}
 
-				coeffs[j+t].Sub(r.buffer.u, r.buffer.v)
-				coeffs[j+t].Add(coeffs[j+t], r.modulus)
-				coeffs[j+t].Mul(coeffs[j+t], r.twInv[m+i])
+				r.buffer.vOut.Sub(r.buffer.u, r.buffer.v)
+				r.buffer.vOut.Add(r.buffer.vOut, r.modulus)
+				coeffs[j+t].Mul(r.buffer.vOut, r.twInv[m+i])
 				r.Mod(coeffs[j+t])
 			}
 		}

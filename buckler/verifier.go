@@ -114,13 +114,13 @@ func (v *Verifier) Verify(ck celpc.AjtaiCommitKey, pf Proof) bool {
 	}
 	v.oracle.WriteOpeningProof(pf.OpeningProof)
 
-	if v.ctx.HasLinCheck() {
+	if v.ctx.hasLinCheck() {
 		v.oracle.WriteCommitment(pf.LinCheckMaskCommitment.MaskCommitment)
 		v.oracle.WriteOpeningProof(pf.LinCheckMaskCommitment.OpeningProof)
 		v.oracle.WriteBigInt(pf.LinCheckMaskCommitment.MaskSum)
 	}
 
-	if v.ctx.HasSumCheck() {
+	if v.ctx.hasSumCheck() {
 		v.oracle.WriteCommitment(pf.SumCheckMaskCommitment.MaskCommitment)
 		v.oracle.WriteOpeningProof(pf.SumCheckMaskCommitment.OpeningProof)
 		v.oracle.WriteBigInt(pf.SumCheckMaskCommitment.MaskSum)
@@ -128,7 +128,7 @@ func (v *Verifier) Verify(ck celpc.AjtaiCommitKey, pf Proof) bool {
 
 	v.oracle.Finalize()
 
-	if v.ctx.HasRowCheck() {
+	if v.ctx.hasRowCheck() {
 		v.oracle.SampleModAssign(v.buffer.batchConstRowCheckPow[0])
 		for i := 1; i < len(v.buffer.batchConstRowCheckPow); i++ {
 			v.buffer.batchConstRowCheckPow[i].Mul(v.buffer.batchConstRowCheckPow[i-1], v.buffer.batchConstRowCheckPow[0])
@@ -136,7 +136,7 @@ func (v *Verifier) Verify(ck celpc.AjtaiCommitKey, pf Proof) bool {
 		}
 	}
 
-	if v.ctx.HasLinCheck() {
+	if v.ctx.hasLinCheck() {
 		v.oracle.SampleModAssign(v.buffer.batchConstLinCheckPow[0])
 		for i := 1; i < len(v.buffer.batchConstLinCheckPow); i++ {
 			v.buffer.batchConstLinCheckPow[i].Mul(v.buffer.batchConstLinCheckPow[i-1], v.buffer.batchConstLinCheckPow[0])
@@ -150,7 +150,7 @@ func (v *Verifier) Verify(ck celpc.AjtaiCommitKey, pf Proof) bool {
 		}
 	}
 
-	if v.ctx.HasSumCheck() {
+	if v.ctx.hasSumCheck() {
 		v.oracle.SampleModAssign(v.buffer.batchConstSumCheckPow[0])
 		for i := 1; i < len(v.buffer.batchConstSumCheckPow); i++ {
 			v.buffer.batchConstSumCheckPow[i].Mul(v.buffer.batchConstSumCheckPow[i-1], v.buffer.batchConstSumCheckPow[0])
@@ -158,19 +158,19 @@ func (v *Verifier) Verify(ck celpc.AjtaiCommitKey, pf Proof) bool {
 		}
 	}
 
-	if v.ctx.HasRowCheck() {
+	if v.ctx.hasRowCheck() {
 		v.oracle.WriteCommitment(pf.RowCheckCommitment.QuoCommitment)
 		v.oracle.WriteOpeningProof(pf.RowCheckCommitment.OpeningProof)
 	}
 
-	if v.ctx.HasLinCheck() {
+	if v.ctx.hasLinCheck() {
 		v.oracle.WriteCommitment(pf.LinCheckCommitment.QuoCommitment)
 		v.oracle.WriteCommitment(pf.LinCheckCommitment.RemCommitment)
 		v.oracle.WriteCommitment(pf.LinCheckCommitment.RemShiftCommitment)
 		v.oracle.WriteOpeningProof(pf.LinCheckCommitment.OpeningProof)
 	}
 
-	if v.ctx.HasSumCheck() {
+	if v.ctx.hasSumCheck() {
 		v.oracle.WriteCommitment(pf.SumCheckCommitment.QuoCommitment)
 		v.oracle.WriteCommitment(pf.SumCheckCommitment.RemCommitment)
 		v.oracle.WriteCommitment(pf.SumCheckCommitment.RemShiftCommitment)
@@ -199,19 +199,19 @@ func (v *Verifier) Verify(ck celpc.AjtaiCommitKey, pf Proof) bool {
 		}
 	}
 
-	if v.ctx.HasRowCheck() {
+	if v.ctx.hasRowCheck() {
 		if !v.rowCheck(v.buffer.batchConstRowCheckPow, v.buffer.evalPoint, v.buffer.vanishPoint, publicWitnessEvals, pf) {
 			return false
 		}
 	}
 
-	if v.ctx.HasLinCheck() {
+	if v.ctx.hasLinCheck() {
 		if !v.linCheck(v.buffer.batchConstLinCheckPow, v.buffer.linCheckVec, v.buffer.evalPoint, v.buffer.vanishPoint, pf) {
 			return false
 		}
 	}
 
-	if v.ctx.HasSumCheck() {
+	if v.ctx.hasSumCheck() {
 		if !v.sumCheck(v.buffer.batchConstSumCheckPow, v.buffer.evalPoint, v.buffer.vanishPoint, publicWitnessEvals, pf) {
 			return false
 		}

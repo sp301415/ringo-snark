@@ -14,8 +14,9 @@ type baseBigRing struct {
 }
 
 type baseRingBuffer struct {
-	quo *big.Int
-	mul *big.Int
+	quo    *big.Int
+	quoMul *big.Int
+	mul    *big.Int
 }
 
 func newBaseRing(N int, Q *big.Int) *baseBigRing {
@@ -29,8 +30,9 @@ func newBaseRing(N int, Q *big.Int) *baseBigRing {
 		qBitLen:     uint(Q.BitLen()),
 
 		buffer: baseRingBuffer{
-			quo: big.NewInt(0).Set(Q),
-			mul: big.NewInt(0).Set(Q),
+			quo:    big.NewInt(0),
+			quoMul: big.NewInt(0),
+			mul:    big.NewInt(0),
 		},
 	}
 }
@@ -44,8 +46,9 @@ func (r *baseBigRing) ShallowCopy() *baseBigRing {
 		qBitLen:     r.qBitLen,
 
 		buffer: baseRingBuffer{
-			quo: big.NewInt(0),
-			mul: big.NewInt(0),
+			quo:    big.NewInt(0),
+			quoMul: big.NewInt(0),
+			mul:    big.NewInt(0),
 		},
 	}
 }
@@ -81,14 +84,13 @@ func (r *baseBigRing) NewNTTPoly() BigNTTPoly {
 // Mod reduces x using Barrett reduction.
 func (r *baseBigRing) Mod(x *big.Int) {
 	if x.Sign() < 0 {
-		x.Mod(x, r.modulus)
-		return
+		x.Add(x, r.modulus)
 	}
 
 	r.buffer.quo.Mul(x, r.barretConst)
 	r.buffer.quo.Rsh(r.buffer.quo, (r.qBitLen<<1)+1)
-	r.buffer.quo.Mul(r.buffer.quo, r.modulus)
-	x.Sub(x, r.buffer.quo)
+	r.buffer.quoMul.Mul(r.buffer.quo, r.modulus)
+	x.Sub(x, r.buffer.quoMul)
 	if x.Cmp(r.modulus) >= 0 {
 		x.Sub(x, r.modulus)
 	}

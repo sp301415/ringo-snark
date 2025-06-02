@@ -62,7 +62,8 @@ func (r *baseBigRing) ScalarMul(p BigPoly, c *big.Int) BigPoly {
 // ScalarMulAssign assigns pOut = p * c.
 func (r *baseBigRing) ScalarMulAssign(p BigPoly, c *big.Int, pOut BigPoly) {
 	for i := 0; i < r.degree; i++ {
-		pOut.Coeffs[i].Mul(p.Coeffs[i], c)
+		r.buffer.mul.Mul(p.Coeffs[i], c)
+		pOut.Coeffs[i].Set(r.buffer.mul)
 		r.Mod(pOut.Coeffs[i])
 	}
 }

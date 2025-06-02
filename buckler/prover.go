@@ -394,7 +394,7 @@ func (p *Prover) Prove(ck celpc.AjtaiCommitKey, c Circuit) (Proof, error) {
 
 	var linCheckMaskCommit SumCheckMaskCommitment
 	var linCheckMask sumCheckMask
-	if p.ctx.HasLinCheck() {
+	if p.ctx.hasLinCheck() {
 		linCheckMaskCommit, linCheckMask = p.sumCheckMask(2 * p.Parameters.Degree())
 
 		p.oracle.WriteCommitment(linCheckMaskCommit.MaskCommitment)
@@ -404,7 +404,7 @@ func (p *Prover) Prove(ck celpc.AjtaiCommitKey, c Circuit) (Proof, error) {
 
 	var sumCheckMaskCommit SumCheckMaskCommitment
 	var sumCheckMask sumCheckMask
-	if p.ctx.HasSumCheck() {
+	if p.ctx.hasSumCheck() {
 		sumCheckMaskCommit, sumCheckMask = p.sumCheckMask(p.ctx.maxDegree)
 
 		p.oracle.WriteCommitment(sumCheckMaskCommit.MaskCommitment)
@@ -416,7 +416,7 @@ func (p *Prover) Prove(ck celpc.AjtaiCommitKey, c Circuit) (Proof, error) {
 
 	var rowCheckCommit RowCheckCommitment
 	var rowCheckOpen rowCheckOpening
-	if p.ctx.HasRowCheck() {
+	if p.ctx.hasRowCheck() {
 		p.oracle.SampleModAssign(p.rowCheckBuffer.batchConstPow[0])
 		for i := 1; i < len(p.rowCheckBuffer.batchConstPow); i++ {
 			p.rowCheckBuffer.batchConstPow[i].Mul(p.rowCheckBuffer.batchConstPow[i-1], p.rowCheckBuffer.batchConstPow[0])
@@ -427,7 +427,7 @@ func (p *Prover) Prove(ck celpc.AjtaiCommitKey, c Circuit) (Proof, error) {
 
 	var linCheckCommit SumCheckCommitment
 	var linCheckOpen sumCheckOpening
-	if p.ctx.HasLinCheck() {
+	if p.ctx.hasLinCheck() {
 		p.oracle.SampleModAssign(p.linCheckBuffer.batchConstPow[0])
 		for i := 1; i < len(p.linCheckBuffer.batchConstPow); i++ {
 			p.linCheckBuffer.batchConstPow[i].Mul(p.linCheckBuffer.batchConstPow[i-1], p.linCheckBuffer.batchConstPow[0])
@@ -445,7 +445,7 @@ func (p *Prover) Prove(ck celpc.AjtaiCommitKey, c Circuit) (Proof, error) {
 
 	var sumCheckCommit SumCheckCommitment
 	var sumCheckOpen sumCheckOpening
-	if p.ctx.HasSumCheck() {
+	if p.ctx.hasSumCheck() {
 		p.oracle.SampleModAssign(p.sumCheckBuffer.batchConstPow[0])
 		for i := 1; i < len(p.sumCheckBuffer.batchConstPow); i++ {
 			p.sumCheckBuffer.batchConstPow[i].Mul(p.sumCheckBuffer.batchConstPow[i-1], p.sumCheckBuffer.batchConstPow[0])
@@ -455,19 +455,19 @@ func (p *Prover) Prove(ck celpc.AjtaiCommitKey, c Circuit) (Proof, error) {
 		sumCheckCommit, sumCheckOpen = p.sumCheck(p.sumCheckBuffer.batchConstPow, sumCheckMask, witnessData)
 	}
 
-	if p.ctx.HasRowCheck() {
+	if p.ctx.hasRowCheck() {
 		p.oracle.WriteCommitment(rowCheckCommit.QuoCommitment)
 		p.oracle.WriteOpeningProof(rowCheckCommit.OpeningProof)
 	}
 
-	if p.ctx.HasLinCheck() {
+	if p.ctx.hasLinCheck() {
 		p.oracle.WriteCommitment(linCheckCommit.QuoCommitment)
 		p.oracle.WriteCommitment(linCheckCommit.RemCommitment)
 		p.oracle.WriteCommitment(linCheckCommit.RemShiftCommitment)
 		p.oracle.WriteOpeningProof(linCheckCommit.OpeningProof)
 	}
 
-	if p.ctx.HasSumCheck() {
+	if p.ctx.hasSumCheck() {
 		p.oracle.WriteCommitment(sumCheckCommit.QuoCommitment)
 		p.oracle.WriteCommitment(sumCheckCommit.RemCommitment)
 		p.oracle.WriteCommitment(sumCheckCommit.RemShiftCommitment)
@@ -484,14 +484,14 @@ func (p *Prover) Prove(ck celpc.AjtaiCommitKey, c Circuit) (Proof, error) {
 	}
 
 	var rowCheckEvalProof RowCheckEvaluationProof
-	if p.ctx.HasRowCheck() {
+	if p.ctx.hasRowCheck() {
 		rowCheckEvalProof = RowCheckEvaluationProof{
 			QuoEvalProof: p.polyProver.Evaluate(p.buffer.evalPoint, rowCheckOpen.QuoOpening),
 		}
 	}
 
 	var linCheckEvalProof SumCheckEvaluationProof
-	if p.ctx.HasLinCheck() {
+	if p.ctx.hasLinCheck() {
 		linCheckEvalProof = SumCheckEvaluationProof{
 			MaskEvalProof:     p.polyProver.Evaluate(p.buffer.evalPoint, linCheckMask.MaskOpening),
 			QuoEvalProof:      p.polyProver.Evaluate(p.buffer.evalPoint, linCheckOpen.QuoOpening),
@@ -501,7 +501,7 @@ func (p *Prover) Prove(ck celpc.AjtaiCommitKey, c Circuit) (Proof, error) {
 	}
 
 	var sumCheckEvalProof SumCheckEvaluationProof
-	if p.ctx.HasSumCheck() {
+	if p.ctx.hasSumCheck() {
 		sumCheckEvalProof = SumCheckEvaluationProof{
 			MaskEvalProof:     p.polyProver.Evaluate(p.buffer.evalPoint, sumCheckMask.MaskOpening),
 			QuoEvalProof:      p.polyProver.Evaluate(p.buffer.evalPoint, sumCheckOpen.QuoOpening),
@@ -672,4 +672,32 @@ func (p *Prover) sumCheck(batchConstPow []*big.Int, sumCheckMask sumCheckMask, w
 	)
 
 	return com, open
+}
+
+// CommitDegree returns the full degree of the committed polynomials.
+func (p *Prover) CommitDegree() int {
+	deg := int(p.ctx.witnessCount) * p.Parameters.Degree()
+
+	if p.ctx.hasRowCheck() {
+		quoDeg := p.ctx.maxDegree - p.Parameters.Degree()
+		quoCommitDeg := int(math.Ceil(float64(quoDeg)/float64(p.Parameters.BigIntCommitSize()))) * p.Parameters.BigIntCommitSize()
+		deg += quoCommitDeg
+	}
+
+	if p.ctx.hasLinCheck() {
+		maskDeg := 2 * p.Parameters.Degree()
+		quoDeg := p.Parameters.Degree()
+		remDeg := p.Parameters.Degree()
+		deg += maskDeg + quoDeg + 2*remDeg
+	}
+
+	if p.ctx.hasSumCheck() {
+		maskDeg := p.ctx.maxDegree
+		quoDeg := p.ctx.maxDegree - p.Parameters.Degree()
+		quoCommitDeg := int(math.Ceil(float64(quoDeg)/float64(p.Parameters.BigIntCommitSize()))) * p.Parameters.BigIntCommitSize()
+		remDeg := p.Parameters.Degree()
+		deg += maskDeg + quoCommitDeg + 2*remDeg
+	}
+
+	return deg
 }

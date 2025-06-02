@@ -179,7 +179,7 @@ func (p *Prover) ProveParallel(ck celpc.AjtaiCommitKey, c Circuit) (Proof, error
 	var linCheckMask sumCheckMask
 	go func() {
 		defer wg.Done()
-		if p.ctx.HasLinCheck() {
+		if p.ctx.hasLinCheck() {
 			linCheckMaskCommit, linCheckMask = linCheckProver.sumCheckMaskParallel(2 * p.Parameters.Degree())
 		}
 	}()
@@ -188,20 +188,20 @@ func (p *Prover) ProveParallel(ck celpc.AjtaiCommitKey, c Circuit) (Proof, error
 	var sumCheckMask sumCheckMask
 	go func() {
 		defer wg.Done()
-		if p.ctx.HasSumCheck() {
+		if p.ctx.hasSumCheck() {
 			sumCheckMaskCommit, sumCheckMask = sumCheckProver.sumCheckMaskParallel(p.ctx.maxDegree)
 		}
 	}()
 
 	wg.Wait()
 
-	if p.ctx.HasLinCheck() {
+	if p.ctx.hasLinCheck() {
 		p.oracle.WriteCommitment(linCheckMaskCommit.MaskCommitment)
 		p.oracle.WriteOpeningProof(linCheckMaskCommit.OpeningProof)
 		p.oracle.WriteBigInt(linCheckMaskCommit.MaskSum)
 	}
 
-	if p.ctx.HasSumCheck() {
+	if p.ctx.hasSumCheck() {
 		p.oracle.WriteCommitment(sumCheckMaskCommit.MaskCommitment)
 		p.oracle.WriteOpeningProof(sumCheckMaskCommit.OpeningProof)
 		p.oracle.WriteBigInt(sumCheckMaskCommit.MaskSum)
@@ -209,7 +209,7 @@ func (p *Prover) ProveParallel(ck celpc.AjtaiCommitKey, c Circuit) (Proof, error
 
 	p.oracle.Finalize()
 
-	if p.ctx.HasRowCheck() {
+	if p.ctx.hasRowCheck() {
 		p.oracle.SampleModAssign(rowCheckProver.rowCheckBuffer.batchConstPow[0])
 		for i := 1; i < len(rowCheckProver.rowCheckBuffer.batchConstPow); i++ {
 			rowCheckProver.rowCheckBuffer.batchConstPow[i].Mul(rowCheckProver.rowCheckBuffer.batchConstPow[i-1], rowCheckProver.rowCheckBuffer.batchConstPow[0])
@@ -217,7 +217,7 @@ func (p *Prover) ProveParallel(ck celpc.AjtaiCommitKey, c Circuit) (Proof, error
 		}
 	}
 
-	if p.ctx.HasLinCheck() {
+	if p.ctx.hasLinCheck() {
 		p.oracle.SampleModAssign(linCheckProver.linCheckBuffer.batchConstPow[0])
 		for i := 1; i < len(linCheckProver.linCheckBuffer.batchConstPow); i++ {
 			linCheckProver.linCheckBuffer.batchConstPow[i].Mul(linCheckProver.linCheckBuffer.batchConstPow[i-1], linCheckProver.linCheckBuffer.batchConstPow[0])
@@ -231,7 +231,7 @@ func (p *Prover) ProveParallel(ck celpc.AjtaiCommitKey, c Circuit) (Proof, error
 		}
 	}
 
-	if p.ctx.HasSumCheck() {
+	if p.ctx.hasSumCheck() {
 		p.oracle.SampleModAssign(sumCheckProver.sumCheckBuffer.batchConstPow[0])
 		for i := 1; i < len(sumCheckProver.sumCheckBuffer.batchConstPow); i++ {
 			sumCheckProver.sumCheckBuffer.batchConstPow[i].Mul(sumCheckProver.sumCheckBuffer.batchConstPow[i-1], sumCheckProver.sumCheckBuffer.batchConstPow[0])
@@ -245,7 +245,7 @@ func (p *Prover) ProveParallel(ck celpc.AjtaiCommitKey, c Circuit) (Proof, error
 	var rowCheckOpen rowCheckOpening
 	go func() {
 		defer wg.Done()
-		if p.ctx.HasRowCheck() {
+		if p.ctx.hasRowCheck() {
 			rowCheckCommit, rowCheckOpen = rowCheckProver.rowCheckParallel(rowCheckProver.rowCheckBuffer.batchConstPow, witnessData)
 		}
 	}()
@@ -254,7 +254,7 @@ func (p *Prover) ProveParallel(ck celpc.AjtaiCommitKey, c Circuit) (Proof, error
 	var linCheckOpen sumCheckOpening
 	go func() {
 		defer wg.Done()
-		if p.ctx.HasLinCheck() {
+		if p.ctx.hasLinCheck() {
 			linCheckCommit, linCheckOpen = linCheckProver.linCheckParallel(linCheckProver.linCheckBuffer.batchConstPow, linCheckProver.linCheckBuffer.linCheckVec, linCheckMask, witnessData)
 		}
 	}()
@@ -263,26 +263,26 @@ func (p *Prover) ProveParallel(ck celpc.AjtaiCommitKey, c Circuit) (Proof, error
 	var sumCheckOpen sumCheckOpening
 	go func() {
 		defer wg.Done()
-		if p.ctx.HasSumCheck() {
+		if p.ctx.hasSumCheck() {
 			sumCheckCommit, sumCheckOpen = sumCheckProver.sumCheckParallel(sumCheckProver.sumCheckBuffer.batchConstPow, sumCheckMask, witnessData)
 		}
 	}()
 
 	wg.Wait()
 
-	if p.ctx.HasRowCheck() {
+	if p.ctx.hasRowCheck() {
 		p.oracle.WriteCommitment(rowCheckCommit.QuoCommitment)
 		p.oracle.WriteOpeningProof(rowCheckCommit.OpeningProof)
 	}
 
-	if p.ctx.HasLinCheck() {
+	if p.ctx.hasLinCheck() {
 		p.oracle.WriteCommitment(linCheckCommit.QuoCommitment)
 		p.oracle.WriteCommitment(linCheckCommit.RemCommitment)
 		p.oracle.WriteCommitment(linCheckCommit.RemShiftCommitment)
 		p.oracle.WriteOpeningProof(linCheckCommit.OpeningProof)
 	}
 
-	if p.ctx.HasSumCheck() {
+	if p.ctx.hasSumCheck() {
 		p.oracle.WriteCommitment(sumCheckCommit.QuoCommitment)
 		p.oracle.WriteCommitment(sumCheckCommit.RemCommitment)
 		p.oracle.WriteCommitment(sumCheckCommit.RemShiftCommitment)
@@ -321,7 +321,7 @@ func (p *Prover) ProveParallel(ck celpc.AjtaiCommitKey, c Circuit) (Proof, error
 	var rowCheckEvalProof RowCheckEvaluationProof
 	go func() {
 		defer wg.Done()
-		if p.ctx.HasRowCheck() {
+		if p.ctx.hasRowCheck() {
 			rowCheckEvalProof = RowCheckEvaluationProof{
 				QuoEvalProof: rowCheckProver.polyProver.EvaluateParallel(p.buffer.evalPoint, rowCheckOpen.QuoOpening),
 			}
@@ -331,7 +331,7 @@ func (p *Prover) ProveParallel(ck celpc.AjtaiCommitKey, c Circuit) (Proof, error
 	var linCheckEvalProof SumCheckEvaluationProof
 	go func() {
 		defer wg.Done()
-		if p.ctx.HasLinCheck() {
+		if p.ctx.hasLinCheck() {
 			linCheckEvalProof = SumCheckEvaluationProof{
 				MaskEvalProof:     linCheckProver.polyProver.EvaluateParallel(p.buffer.evalPoint, linCheckMask.MaskOpening),
 				QuoEvalProof:      linCheckProver.polyProver.EvaluateParallel(p.buffer.evalPoint, linCheckOpen.QuoOpening),
@@ -344,7 +344,7 @@ func (p *Prover) ProveParallel(ck celpc.AjtaiCommitKey, c Circuit) (Proof, error
 	var sumCheckEvalProof SumCheckEvaluationProof
 	go func() {
 		defer wg.Done()
-		if p.ctx.HasSumCheck() {
+		if p.ctx.hasSumCheck() {
 			sumCheckEvalProof = SumCheckEvaluationProof{
 				MaskEvalProof:     sumCheckProver.polyProver.EvaluateParallel(p.buffer.evalPoint, sumCheckMask.MaskOpening),
 				QuoEvalProof:      sumCheckProver.polyProver.EvaluateParallel(p.buffer.evalPoint, sumCheckOpen.QuoOpening),
@@ -395,6 +395,8 @@ func (p *Prover) evaluateCircuitParallelAssign(batchConstPow []*big.Int, constra
 		go func() {
 			defer wg.Done()
 
+			mul := big.NewInt(0)
+
 			for k := range batchJobs {
 				for c, constraint := range constraints {
 					evalNTT.Coeffs[k].SetInt64(0)
@@ -402,13 +404,13 @@ func (p *Prover) evaluateCircuitParallelAssign(batchConstPow []*big.Int, constra
 						termNTT.Coeffs[k].Set(constraint.coeffsBig[i])
 
 						if constraint.coeffsPublicWitness[i] != -1 {
-							termNTT.Coeffs[k].Mul(termNTT.Coeffs[k], witnessData.publicWitnessEncodings[constraint.coeffsPublicWitness[i]].Coeffs[k])
-							termNTT.Coeffs[k].Mod(termNTT.Coeffs[k], p.Parameters.Modulus())
+							mul.Mul(termNTT.Coeffs[k], witnessData.publicWitnessEncodings[constraint.coeffsPublicWitness[i]].Coeffs[k])
+							termNTT.Coeffs[k].Mod(mul, p.Parameters.Modulus())
 						}
 
 						for j := range constraint.witness[i] {
-							termNTT.Coeffs[k].Mul(termNTT.Coeffs[k], witnessData.witnessEncodings[constraint.witness[i][j]].Coeffs[k])
-							termNTT.Coeffs[k].Mod(termNTT.Coeffs[k], p.Parameters.Modulus())
+							mul.Mul(termNTT.Coeffs[k], witnessData.witnessEncodings[constraint.witness[i][j]].Coeffs[k])
+							termNTT.Coeffs[k].Mod(mul, p.Parameters.Modulus())
 						}
 
 						evalNTT.Coeffs[k].Add(evalNTT.Coeffs[k], termNTT.Coeffs[k])
@@ -496,6 +498,8 @@ func (p *Prover) linCheckParallel(batchConstPow []*big.Int, linCheckVec []*big.I
 		go func() {
 			defer wg.Done()
 
+			mul, mul0, mul1 := big.NewInt(0), big.NewInt(0), big.NewInt(0)
+
 			for k := range batchJobs {
 				powIdx := 0
 				for t, transformer := range p.ctx.linCheck {
@@ -503,13 +507,13 @@ func (p *Prover) linCheckParallel(batchConstPow []*big.Int, linCheckVec []*big.I
 						wEcdIn := witnessData.linCheckWitnessEncodings[p.ctx.linCheckConstraints[transformer][i][0]]
 						wEcdOut := witnessData.linCheckWitnessEncodings[p.ctx.linCheckConstraints[transformer][i][1]]
 
-						p.linCheckBuffer.evalNTT.Coeffs[k].Mul(wEcdIn.Coeffs[k], lincheckVecTransEcdNTTs[t].Coeffs[k])
-						p.buffer.pEcdNTT.Coeffs[k].Mul(wEcdOut.Coeffs[k], p.linCheckBuffer.linCheckVecEcdNTT.Coeffs[k])
-						p.linCheckBuffer.evalNTT.Coeffs[k].Sub(p.linCheckBuffer.evalNTT.Coeffs[k], p.buffer.pEcdNTT.Coeffs[k])
+						mul0.Mul(wEcdIn.Coeffs[k], lincheckVecTransEcdNTTs[t].Coeffs[k])
+						mul1.Mul(wEcdOut.Coeffs[k], p.linCheckBuffer.linCheckVecEcdNTT.Coeffs[k])
+						p.linCheckBuffer.evalNTT.Coeffs[k].Sub(mul0, mul1)
 						p.linCheckBuffer.evalNTT.Coeffs[k].Mod(p.linCheckBuffer.evalNTT.Coeffs[k], p.Parameters.Modulus())
 
-						p.linCheckBuffer.evalNTT.Coeffs[k].Mul(p.linCheckBuffer.evalNTT.Coeffs[k], batchConstPow[powIdx])
-						p.linCheckBuffer.batchedNTT.Coeffs[k].Add(p.linCheckBuffer.batchedNTT.Coeffs[k], p.linCheckBuffer.evalNTT.Coeffs[k])
+						mul.Mul(p.linCheckBuffer.evalNTT.Coeffs[k], batchConstPow[powIdx])
+						p.linCheckBuffer.batchedNTT.Coeffs[k].Add(p.linCheckBuffer.batchedNTT.Coeffs[k], mul)
 						p.linCheckBuffer.batchedNTT.Coeffs[k].Mod(p.linCheckBuffer.batchedNTT.Coeffs[k], p.Parameters.Modulus())
 
 						powIdx++

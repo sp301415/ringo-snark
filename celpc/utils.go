@@ -18,6 +18,7 @@ type RNSReconstructor struct {
 
 type rnsReconstructorBuffer struct {
 	pInv  ring.Poly
+	mul   *big.Int
 	coeff *big.Int
 }
 
@@ -46,6 +47,7 @@ func NewRNSReconstructor(params Parameters) *RNSReconstructor {
 func newRNSReconstructorBuffer(params Parameters) rnsReconstructorBuffer {
 	return rnsReconstructorBuffer{
 		pInv:  params.ringQ.NewPoly(),
+		mul:   big.NewInt(0),
 		coeff: big.NewInt(0).Set(params.ringQ.Modulus()),
 	}
 }
@@ -91,8 +93,8 @@ func (r *RNSReconstructor) ReconstructAssign(p ring.Poly, v []*big.Int) {
 
 		v[i].SetInt64(0)
 		for j := 0; j <= r.params.ringQ.Level(); j++ {
-			r.buffer.coeff.SetUint64(r.buffer.pInv.Coeffs[j][i])
-			r.buffer.coeff.Mul(r.buffer.coeff, r.rnsGadget[j])
+			r.buffer.mul.SetUint64(r.buffer.pInv.Coeffs[j][i])
+			r.buffer.coeff.Mul(r.buffer.mul, r.rnsGadget[j])
 			v[i].Add(v[i], r.buffer.coeff)
 		}
 		v[i].Mod(v[i], r.params.ringQ.Modulus())

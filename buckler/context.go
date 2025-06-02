@@ -188,17 +188,17 @@ func (ctx *Context) AddSqTwoNormConstraint(w Witness, bound uint64) {
 	ctx.AddSqTwoNormConstraintBig(w, big.NewInt(0).SetUint64(bound))
 }
 
-// HasRowCheck returns true if the row check is needed.
-func (ctx *Context) HasRowCheck() bool {
+// hasRowCheck returns true if the row check is needed.
+func (ctx *Context) hasRowCheck() bool {
 	return len(ctx.arithConstraints) > 0
 }
 
-// HasSumCheck returns true if the sum check is needed.
-func (ctx *Context) HasSumCheck() bool {
+// hasSumCheck returns true if the sum check is needed.
+func (ctx *Context) hasSumCheck() bool {
 	return len(ctx.sumCheckConstraints) > 0
 }
 
-// HasLinCheck returns true if the linear check is needed.
-func (ctx *Context) HasLinCheck() bool {
+// hasLinCheck returns true if the linear check is needed.
+func (ctx *Context) hasLinCheck() bool {
 	return len(ctx.linCheck) > 0
 }

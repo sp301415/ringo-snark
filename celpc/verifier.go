@@ -25,6 +25,7 @@ type verifierBuffer struct {
 	commitResponse AjtaiCommitment
 	commitCombine  AjtaiCommitment
 
+	mul     *big.Int
 	exp     *big.Int
 	xEcd    ring.Poly
 	xPowEcd ring.Poly
@@ -54,35 +55,36 @@ func NewVerifier(params Parameters, ck AjtaiCommitKey) *Verifier {
 func newVerifierBuffer(params Parameters) verifierBuffer {
 	coeffs := make([]*big.Int, params.ringQ.N())
 	for i := 0; i < params.ringQ.N(); i++ {
-		coeffs[i] = big.NewInt(0).Set(params.ringQ.Modulus())
+		coeffs[i] = big.NewInt(0)
 	}
 
 	xPowBasis := make([]*big.Int, params.bigIntCommitSize)
 	maskDcd := make([]*big.Int, params.bigIntCommitSize)
 	for i := 0; i < params.bigIntCommitSize; i++ {
-		xPowBasis[i] = big.NewInt(0).Set(params.modulus)
-		maskDcd[i] = big.NewInt(0).Set(params.modulus)
+		xPowBasis[i] = big.NewInt(0)
+		maskDcd[i] = big.NewInt(0)
 	}
 
 	return verifierBuffer{
 		coeffs: coeffs,
-		norm:   big.NewInt(0).Set(params.ringQ.Modulus()),
+		norm:   big.NewInt(0),
 
 		challenge:      params.ringQ.NewPoly(),
 		commitResponse: NewAjtaiCommitment(params),
 		commitCombine:  NewAjtaiCommitment(params),
 
-		exp:     big.NewInt(0).Set(params.modulus),
+		mul:     big.NewInt(0),
+		exp:     big.NewInt(0),
 		xEcd:    params.ringQ.NewPoly(),
 		xPowEcd: params.ringQ.NewPoly(),
 
-		xPow:     big.NewInt(0).Set(params.modulus),
-		xPowSkip: big.NewInt(0).Set(params.modulus),
+		xPow:     big.NewInt(0),
+		xPowSkip: big.NewInt(0),
 
 		xPowBasis: xPowBasis,
 		maskDcd:   maskDcd,
 
-		valueCombine: big.NewInt(0).Set(params.modulus),
+		valueCombine: big.NewInt(0),
 	}
 }
 
@@ -106,16 +108,16 @@ func (v *Verifier) VerifyOpeningProof(comVec []Commitment, openPf OpeningProof) 
 		for j := 0; j < v.Parameters.polyCommitSize; j++ {
 			v.Encoder.ReconstructAssign(openPf.ResponseMask[i][j], v.buffer.coeffs)
 			for k := 0; k < v.Parameters.ringQ.N(); k++ {
-				v.buffer.coeffs[k].Mul(v.buffer.coeffs[k], v.buffer.coeffs[k])
-				v.buffer.norm.Add(v.buffer.norm, v.buffer.coeffs[k])
+				v.buffer.mul.Mul(v.buffer.coeffs[k], v.buffer.coeffs[k])
+				v.buffer.norm.Add(v.buffer.norm, v.buffer.mul)
 			}
 		}
 
 		for j := 0; j < v.Parameters.ajtaiRandSize; j++ {
 			v.Encoder.ReconstructAssign(openPf.ResponseRand[i][j], v.buffer.coeffs)
 			for k := 0; k < v.Parameters.ringQ.N(); k++ {
-				v.buffer.coeffs[k].Mul(v.buffer.coeffs[k], v.buffer.coeffs[k])
-				v.buffer.norm.Add(v.buffer.norm, v.buffer.coeffs[k])
+				v.buffer.mul.Mul(v.buffer.coeffs[k], v.buffer.coeffs[k])
+				v.buffer.norm.Add(v.buffer.norm, v.buffer.mul)
 			}
 		}
 
@@ -194,8 +196,8 @@ func (v *Verifier) VerifyEvaluation(x *big.Int, com Commitment, evalPf Evaluatio
 	}
 	for i := 0; i < commitCount; i++ {
 		v.Encoder.EncodeAssign([]*big.Int{v.buffer.xPow}, v.buffer.xPowEcd)
-		v.buffer.xPow.Mul(v.buffer.xPow, v.buffer.xPowSkip)
-		v.buffer.xPow.Mod(v.buffer.xPow, v.Parameters.modulus)
+		v.buffer.mul.Mul(v.buffer.xPow, v.buffer.xPowSkip)
+		v.buffer.xPow.Mod(v.buffer.mul, v.Parameters.modulus)
 		for j := 0; j < v.Parameters.ajtaiSize; j++ {
 			v.Parameters.ringQ.MulCoeffsMontgomeryThenAdd(v.buffer.xPowEcd, com.Value[i].Value[j], v.buffer.commitCombine.Value[j])
 		}

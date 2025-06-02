@@ -62,7 +62,8 @@ func (r *baseBigRing) ScalarMulNTT(p BigNTTPoly, c *big.Int) BigNTTPoly {
 // ScalarMulNTTAssign assigns pOut = p * c.
 func (r *baseBigRing) ScalarMulNTTAssign(p BigNTTPoly, c *big.Int, pOut BigNTTPoly) {
 	for i := 0; i < r.degree; i++ {
-		pOut.Coeffs[i].Mul(p.Coeffs[i], c)
+		r.buffer.mul.Mul(p.Coeffs[i], c)
+		pOut.Coeffs[i].Set(r.buffer.mul)
 		r.Mod(pOut.Coeffs[i])
 	}
 }
@@ -95,7 +96,8 @@ func (r *baseBigRing) MulNTT(p0, p1 BigNTTPoly) BigNTTPoly {
 // MulNTTAssign assigns pOut = p0 * p1.
 func (r *baseBigRing) MulNTTAssign(p0, p1, pOut BigNTTPoly) {
 	for i := 0; i < r.degree; i++ {
-		pOut.Coeffs[i].Mul(p0.Coeffs[i], p1.Coeffs[i])
+		r.buffer.mul.Mul(p0.Coeffs[i], p1.Coeffs[i])
+		pOut.Coeffs[i].Set(r.buffer.mul)
 		r.Mod(pOut.Coeffs[i])
 	}
 }

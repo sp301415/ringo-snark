@@ -34,6 +34,8 @@ type proverBuffer struct {
 	bigMask   []*big.Int
 	challenge ring.Poly
 
+	mul *big.Int
+
 	exp     *big.Int
 	xEcd    ring.Poly
 	xPowEcd ring.Poly
@@ -75,13 +77,13 @@ func newProverBuffer(params Parameters) proverBuffer {
 	maskDcd := make([]*big.Int, params.bigIntCommitSize)
 
 	for i := 0; i < params.bigIntCommitSize; i++ {
-		bigBlind[i] = big.NewInt(0).Set(params.modulus)
-		bigBlindShift[i] = big.NewInt(0).Set(params.modulus)
+		bigBlind[i] = big.NewInt(0)
+		bigBlindShift[i] = big.NewInt(0)
 
-		bigMask[i] = big.NewInt(0).Set(params.modulus)
+		bigMask[i] = big.NewInt(0)
 
-		xPowBasis[i] = big.NewInt(0).Set(params.modulus)
-		maskDcd[i] = big.NewInt(0).Set(params.modulus)
+		xPowBasis[i] = big.NewInt(0)
+		maskDcd[i] = big.NewInt(0)
 	}
 
 	return proverBuffer{
@@ -91,12 +93,14 @@ func newProverBuffer(params Parameters) proverBuffer {
 		bigMask:   bigMask,
 		challenge: params.ringQ.NewPoly(),
 
-		exp:     big.NewInt(0).Set(params.modulus),
+		mul: big.NewInt(0),
+
+		exp:     big.NewInt(0),
 		xEcd:    params.ringQ.NewPoly(),
 		xPowEcd: params.ringQ.NewPoly(),
 
-		xPow:     big.NewInt(0).Set(params.modulus),
-		xPowSkip: big.NewInt(0).Set(params.modulus),
+		xPow:     big.NewInt(0),
+		xPowSkip: big.NewInt(0),
 
 		xPowBasis: xPowBasis,
 		maskDcd:   maskDcd,
@@ -452,8 +456,8 @@ func (p *Prover) EvaluateAssign(x *big.Int, open Opening, evalPfOut EvaluationPr
 
 	for j := 0; j < commitCount; j++ {
 		p.Encoder.EncodeAssign([]*big.Int{p.buffer.xPow}, p.buffer.xPowEcd)
-		p.buffer.xPow.Mul(p.buffer.xPow, p.buffer.xPowSkip)
-		p.buffer.xPow.Mod(p.buffer.xPow, p.Parameters.modulus)
+		p.buffer.mul.Mul(p.buffer.xPow, p.buffer.xPowSkip)
+		p.buffer.xPow.Mod(p.buffer.mul, p.Parameters.modulus)
 
 		for i := 0; i < p.Parameters.polyCommitSize; i++ {
 			p.Parameters.ringQ.MulCoeffsMontgomeryThenAdd(p.buffer.xPowEcd, open.Mask[j][i], evalPfOut.Mask[i])
@@ -510,8 +514,8 @@ func (p *Prover) EvaluateParallelAssign(x *big.Int, open Opening, evalPfOut Eval
 	xPowEcd := make([]ring.Poly, commitCount)
 	for j := 0; j < commitCount; j++ {
 		xPowEcd[j] = p.Encoder.Encode([]*big.Int{p.buffer.xPow})
-		p.buffer.xPow.Mul(p.buffer.xPow, p.buffer.xPowSkip)
-		p.buffer.xPow.Mod(p.buffer.xPow, p.Parameters.modulus)
+		p.buffer.mul.Mul(p.buffer.xPow, p.buffer.xPowSkip)
+		p.buffer.xPow.Mod(p.buffer.mul, p.Parameters.modulus)
 	}
 
 	workSize := min(runtime.NumCPU(), p.Parameters.polyCommitSize+p.Parameters.ajtaiRandSize)
