@@ -134,6 +134,17 @@ func main() {
 - [ ] Strong Fiat-Shamir Transform
 - [ ] Automatic Parameter Selection
 
+## Citing
+To cite Ringo-SNARK, please use the following BibTeX entry:
+```tex
+@misc{Ringo-SNARK,
+  title={{Ringo-SNARK}},
+  author={Intak Hwang, Seonhong Min},
+  year={2025},
+  howpublished = {Online: \url{https://github.com/sp301415/ringo-snark}},
+}
+```
+
 ## References
 - Concretely Efficient Lattice-based Polynomial Commitment from Standard Assumptions (https://eprint.iacr.org/2024/306)
 - Practical Zero-Knowledge PIOP for Public Key and Ciphertext Generation in (Multi-Group) Homomorphic Encryption (https://eprint.iacr.org/2024/1879)
