@@ -151,7 +151,7 @@ func (r *CyclotomicRing) NTTInPlace(coeffs []*big.Int) {
 				r.buffer.v.Set(coeffs[j+t])
 
 				r.buffer.vOut.Mul(r.buffer.v, r.tw[m+i])
-				r.Mod(r.buffer.vOut)
+				r.Reduce(r.buffer.vOut)
 
 				coeffs[j].Add(r.buffer.u, r.buffer.vOut)
 				if coeffs[j].Cmp(r.modulus) >= 0 {
@@ -189,9 +189,8 @@ func (r *CyclotomicRing) InvNTTInPlace(coeffs []*big.Int) {
 				}
 
 				r.buffer.vOut.Sub(r.buffer.u, r.buffer.v)
-				r.buffer.vOut.Add(r.buffer.vOut, r.modulus)
 				coeffs[j+t].Mul(r.buffer.vOut, r.twInv[m+i])
-				r.Mod(coeffs[j+t])
+				r.Reduce(coeffs[j+t])
 			}
 		}
 		t <<= 1
@@ -201,7 +200,8 @@ func (r *CyclotomicRing) InvNTTInPlace(coeffs []*big.Int) {
 // NormalizeInPlace normalizes a vector of bigints in-place.
 func (r *CyclotomicRing) NormalizeInPlace(coeffs []*big.Int) {
 	for i := 0; i < r.degree; i++ {
-		coeffs[i].Mul(coeffs[i], r.degreeInv)
-		r.Mod(coeffs[i])
+		r.buffer.u.Set(coeffs[i])
+		coeffs[i].Mul(r.buffer.u, r.degreeInv)
+		r.Reduce(coeffs[i])
 	}
 }

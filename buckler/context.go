@@ -4,6 +4,7 @@ import (
 	"math/big"
 	"reflect"
 
+	"github.com/sp301415/ringo-snark/bigring"
 	"github.com/sp301415/ringo-snark/celpc"
 )
 
@@ -11,6 +12,7 @@ import (
 // It runs through the circuit and collects the information needed to compile it.
 type Context struct {
 	ringDegree int
+	reducer    *bigring.Reducer
 
 	publicWitnessCount int64
 	witnessCount       int64
@@ -40,6 +42,7 @@ type Context struct {
 func newContext(params celpc.Parameters, walker *walker) *Context {
 	return &Context{
 		ringDegree: params.Degree(),
+		reducer:    bigring.NewReducer(params.Modulus()),
 
 		publicWitnessCount: walker.publicWitnessCount,
 		witnessCount:       walker.witnessCount,
@@ -66,6 +69,10 @@ func NewArithmeticConstraint() *ArithmeticConstraint {
 
 // AddArithmeticConstraint adds an arithmetic constraint to the context.
 func (ctx *Context) AddArithmeticConstraint(c ArithmeticConstraint) {
+	for i := range c.coeffsBig {
+		c.coeffsBig[i].Mod(c.coeffsBig[i], ctx.reducer.Q)
+	}
+
 	ctx.arithConstraints = append(ctx.arithConstraints, c)
 
 	for i := 0; i < len(c.witness); i++ {

@@ -91,6 +91,8 @@ func Compile(params celpc.Parameters, c Circuit) (*Prover, *Verifier, error) {
 	prover := &Prover{
 		Parameters: params,
 
+		reducer: bigring.NewReducer(params.Modulus()),
+
 		ringQ:         ringQ.ShallowCopy(),
 		linCheckRingQ: linCheckRingQ.ShallowCopy(),
 
@@ -111,6 +113,8 @@ func Compile(params celpc.Parameters, c Circuit) (*Prover, *Verifier, error) {
 
 	verifier := &Verifier{
 		Parameters: params,
+
+		reducer: bigring.NewReducer(params.Modulus()),
 
 		ringQ: ringQ.ShallowCopy(),
 

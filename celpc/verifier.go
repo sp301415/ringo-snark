@@ -4,15 +4,18 @@ import (
 	"math"
 	"math/big"
 
+	"github.com/sp301415/ringo-snark/bigring"
 	"github.com/tuneinsight/lattigo/v6/ring"
 )
 
 // Verifier is a verifier for polynomial commitment.
 type Verifier struct {
 	Parameters Parameters
-	Encoder    *Encoder
-	Commiter   *AjtaiCommiter
-	Oracle     *RandomOracle
+	Reducer    *bigring.Reducer
+
+	Encoder  *Encoder
+	Commiter *AjtaiCommiter
+	Oracle   *RandomOracle
 
 	buffer verifierBuffer
 }
@@ -36,16 +39,18 @@ type verifierBuffer struct {
 	xPowBasis []*big.Int
 	maskDcd   []*big.Int
 
-	valueCombine *big.Int
+	check *big.Int
 }
 
 // NewVerifier creates a new Verifier.
 func NewVerifier(params Parameters, ck AjtaiCommitKey) *Verifier {
 	return &Verifier{
 		Parameters: params,
-		Encoder:    NewEncoder(params),
-		Commiter:   NewAjtaiCommiter(params, ck),
-		Oracle:     NewRandomOracle(params),
+		Reducer:    bigring.NewReducer(params.modulus),
+
+		Encoder:  NewEncoder(params),
+		Commiter: NewAjtaiCommiter(params, ck),
+		Oracle:   NewRandomOracle(params),
 
 		buffer: newVerifierBuffer(params),
 	}
@@ -84,7 +89,7 @@ func newVerifierBuffer(params Parameters) verifierBuffer {
 		xPowBasis: xPowBasis,
 		maskDcd:   maskDcd,
 
-		valueCombine: big.NewInt(0),
+		check: big.NewInt(0),
 	}
 }
 
@@ -92,6 +97,7 @@ func newVerifierBuffer(params Parameters) verifierBuffer {
 func (v *Verifier) ShallowCopy() *Verifier {
 	return &Verifier{
 		Parameters: v.Parameters,
+		Reducer:    v.Reducer.ShallowCopy(),
 
 		Encoder:  v.Encoder.ShallowCopy(),
 		Commiter: v.Commiter,
@@ -197,7 +203,9 @@ func (v *Verifier) VerifyEvaluation(x *big.Int, com Commitment, evalPf Evaluatio
 	for i := 0; i < commitCount; i++ {
 		v.Encoder.EncodeAssign([]*big.Int{v.buffer.xPow}, v.buffer.xPowEcd)
 		v.buffer.mul.Mul(v.buffer.xPow, v.buffer.xPowSkip)
-		v.buffer.xPow.Mod(v.buffer.mul, v.Parameters.modulus)
+		v.buffer.xPow.Set(v.buffer.mul)
+		v.Reducer.Reduce(v.buffer.xPow)
+
 		for j := 0; j < v.Parameters.ajtaiSize; j++ {
 			v.Parameters.ringQ.MulCoeffsMontgomeryThenAdd(v.buffer.xPowEcd, com.Value[i].Value[j], v.buffer.commitCombine.Value[j])
 		}
@@ -210,17 +218,17 @@ func (v *Verifier) VerifyEvaluation(x *big.Int, com Commitment, evalPf Evaluatio
 	v.buffer.xPowBasis[0].SetUint64(1)
 	for i := 1; i < v.Parameters.bigIntCommitSize; i++ {
 		v.buffer.xPowBasis[i].Mul(v.buffer.xPowBasis[i-1], x)
-		v.buffer.xPowBasis[i].Mod(v.buffer.xPowBasis[i], v.Parameters.modulus)
+		v.Reducer.Reduce(v.buffer.xPowBasis[i])
 	}
 
 	v.Encoder.DecodeChunkAssign(evalPf.Mask, v.buffer.maskDcd)
 
-	v.buffer.valueCombine.SetUint64(0)
+	v.buffer.check.SetUint64(0)
 	for i := 0; i < v.Parameters.bigIntCommitSize; i++ {
 		v.buffer.xPow.Mul(v.buffer.xPowBasis[i], v.buffer.maskDcd[i])
-		v.buffer.valueCombine.Add(v.buffer.valueCombine, v.buffer.xPow)
+		v.buffer.check.Add(v.buffer.check, v.buffer.xPow)
+		v.Reducer.Reduce(v.buffer.check)
 	}
-	v.buffer.valueCombine.Mod(v.buffer.valueCombine, v.Parameters.modulus)
 
-	return v.buffer.valueCombine.Cmp(evalPf.Value) == 0
+	return v.buffer.check.Cmp(evalPf.Value) == 0
 }

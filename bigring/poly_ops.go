@@ -62,27 +62,27 @@ func (r *baseBigRing) ScalarMul(p BigPoly, c *big.Int) BigPoly {
 // ScalarMulAssign assigns pOut = p * c.
 func (r *baseBigRing) ScalarMulAssign(p BigPoly, c *big.Int, pOut BigPoly) {
 	for i := 0; i < r.degree; i++ {
-		r.buffer.mul.Mul(p.Coeffs[i], c)
-		pOut.Coeffs[i].Set(r.buffer.mul)
-		r.Mod(pOut.Coeffs[i])
+		r.mul.Mul(p.Coeffs[i], c)
+		pOut.Coeffs[i].Set(r.mul)
+		r.Reduce(pOut.Coeffs[i])
 	}
 }
 
 // ScalarMulAddAssign assigns pOut += p * c.
 func (r *baseBigRing) ScalarMulAddAssign(p BigPoly, c *big.Int, pOut BigPoly) {
 	for i := 0; i < r.degree; i++ {
-		r.buffer.mul.Mul(p.Coeffs[i], c)
-		pOut.Coeffs[i].Add(pOut.Coeffs[i], r.buffer.mul)
-		r.Mod(pOut.Coeffs[i])
+		r.mul.Mul(p.Coeffs[i], c)
+		pOut.Coeffs[i].Add(pOut.Coeffs[i], r.mul)
+		r.Reduce(pOut.Coeffs[i])
 	}
 }
 
 // ScalarMulSubAssign assigns pOut -= p * c.
 func (r *baseBigRing) ScalarMulSubAssign(p BigPoly, c *big.Int, pOut BigPoly) {
 	for i := 0; i < r.degree; i++ {
-		r.buffer.mul.Mul(p.Coeffs[i], c)
-		pOut.Coeffs[i].Sub(pOut.Coeffs[i], r.buffer.mul)
-		r.Mod(pOut.Coeffs[i])
+		r.mul.Mul(p.Coeffs[i], c)
+		pOut.Coeffs[i].Sub(pOut.Coeffs[i], r.mul)
+		r.Reduce(pOut.Coeffs[i])
 	}
 }
 
@@ -116,9 +116,9 @@ func (r *baseBigRing) AutomorphismAssign(p BigPoly, d int, pOut BigPoly) {
 func (r *baseBigRing) EvaluateAssign(p BigPoly, x, xOut *big.Int) {
 	xOut.SetUint64(0)
 	for i := r.degree - 1; i >= 0; i-- {
-		xOut.Mul(xOut, x)
-		xOut.Add(xOut, p.Coeffs[i])
-		r.Mod(xOut)
+		r.mul.Mul(xOut, x)
+		xOut.Add(r.mul, p.Coeffs[i])
+		r.Reduce(xOut)
 	}
 }
 

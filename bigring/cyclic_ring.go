@@ -144,7 +144,7 @@ func (r *CyclicRing) NTTInPlace(coeffs []*big.Int) {
 				r.buffer.v.Set(coeffs[j+t])
 
 				r.buffer.vOut.Mul(r.buffer.v, r.tw[i])
-				r.Mod(r.buffer.vOut)
+				r.Reduce(r.buffer.vOut)
 
 				coeffs[j].Add(r.buffer.u, r.buffer.vOut)
 				if coeffs[j].Cmp(r.modulus) >= 0 {
@@ -182,9 +182,8 @@ func (r *CyclicRing) InvNTTInPlace(coeffs []*big.Int) {
 				}
 
 				r.buffer.vOut.Sub(r.buffer.u, r.buffer.v)
-				r.buffer.vOut.Add(r.buffer.vOut, r.modulus)
 				coeffs[j+t].Mul(r.buffer.vOut, r.twInv[i])
-				r.Mod(coeffs[j+t])
+				r.Reduce(coeffs[j+t])
 			}
 		}
 		t <<= 1
@@ -195,7 +194,7 @@ func (r *CyclicRing) InvNTTInPlace(coeffs []*big.Int) {
 func (r *CyclicRing) NormalizeInPlace(coeffs []*big.Int) {
 	for i := 0; i < r.degree; i++ {
 		r.buffer.u.Mul(coeffs[i], r.degreeInv)
-		r.Mod(r.buffer.u)
+		r.Reduce(r.buffer.u)
 		coeffs[i].Set(r.buffer.u)
 	}
 }

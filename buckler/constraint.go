@@ -16,7 +16,7 @@ type ArithmeticConstraint struct {
 // This adds coeff * coeffPublicWitness * witness[0] * witness[1] * ... * witness[n] to the constraint.
 // If coeffPublicWitness is nil, it is ignored.
 func (c *ArithmeticConstraint) AddTerm(coeff *big.Int, coeffPublicWitness PublicWitness, witness ...Witness) {
-	c.coeffsBig = append(c.coeffsBig, coeff)
+	c.coeffsBig = append(c.coeffsBig, big.NewInt(0).Set(coeff))
 
 	if coeffPublicWitness != nil {
 		c.coeffsPublicWitness = append(c.coeffsPublicWitness, coeffPublicWitness[0].Int64())

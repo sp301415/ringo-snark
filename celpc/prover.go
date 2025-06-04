@@ -13,6 +13,7 @@ import (
 // Prover is a prover for polynomial commitment.
 type Prover struct {
 	Parameters Parameters
+	Reducer    *bigring.Reducer
 
 	StreamSampler   *StreamSampler
 	GaussianSampler *COSACSampler
@@ -51,6 +52,7 @@ type proverBuffer struct {
 func NewProver(params Parameters, ck AjtaiCommitKey) *Prover {
 	return &Prover{
 		Parameters: params,
+		Reducer:    bigring.NewReducer(params.modulus),
 
 		StreamSampler:   NewStreamSampler(params),
 		GaussianSampler: NewCOSACSampler(params),
@@ -111,6 +113,7 @@ func newProverBuffer(params Parameters) proverBuffer {
 func (p *Prover) ShallowCopy() *Prover {
 	return &Prover{
 		Parameters: p.Parameters,
+		Reducer:    p.Reducer.ShallowCopy(),
 
 		StreamSampler:   NewStreamSampler(p.Parameters),
 		GaussianSampler: NewCOSACSampler(p.Parameters),
@@ -457,7 +460,8 @@ func (p *Prover) EvaluateAssign(x *big.Int, open Opening, evalPfOut EvaluationPr
 	for j := 0; j < commitCount; j++ {
 		p.Encoder.EncodeAssign([]*big.Int{p.buffer.xPow}, p.buffer.xPowEcd)
 		p.buffer.mul.Mul(p.buffer.xPow, p.buffer.xPowSkip)
-		p.buffer.xPow.Mod(p.buffer.mul, p.Parameters.modulus)
+		p.Reducer.Reduce(p.buffer.mul)
+		p.buffer.xPow.Set(p.buffer.mul)
 
 		for i := 0; i < p.Parameters.polyCommitSize; i++ {
 			p.Parameters.ringQ.MulCoeffsMontgomeryThenAdd(p.buffer.xPowEcd, open.Mask[j][i], evalPfOut.Mask[i])
@@ -471,7 +475,7 @@ func (p *Prover) EvaluateAssign(x *big.Int, open Opening, evalPfOut EvaluationPr
 	p.buffer.xPowBasis[0].SetUint64(1)
 	for i := 1; i < p.Parameters.bigIntCommitSize; i++ {
 		p.buffer.xPowBasis[i].Mul(p.buffer.xPowBasis[i-1], x)
-		p.buffer.xPowBasis[i].Mod(p.buffer.xPowBasis[i], p.Parameters.modulus)
+		p.Reducer.Reduce(p.buffer.xPowBasis[i])
 	}
 
 	p.Encoder.DecodeChunkAssign(evalPfOut.Mask, p.buffer.maskDcd)
@@ -480,8 +484,8 @@ func (p *Prover) EvaluateAssign(x *big.Int, open Opening, evalPfOut EvaluationPr
 	for i := 0; i < p.Parameters.bigIntCommitSize; i++ {
 		p.buffer.xPow.Mul(p.buffer.xPowBasis[i], p.buffer.maskDcd[i])
 		evalPfOut.Value.Add(evalPfOut.Value, p.buffer.xPow)
+		p.Reducer.Reduce(evalPfOut.Value)
 	}
-	evalPfOut.Value.Mod(evalPfOut.Value, p.Parameters.modulus)
 }
 
 // EvaluateParallel evaluates pBig at x with proof in parallel.
@@ -515,7 +519,8 @@ func (p *Prover) EvaluateParallelAssign(x *big.Int, open Opening, evalPfOut Eval
 	for j := 0; j < commitCount; j++ {
 		xPowEcd[j] = p.Encoder.Encode([]*big.Int{p.buffer.xPow})
 		p.buffer.mul.Mul(p.buffer.xPow, p.buffer.xPowSkip)
-		p.buffer.xPow.Mod(p.buffer.mul, p.Parameters.modulus)
+		p.Reducer.Reduce(p.buffer.mul)
+		p.buffer.xPow.Set(p.buffer.mul)
 	}
 
 	workSize := min(runtime.NumCPU(), p.Parameters.polyCommitSize+p.Parameters.ajtaiRandSize)
@@ -568,7 +573,7 @@ func (p *Prover) EvaluateParallelAssign(x *big.Int, open Opening, evalPfOut Eval
 	p.buffer.xPowBasis[0].SetUint64(1)
 	for i := 1; i < p.Parameters.bigIntCommitSize; i++ {
 		p.buffer.xPowBasis[i].Mul(p.buffer.xPowBasis[i-1], x)
-		p.buffer.xPowBasis[i].Mod(p.buffer.xPowBasis[i], p.Parameters.modulus)
+		p.Reducer.Reduce(p.buffer.xPowBasis[i])
 	}
 
 	p.Encoder.DecodeChunkAssign(evalPfOut.Mask, p.buffer.maskDcd)
@@ -577,6 +582,6 @@ func (p *Prover) EvaluateParallelAssign(x *big.Int, open Opening, evalPfOut Eval
 	for i := 0; i < p.Parameters.bigIntCommitSize; i++ {
 		p.buffer.xPow.Mul(p.buffer.xPowBasis[i], p.buffer.maskDcd[i])
 		evalPfOut.Value.Add(evalPfOut.Value, p.buffer.xPow)
+		p.Reducer.Reduce(evalPfOut.Value)
 	}
-	evalPfOut.Value.Mod(evalPfOut.Value, p.Parameters.modulus)
 }

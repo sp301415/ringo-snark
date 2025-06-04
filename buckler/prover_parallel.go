@@ -94,7 +94,6 @@ func (p *Prover) ProveParallel(ck celpc.AjtaiCommitKey, c Circuit) (Proof, error
 		go func(idx int) {
 			defer wg.Done()
 
-			pEcd := p.ringQ.NewPoly()
 			encoder := encoderPool[idx]
 			ringQ := ringQPool[idx]
 			polyProver := polyProverPool[idx]
@@ -102,11 +101,12 @@ func (p *Prover) ProveParallel(ck celpc.AjtaiCommitKey, c Circuit) (Proof, error
 			for job := range commitJobChan {
 				i := job.idx
 				if job.isPublic {
-					encoder.EncodeAssign(witnessData.publicWitnesses[i], pEcd)
-					ringQ.ToNTTPolyAssign(pEcd, witnessData.publicWitnessEncodings[i])
+					encoder.EncodeAssign(witnessData.publicWitnesses[i], bigring.BigPoly{Coeffs: witnessData.publicWitnessEncodings[i].Coeffs})
+					ringQ.NTTInPlace(witnessData.publicWitnessEncodings[i].Coeffs)
 				} else {
-					encoder.RandomEncodeAssign(witnessData.witnesses[i], pEcd)
-					ringQ.ToNTTPolyAssign(pEcd, witnessData.witnessEncodings[i])
+					encoder.RandomEncodeAssign(witnessData.witnesses[i], bigring.BigPoly{Coeffs: witnessData.witnessEncodings[i].Coeffs})
+					commitments[i], openings[i] = polyProver.CommitParallel(bigring.BigPoly{Coeffs: witnessData.witnessEncodings[i].Coeffs[:witnessCommitDeg]})
+					ringQ.NTTInPlace(witnessData.witnessEncodings[i].Coeffs)
 
 					if _, ok := witnessData.linCheckWitnessEncodings[int64(i)]; ok {
 						embedFactor := p.ringQ.Degree() / p.linCheckRingQ.Degree()
@@ -115,7 +115,6 @@ func (p *Prover) ProveParallel(ck celpc.AjtaiCommitKey, c Circuit) (Proof, error
 						}
 					}
 
-					commitments[i], openings[i] = polyProver.CommitParallel(bigring.BigPoly{Coeffs: pEcd.Coeffs[:witnessCommitDeg]})
 				}
 			}
 		}(i)
@@ -133,6 +132,8 @@ func (p *Prover) ProveParallel(ck celpc.AjtaiCommitKey, c Circuit) (Proof, error
 	rowCheckProver := &Prover{
 		Parameters: p.Parameters,
 
+		reducer: p.reducer.ShallowCopy(),
+
 		ringQ: p.ringQ.ShallowCopy(),
 
 		polyProver: p.polyProver.ShallowCopy(),
@@ -144,6 +145,8 @@ func (p *Prover) ProveParallel(ck celpc.AjtaiCommitKey, c Circuit) (Proof, error
 
 	linCheckProver := &Prover{
 		Parameters: p.Parameters,
+
+		reducer: p.reducer.ShallowCopy(),
 
 		ringQ:         p.ringQ.ShallowCopy(),
 		linCheckRingQ: p.linCheckRingQ.ShallowCopy(),
@@ -161,6 +164,8 @@ func (p *Prover) ProveParallel(ck celpc.AjtaiCommitKey, c Circuit) (Proof, error
 
 	sumCheckProver := &Prover{
 		Parameters: p.Parameters,
+
+		reducer: p.reducer.ShallowCopy(),
 
 		ringQ: p.ringQ.ShallowCopy(),
 
@@ -213,7 +218,7 @@ func (p *Prover) ProveParallel(ck celpc.AjtaiCommitKey, c Circuit) (Proof, error
 		p.oracle.SampleModAssign(rowCheckProver.rowCheckBuffer.batchConstPow[0])
 		for i := 1; i < len(rowCheckProver.rowCheckBuffer.batchConstPow); i++ {
 			rowCheckProver.rowCheckBuffer.batchConstPow[i].Mul(rowCheckProver.rowCheckBuffer.batchConstPow[i-1], rowCheckProver.rowCheckBuffer.batchConstPow[0])
-			rowCheckProver.rowCheckBuffer.batchConstPow[i].Mod(rowCheckProver.rowCheckBuffer.batchConstPow[i], p.Parameters.Modulus())
+			p.reducer.Reduce(rowCheckProver.rowCheckBuffer.batchConstPow[i])
 		}
 	}
 
@@ -221,13 +226,13 @@ func (p *Prover) ProveParallel(ck celpc.AjtaiCommitKey, c Circuit) (Proof, error
 		p.oracle.SampleModAssign(linCheckProver.linCheckBuffer.batchConstPow[0])
 		for i := 1; i < len(linCheckProver.linCheckBuffer.batchConstPow); i++ {
 			linCheckProver.linCheckBuffer.batchConstPow[i].Mul(linCheckProver.linCheckBuffer.batchConstPow[i-1], linCheckProver.linCheckBuffer.batchConstPow[0])
-			linCheckProver.linCheckBuffer.batchConstPow[i].Mod(linCheckProver.linCheckBuffer.batchConstPow[i], p.Parameters.Modulus())
+			p.reducer.Reduce(linCheckProver.linCheckBuffer.batchConstPow[i])
 		}
 
 		p.oracle.SampleModAssign(linCheckProver.linCheckBuffer.linCheckVec[0])
 		for i := 1; i < len(linCheckProver.linCheckBuffer.linCheckVec); i++ {
 			linCheckProver.linCheckBuffer.linCheckVec[i].Mul(linCheckProver.linCheckBuffer.linCheckVec[i-1], linCheckProver.linCheckBuffer.linCheckVec[0])
-			linCheckProver.linCheckBuffer.linCheckVec[i].Mod(linCheckProver.linCheckBuffer.linCheckVec[i], p.Parameters.Modulus())
+			p.reducer.Reduce(linCheckProver.linCheckBuffer.linCheckVec[i])
 		}
 	}
 
@@ -235,7 +240,7 @@ func (p *Prover) ProveParallel(ck celpc.AjtaiCommitKey, c Circuit) (Proof, error
 		p.oracle.SampleModAssign(sumCheckProver.sumCheckBuffer.batchConstPow[0])
 		for i := 1; i < len(sumCheckProver.sumCheckBuffer.batchConstPow); i++ {
 			sumCheckProver.sumCheckBuffer.batchConstPow[i].Mul(sumCheckProver.sumCheckBuffer.batchConstPow[i-1], sumCheckProver.sumCheckBuffer.batchConstPow[0])
-			sumCheckProver.sumCheckBuffer.batchConstPow[i].Mod(sumCheckProver.sumCheckBuffer.batchConstPow[i], p.Parameters.Modulus())
+			p.reducer.Reduce(sumCheckProver.sumCheckBuffer.batchConstPow[i])
 		}
 	}
 
@@ -396,6 +401,7 @@ func (p *Prover) evaluateCircuitParallelAssign(batchConstPow []*big.Int, constra
 			defer wg.Done()
 
 			mul := big.NewInt(0)
+			reducer := bigring.NewReducer(p.Parameters.Modulus())
 
 			for k := range batchJobs {
 				for c, constraint := range constraints {
@@ -405,19 +411,25 @@ func (p *Prover) evaluateCircuitParallelAssign(batchConstPow []*big.Int, constra
 
 						if constraint.coeffsPublicWitness[i] != -1 {
 							mul.Mul(termNTT.Coeffs[k], witnessData.publicWitnessEncodings[constraint.coeffsPublicWitness[i]].Coeffs[k])
-							termNTT.Coeffs[k].Mod(mul, p.Parameters.Modulus())
+							termNTT.Coeffs[k].Set(mul)
+							reducer.Reduce(termNTT.Coeffs[k])
 						}
 
 						for j := range constraint.witness[i] {
 							mul.Mul(termNTT.Coeffs[k], witnessData.witnessEncodings[constraint.witness[i][j]].Coeffs[k])
-							termNTT.Coeffs[k].Mod(mul, p.Parameters.Modulus())
+							termNTT.Coeffs[k].Set(mul)
+							reducer.Reduce(termNTT.Coeffs[k])
 						}
 
 						evalNTT.Coeffs[k].Add(evalNTT.Coeffs[k], termNTT.Coeffs[k])
+						if evalNTT.Coeffs[k].Cmp(p.Parameters.Modulus()) >= 0 {
+							evalNTT.Coeffs[k].Sub(evalNTT.Coeffs[k], p.Parameters.Modulus())
+						}
 					}
-					evalNTT.Coeffs[k].Mul(evalNTT.Coeffs[k], batchConstPow[c])
-					batchedNTT.Coeffs[k].Add(batchedNTT.Coeffs[k], evalNTT.Coeffs[k])
-					batchedNTT.Coeffs[k].Mod(batchedNTT.Coeffs[k], p.Parameters.Modulus())
+
+					mul.Mul(evalNTT.Coeffs[k], batchConstPow[c])
+					batchedNTT.Coeffs[k].Add(batchedNTT.Coeffs[k], mul)
+					reducer.Reduce(batchedNTT.Coeffs[k])
 				}
 			}
 		}()
@@ -483,6 +495,11 @@ func (p *Prover) linCheckParallel(batchConstPow []*big.Int, linCheckVec []*big.I
 	p.linCheckBuffer.batchedNTT.Clear()
 
 	workSize := min(runtime.NumCPU(), p.linCheckRingQ.Degree())
+	reducerPool := make([]*bigring.Reducer, workSize)
+	for i := 0; i < workSize; i++ {
+		reducerPool[i] = p.reducer.ShallowCopy()
+	}
+
 	batchJobs := make(chan int)
 	go func() {
 		defer close(batchJobs)
@@ -495,9 +512,10 @@ func (p *Prover) linCheckParallel(batchConstPow []*big.Int, linCheckVec []*big.I
 	wg.Add(workSize)
 
 	for i := 0; i < workSize; i++ {
-		go func() {
+		go func(idx int) {
 			defer wg.Done()
 
+			reducer := reducerPool[idx]
 			mul, mul0, mul1 := big.NewInt(0), big.NewInt(0), big.NewInt(0)
 
 			for k := range batchJobs {
@@ -508,19 +526,29 @@ func (p *Prover) linCheckParallel(batchConstPow []*big.Int, linCheckVec []*big.I
 						wEcdOut := witnessData.linCheckWitnessEncodings[p.ctx.linCheckConstraints[transformer][i][1]]
 
 						mul0.Mul(wEcdIn.Coeffs[k], lincheckVecTransEcdNTTs[t].Coeffs[k])
+						reducer.Reduce(mul0)
+
 						mul1.Mul(wEcdOut.Coeffs[k], p.linCheckBuffer.linCheckVecEcdNTT.Coeffs[k])
+						reducer.Reduce(mul1)
+
 						p.linCheckBuffer.evalNTT.Coeffs[k].Sub(mul0, mul1)
-						p.linCheckBuffer.evalNTT.Coeffs[k].Mod(p.linCheckBuffer.evalNTT.Coeffs[k], p.Parameters.Modulus())
+						if p.linCheckBuffer.evalNTT.Coeffs[k].Sign() < 0 {
+							p.linCheckBuffer.evalNTT.Coeffs[k].Add(p.linCheckBuffer.evalNTT.Coeffs[k], p.Parameters.Modulus())
+						}
 
 						mul.Mul(p.linCheckBuffer.evalNTT.Coeffs[k], batchConstPow[powIdx])
+						reducer.Reduce(mul)
+
 						p.linCheckBuffer.batchedNTT.Coeffs[k].Add(p.linCheckBuffer.batchedNTT.Coeffs[k], mul)
-						p.linCheckBuffer.batchedNTT.Coeffs[k].Mod(p.linCheckBuffer.batchedNTT.Coeffs[k], p.Parameters.Modulus())
+						if p.linCheckBuffer.batchedNTT.Coeffs[k].Cmp(p.Parameters.Modulus()) >= 0 {
+							p.linCheckBuffer.batchedNTT.Coeffs[k].Sub(p.linCheckBuffer.batchedNTT.Coeffs[k], p.Parameters.Modulus())
+						}
 
 						powIdx++
 					}
 				}
 			}
-		}()
+		}(i)
 	}
 
 	wg.Wait()

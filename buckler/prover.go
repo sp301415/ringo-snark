@@ -56,6 +56,8 @@ func (w *walker) walkForProve(prover *Prover, v reflect.Value, pw []PublicWitnes
 type Prover struct {
 	Parameters celpc.Parameters
 
+	reducer *bigring.Reducer
+
 	ringQ         *bigring.CyclicRing
 	linCheckRingQ *bigring.CyclicRing
 
@@ -164,17 +166,17 @@ func newProverBuffer(params celpc.Parameters, ringQ *bigring.CyclicRing, ctx *Co
 		infDcmp: infDcmp,
 		twoDcmp: twoDcmp,
 
-		dcmpSigned: big.NewInt(0).Set(params.Modulus()),
-		baseNeg:    big.NewInt(0).Set(params.Modulus()),
+		dcmpSigned: big.NewInt(0),
+		baseNeg:    big.NewInt(0),
 		qHalf:      big.NewInt(0).Rsh(params.Modulus(), 1),
 
-		sqNorm:    big.NewInt(0).Set(params.Modulus()),
-		sqNormSum: big.NewInt(0).Set(params.Modulus()),
+		sqNorm:    big.NewInt(0),
+		sqNormSum: big.NewInt(0),
 
 		pEcd:    ringQ.NewPoly(),
 		pEcdNTT: ringQ.NewNTTPoly(),
 
-		evalPoint: big.NewInt(0).Set(params.Modulus()),
+		evalPoint: big.NewInt(0),
 	}
 }
 
@@ -182,7 +184,7 @@ func newProverBuffer(params celpc.Parameters, ringQ *bigring.CyclicRing, ctx *Co
 func newRowCheckBuffer(params celpc.Parameters, ringQ *bigring.CyclicRing, ctx *Context) rowCheckBuffer {
 	batchConstPow := make([]*big.Int, len(ctx.arithConstraints))
 	for i := range batchConstPow {
-		batchConstPow[i] = big.NewInt(0).Set(params.Modulus())
+		batchConstPow[i] = big.NewInt(0)
 	}
 
 	return rowCheckBuffer{
@@ -202,7 +204,7 @@ func newLinCheckBuffer(params celpc.Parameters, ringQ *bigring.CyclicRing, ctx *
 	batchConstPow := make([]*big.Int, 0)
 	for _, transformer := range ctx.linCheck {
 		for range ctx.linCheckConstraints[transformer] {
-			batchConstPow = append(batchConstPow, big.NewInt(0).Set(params.Modulus()))
+			batchConstPow = append(batchConstPow, big.NewInt(0))
 		}
 	}
 
@@ -236,7 +238,7 @@ func newLinCheckBuffer(params celpc.Parameters, ringQ *bigring.CyclicRing, ctx *
 func newSumCheckBuffer(params celpc.Parameters, ringQ *bigring.CyclicRing, ctx *Context) sumCheckBuffer {
 	batchConstPow := make([]*big.Int, len(ctx.sumCheckConstraints))
 	for i := range batchConstPow {
-		batchConstPow[i] = big.NewInt(0).Set(params.Modulus())
+		batchConstPow[i] = big.NewInt(0)
 	}
 
 	return sumCheckBuffer{
@@ -420,7 +422,7 @@ func (p *Prover) Prove(ck celpc.AjtaiCommitKey, c Circuit) (Proof, error) {
 		p.oracle.SampleModAssign(p.rowCheckBuffer.batchConstPow[0])
 		for i := 1; i < len(p.rowCheckBuffer.batchConstPow); i++ {
 			p.rowCheckBuffer.batchConstPow[i].Mul(p.rowCheckBuffer.batchConstPow[i-1], p.rowCheckBuffer.batchConstPow[0])
-			p.rowCheckBuffer.batchConstPow[i].Mod(p.rowCheckBuffer.batchConstPow[i], p.Parameters.Modulus())
+			p.reducer.Reduce(p.rowCheckBuffer.batchConstPow[i])
 		}
 		rowCheckCommit, rowCheckOpen = p.rowCheck(p.rowCheckBuffer.batchConstPow, witnessData)
 	}
@@ -431,13 +433,13 @@ func (p *Prover) Prove(ck celpc.AjtaiCommitKey, c Circuit) (Proof, error) {
 		p.oracle.SampleModAssign(p.linCheckBuffer.batchConstPow[0])
 		for i := 1; i < len(p.linCheckBuffer.batchConstPow); i++ {
 			p.linCheckBuffer.batchConstPow[i].Mul(p.linCheckBuffer.batchConstPow[i-1], p.linCheckBuffer.batchConstPow[0])
-			p.linCheckBuffer.batchConstPow[i].Mod(p.linCheckBuffer.batchConstPow[i], p.Parameters.Modulus())
+			p.reducer.Reduce(p.linCheckBuffer.batchConstPow[i])
 		}
 
 		p.oracle.SampleModAssign(p.linCheckBuffer.linCheckVec[0])
 		for i := 1; i < p.Parameters.Degree(); i++ {
 			p.linCheckBuffer.linCheckVec[i].Mul(p.linCheckBuffer.linCheckVec[i-1], p.linCheckBuffer.linCheckVec[0])
-			p.linCheckBuffer.linCheckVec[i].Mod(p.linCheckBuffer.linCheckVec[i], p.Parameters.Modulus())
+			p.reducer.Reduce(p.linCheckBuffer.linCheckVec[i])
 		}
 
 		linCheckCommit, linCheckOpen = p.linCheck(p.linCheckBuffer.batchConstPow, p.linCheckBuffer.linCheckVec, linCheckMask, witnessData)
@@ -449,7 +451,7 @@ func (p *Prover) Prove(ck celpc.AjtaiCommitKey, c Circuit) (Proof, error) {
 		p.oracle.SampleModAssign(p.sumCheckBuffer.batchConstPow[0])
 		for i := 1; i < len(p.sumCheckBuffer.batchConstPow); i++ {
 			p.sumCheckBuffer.batchConstPow[i].Mul(p.sumCheckBuffer.batchConstPow[i-1], p.sumCheckBuffer.batchConstPow[0])
-			p.sumCheckBuffer.batchConstPow[i].Mod(p.sumCheckBuffer.batchConstPow[i], p.Parameters.Modulus())
+			p.reducer.Reduce(p.sumCheckBuffer.batchConstPow[i])
 		}
 
 		sumCheckCommit, sumCheckOpen = p.sumCheck(p.sumCheckBuffer.batchConstPow, sumCheckMask, witnessData)
@@ -538,6 +540,7 @@ func (p *Prover) evaluateCircuitAssign(batchConstPow []*big.Int, constraints []A
 			for j := 0; j < p.ringQ.Degree(); j++ {
 				termNTT.Coeffs[j].Set(constraint.coeffsBig[i])
 			}
+
 			if constraint.coeffsPublicWitness[i] != -1 {
 				p.ringQ.MulNTTAssign(termNTT, witnessData.publicWitnessEncodings[constraint.coeffsPublicWitness[i]], termNTT)
 			}

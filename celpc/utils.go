@@ -3,12 +3,14 @@ package celpc
 import (
 	"math/big"
 
+	"github.com/sp301415/ringo-snark/bigring"
 	"github.com/tuneinsight/lattigo/v6/ring"
 )
 
 // RNSReconstructor reconstructs a polynomial from its RNS representation.
 type RNSReconstructor struct {
-	params Parameters
+	params  Parameters
+	reducer *bigring.Reducer
 
 	rnsGadget []*big.Int
 	qHalf     *big.Int
@@ -34,7 +36,8 @@ func NewRNSReconstructor(params Parameters) *RNSReconstructor {
 	}
 
 	return &RNSReconstructor{
-		params: params,
+		params:  params,
+		reducer: bigring.NewReducer(params.ringQ.Modulus()),
 
 		rnsGadget: rnsGadget,
 		qHalf:     big.NewInt(0).Rsh(params.ringQ.Modulus(), 1),
@@ -48,14 +51,15 @@ func newRNSReconstructorBuffer(params Parameters) rnsReconstructorBuffer {
 	return rnsReconstructorBuffer{
 		pInv:  params.ringQ.NewPoly(),
 		mul:   big.NewInt(0),
-		coeff: big.NewInt(0).Set(params.ringQ.Modulus()),
+		coeff: big.NewInt(0),
 	}
 }
 
 // ShallowCopy returns a shallow copy of the RNSReconstructor that is thread-safe.
 func (r *RNSReconstructor) ShallowCopy() *RNSReconstructor {
 	return &RNSReconstructor{
-		params: r.params,
+		params:  r.params,
+		reducer: r.reducer.ShallowCopy(),
 
 		rnsGadget: r.rnsGadget,
 		qHalf:     r.qHalf,
@@ -96,8 +100,9 @@ func (r *RNSReconstructor) ReconstructAssign(p ring.Poly, v []*big.Int) {
 			r.buffer.mul.SetUint64(r.buffer.pInv.Coeffs[j][i])
 			r.buffer.coeff.Mul(r.buffer.mul, r.rnsGadget[j])
 			v[i].Add(v[i], r.buffer.coeff)
+			r.reducer.Reduce(v[i])
 		}
-		v[i].Mod(v[i], r.params.ringQ.Modulus())
+
 		if v[i].Cmp(r.qHalf) >= 0 {
 			v[i].Sub(v[i], r.params.ringQ.Modulus())
 		}

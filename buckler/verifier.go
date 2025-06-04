@@ -11,6 +11,8 @@ import (
 type Verifier struct {
 	Parameters celpc.Parameters
 
+	reducer *bigring.Reducer
+
 	ringQ *bigring.CyclicRing
 
 	encoder      *Encoder
@@ -30,6 +32,8 @@ type verifierBuffer struct {
 
 	pEcd    bigring.BigPoly
 	pEcdNTT bigring.BigNTTPoly
+
+	mul *big.Int
 
 	batched *big.Int
 	eval    *big.Int
@@ -52,40 +56,42 @@ type verifierBuffer struct {
 func newVerifierBuffer(params celpc.Parameters, ringQ *bigring.CyclicRing, ctx *Context) verifierBuffer {
 	batchConstRowCheckPow := make([]*big.Int, len(ctx.arithConstraints))
 	for i := range batchConstRowCheckPow {
-		batchConstRowCheckPow[i] = big.NewInt(0).Set(params.Modulus())
+		batchConstRowCheckPow[i] = big.NewInt(0)
 	}
 
 	batchConstLinCheckPow := make([]*big.Int, 0)
 	for _, transformer := range ctx.linCheck {
 		for range ctx.linCheckConstraints[transformer] {
-			batchConstLinCheckPow = append(batchConstLinCheckPow, big.NewInt(0).Set(params.Modulus()))
+			batchConstLinCheckPow = append(batchConstLinCheckPow, big.NewInt(0))
 		}
 	}
 
 	batchConstSumCheckPow := make([]*big.Int, len(ctx.sumCheckConstraints))
 	for i := range batchConstSumCheckPow {
-		batchConstSumCheckPow[i] = big.NewInt(0).Set(params.Modulus())
+		batchConstSumCheckPow[i] = big.NewInt(0)
 	}
 
 	linCheckVec := make([]*big.Int, params.Degree())
 	linCheckVecTrans := make([]*big.Int, params.Degree())
 	for i := 0; i < params.Degree(); i++ {
-		linCheckVec[i] = big.NewInt(0).Set(params.Modulus())
-		linCheckVecTrans[i] = big.NewInt(0).Set(params.Modulus())
+		linCheckVec[i] = big.NewInt(0)
+		linCheckVecTrans[i] = big.NewInt(0)
 	}
 
 	return verifierBuffer{
-		evalPoint:   big.NewInt(0).Set(params.Modulus()),
-		vanishPoint: big.NewInt(0).Set(params.Modulus()),
-		degreeInv:   big.NewInt(0).Set(params.Modulus()),
+		evalPoint:   big.NewInt(0),
+		vanishPoint: big.NewInt(0),
+		degreeInv:   big.NewInt(0),
 
 		pEcd:    ringQ.NewPoly(),
 		pEcdNTT: ringQ.NewNTTPoly(),
 
-		batched: big.NewInt(0).Set(params.Modulus()),
-		eval:    big.NewInt(0).Set(params.Modulus()),
-		term:    big.NewInt(0).Set(params.Modulus()),
-		check:   big.NewInt(0).Set(params.Modulus()),
+		mul: big.NewInt(0),
+
+		batched: big.NewInt(0),
+		eval:    big.NewInt(0),
+		term:    big.NewInt(0),
+		check:   big.NewInt(0),
 
 		batchConstRowCheckPow: batchConstRowCheckPow,
 		batchConstLinCheckPow: batchConstLinCheckPow,
@@ -93,10 +99,10 @@ func newVerifierBuffer(params celpc.Parameters, ringQ *bigring.CyclicRing, ctx *
 
 		linCheckVec:          linCheckVec,
 		linCheckVecTrans:     linCheckVecTrans,
-		linCheckVecEval:      big.NewInt(0).Set(params.Modulus()),
-		linCheckVecTransEval: big.NewInt(0).Set(params.Modulus()),
+		linCheckVecEval:      big.NewInt(0),
+		linCheckVecTransEval: big.NewInt(0),
 
-		batchedSum: big.NewInt(0).Set(params.Modulus()),
+		batchedSum: big.NewInt(0),
 	}
 }
 
@@ -132,7 +138,7 @@ func (v *Verifier) Verify(ck celpc.AjtaiCommitKey, pf Proof) bool {
 		v.oracle.SampleModAssign(v.buffer.batchConstRowCheckPow[0])
 		for i := 1; i < len(v.buffer.batchConstRowCheckPow); i++ {
 			v.buffer.batchConstRowCheckPow[i].Mul(v.buffer.batchConstRowCheckPow[i-1], v.buffer.batchConstRowCheckPow[0])
-			v.buffer.batchConstRowCheckPow[i].Mod(v.buffer.batchConstRowCheckPow[i], v.Parameters.Modulus())
+			v.reducer.Reduce(v.buffer.batchConstRowCheckPow[i])
 		}
 	}
 
@@ -140,13 +146,13 @@ func (v *Verifier) Verify(ck celpc.AjtaiCommitKey, pf Proof) bool {
 		v.oracle.SampleModAssign(v.buffer.batchConstLinCheckPow[0])
 		for i := 1; i < len(v.buffer.batchConstLinCheckPow); i++ {
 			v.buffer.batchConstLinCheckPow[i].Mul(v.buffer.batchConstLinCheckPow[i-1], v.buffer.batchConstLinCheckPow[0])
-			v.buffer.batchConstLinCheckPow[i].Mod(v.buffer.batchConstLinCheckPow[i], v.Parameters.Modulus())
+			v.reducer.Reduce(v.buffer.batchConstLinCheckPow[i])
 		}
 
 		v.oracle.SampleModAssign(v.buffer.linCheckVec[0])
 		for i := 1; i < v.Parameters.Degree(); i++ {
 			v.buffer.linCheckVec[i].Mul(v.buffer.linCheckVec[i-1], v.buffer.linCheckVec[0])
-			v.buffer.linCheckVec[i].Mod(v.buffer.linCheckVec[i], v.Parameters.Modulus())
+			v.reducer.Reduce(v.buffer.linCheckVec[i])
 		}
 	}
 
@@ -154,7 +160,7 @@ func (v *Verifier) Verify(ck celpc.AjtaiCommitKey, pf Proof) bool {
 		v.oracle.SampleModAssign(v.buffer.batchConstSumCheckPow[0])
 		for i := 1; i < len(v.buffer.batchConstSumCheckPow); i++ {
 			v.buffer.batchConstSumCheckPow[i].Mul(v.buffer.batchConstSumCheckPow[i-1], v.buffer.batchConstSumCheckPow[0])
-			v.buffer.batchConstSumCheckPow[i].Mod(v.buffer.batchConstSumCheckPow[i], v.Parameters.Modulus())
+			v.reducer.Reduce(v.buffer.batchConstSumCheckPow[i])
 		}
 	}
 
@@ -229,21 +235,26 @@ func (v *Verifier) evaluateCircuitAssign(batchConstPow []*big.Int, constraints [
 			v.buffer.term.Set(constraint.coeffsBig[i])
 
 			if constraint.coeffsPublicWitness[i] != -1 {
-				v.buffer.term.Mul(v.buffer.term, pwEvals[constraint.coeffsPublicWitness[i]])
-				v.buffer.term.Mod(v.buffer.term, v.Parameters.Modulus())
+				v.buffer.mul.Mul(v.buffer.term, pwEvals[constraint.coeffsPublicWitness[i]])
+				v.buffer.term.Set(v.buffer.mul)
+				v.reducer.Reduce(v.buffer.term)
 			}
 
 			for j := range constraint.witness[i] {
-				v.buffer.term.Mul(v.buffer.term, pf.EvalProofs[constraint.witness[i][j]].Value)
-				v.buffer.term.Mod(v.buffer.term, v.Parameters.Modulus())
+				v.buffer.mul.Mul(v.buffer.term, pf.EvalProofs[constraint.witness[i][j]].Value)
+				v.buffer.term.Set(v.buffer.mul)
+				v.reducer.Reduce(v.buffer.term)
 			}
-			v.buffer.eval.Add(v.buffer.eval, v.buffer.term)
-			v.buffer.eval.Mod(v.buffer.eval, v.Parameters.Modulus())
-		}
-		v.buffer.eval.Mul(v.buffer.eval, batchConstPow[c])
 
-		batched.Add(batched, v.buffer.eval)
-		batched.Mod(batched, v.Parameters.Modulus())
+			v.buffer.eval.Add(v.buffer.eval, v.buffer.term)
+			if v.buffer.eval.Cmp(v.Parameters.Modulus()) >= 0 {
+				v.buffer.eval.Sub(v.buffer.eval, v.Parameters.Modulus())
+			}
+		}
+
+		v.buffer.mul.Mul(v.buffer.eval, batchConstPow[c])
+		batched.Add(batched, v.buffer.mul)
+		v.reducer.Reduce(batched)
 	}
 }
 
@@ -258,7 +269,7 @@ func (v *Verifier) rowCheck(batchConstPow []*big.Int, evalPoint, vanishPoint *bi
 	v.evaluateCircuitAssign(batchConstPow, v.ctx.arithConstraints, pwEvals, pf, v.buffer.batched)
 
 	v.buffer.check.Mul(pf.RowCheckEvaluationProof.QuoEvalProof.Value, vanishPoint)
-	v.buffer.check.Mod(v.buffer.check, v.Parameters.Modulus())
+	v.reducer.Reduce(v.buffer.check)
 
 	return v.buffer.batched.Cmp(v.buffer.check) == 0
 }
@@ -292,7 +303,7 @@ func (v *Verifier) linCheck(batchConstPow []*big.Int, linCheckVec []*big.Int, ev
 	}
 
 	v.buffer.check.Mul(pf.LinCheckEvaluationProof.RemEvalProof.Value, evalPoint)
-	v.buffer.check.Mod(v.buffer.check, v.Parameters.Modulus())
+	v.reducer.Reduce(v.buffer.check)
 	if v.buffer.check.Cmp(pf.LinCheckEvaluationProof.RemShiftEvalProof.Value) != 0 {
 		return false
 	}
@@ -312,24 +323,27 @@ func (v *Verifier) linCheck(batchConstPow []*big.Int, linCheckVec []*big.Int, ev
 
 			v.buffer.eval.Mul(wEcdInEval, v.buffer.linCheckVecTransEval)
 			v.buffer.term.Mul(wEcdOutEval, v.buffer.linCheckVecEval)
-			v.buffer.eval.Sub(v.buffer.eval, v.buffer.term)
-			v.buffer.eval.Mod(v.buffer.eval, v.Parameters.Modulus())
 
-			v.buffer.eval.Mul(v.buffer.eval, batchConstPow[powIdx])
-			v.buffer.batched.Add(v.buffer.batched, v.buffer.eval)
-			v.buffer.batched.Mod(v.buffer.batched, v.Parameters.Modulus())
+			v.buffer.eval.Sub(v.buffer.eval, v.buffer.term)
+			v.reducer.Reduce(v.buffer.eval)
+
+			v.buffer.mul.Mul(v.buffer.eval, batchConstPow[powIdx])
+			v.buffer.batched.Add(v.buffer.batched, v.buffer.mul)
+			v.reducer.Reduce(v.buffer.batched)
 
 			powIdx++
 		}
 	}
 
 	v.buffer.batched.Add(v.buffer.batched, pf.LinCheckEvaluationProof.MaskEvalProof.Value)
-	v.buffer.batched.Mod(v.buffer.batched, v.Parameters.Modulus())
+	if v.buffer.batched.Cmp(v.Parameters.Modulus()) >= 0 {
+		v.buffer.batched.Sub(v.buffer.batched, v.Parameters.Modulus())
+	}
 
 	v.buffer.check.Mul(pf.LinCheckEvaluationProof.QuoEvalProof.Value, vanishPoint)
 	v.buffer.check.Add(v.buffer.check, pf.LinCheckEvaluationProof.RemShiftEvalProof.Value)
 	v.buffer.check.Add(v.buffer.check, pf.LinCheckMaskCommitment.MaskSum)
-	v.buffer.check.Mod(v.buffer.check, v.Parameters.Modulus())
+	v.reducer.Reduce(v.buffer.check)
 
 	return v.buffer.batched.Cmp(v.buffer.check) == 0
 }
@@ -363,7 +377,7 @@ func (v *Verifier) sumCheck(batchConstPow []*big.Int, evalPoint, vanishPoint *bi
 	}
 
 	v.buffer.check.Mul(pf.LinCheckEvaluationProof.RemEvalProof.Value, evalPoint)
-	v.buffer.check.Mod(v.buffer.check, v.Parameters.Modulus())
+	v.reducer.Reduce(v.buffer.check)
 	if v.buffer.check.Cmp(pf.LinCheckEvaluationProof.RemShiftEvalProof.Value) != 0 {
 		return false
 	}
@@ -372,7 +386,7 @@ func (v *Verifier) sumCheck(batchConstPow []*big.Int, evalPoint, vanishPoint *bi
 	for i, sumCheckSum := range v.ctx.sumCheckSums {
 		v.buffer.eval.Mul(batchConstPow[i], sumCheckSum)
 		v.buffer.batchedSum.Add(v.buffer.batchedSum, v.buffer.eval)
-		v.buffer.batchedSum.Mod(v.buffer.batchedSum, v.Parameters.Modulus())
+		v.reducer.Reduce(v.buffer.batchedSum)
 	}
 	v.buffer.degreeInv.SetUint64(uint64(v.Parameters.Degree()))
 	v.buffer.degreeInv.ModInverse(v.buffer.degreeInv, v.Parameters.Modulus())
@@ -381,12 +395,12 @@ func (v *Verifier) sumCheck(batchConstPow []*big.Int, evalPoint, vanishPoint *bi
 	v.evaluateCircuitAssign(batchConstPow, v.ctx.sumCheckConstraints, pwEvals, pf, v.buffer.batched)
 	v.buffer.batched.Add(v.buffer.batched, pf.SumCheckEvaluationProof.MaskEvalProof.Value)
 	v.buffer.batched.Sub(v.buffer.batched, v.buffer.batchedSum)
-	v.buffer.batched.Mod(v.buffer.batched, v.Parameters.Modulus())
+	v.reducer.Reduce(v.buffer.batched)
 
 	v.buffer.check.Mul(pf.SumCheckEvaluationProof.QuoEvalProof.Value, vanishPoint)
 	v.buffer.check.Add(v.buffer.check, pf.SumCheckEvaluationProof.RemShiftEvalProof.Value)
 	v.buffer.check.Add(v.buffer.check, pf.SumCheckMaskCommitment.MaskSum)
-	v.buffer.check.Mod(v.buffer.check, v.Parameters.Modulus())
+	v.reducer.Reduce(v.buffer.check)
 
 	return v.buffer.batched.Cmp(v.buffer.check) == 0
 }
