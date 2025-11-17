@@ -1,4 +1,4 @@
-package buckler_test
+package buckler_old_test
 
 import (
 	"math"
@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	"github.com/sp301415/ringo-snark/bigring"
-	"github.com/sp301415/ringo-snark/buckler"
+	"github.com/sp301415/ringo-snark/buckler_old"
 	"github.com/sp301415/ringo-snark/celpc"
 	"github.com/stretchr/testify/assert"
 )
@@ -39,29 +39,29 @@ var (
 )
 
 type TestCircuit struct {
-	NTTTransformer    buckler.LinearCheckTransformer
-	AutNTTTransformer buckler.LinearCheckTransformer
+	NTTTransformer    buckler_old.LinearCheckTransformer
+	AutNTTTransformer buckler_old.LinearCheckTransformer
 
-	XNTT buckler.PublicWitness
+	XNTT buckler_old.PublicWitness
 
-	Y       buckler.Witness
-	YNTT    buckler.Witness
-	YAutNTT buckler.Witness
+	Y       buckler_old.Witness
+	YNTT    buckler_old.Witness
+	YAutNTT buckler_old.Witness
 
 	YInfBound uint64
 	YSqBound  uint64
 
-	ZNTT buckler.Witness
+	ZNTT buckler_old.Witness
 }
 
-func (c *TestCircuit) Define(ctx *buckler.Context) {
+func (c *TestCircuit) Define(ctx *buckler_old.Context) {
 	ctx.AddLinearConstraint(c.NTTTransformer, c.Y, c.YNTT)
 	ctx.AddLinearConstraint(c.AutNTTTransformer, c.YNTT, c.YAutNTT)
 
 	ctx.AddInfNormConstraint(c.Y, c.YInfBound)
 	ctx.AddSqTwoNormConstraint(c.Y, c.YSqBound)
 
-	var multConstraint buckler.ArithmeticConstraint
+	var multConstraint buckler_old.ArithmeticConstraint
 	multConstraint.AddTerm(big.NewInt(1), c.XNTT, c.YNTT)
 	multConstraint.AddTerm(big.NewInt(-1), nil, c.ZNTT)
 	ctx.AddArithmeticConstraint(multConstraint)
@@ -92,13 +92,13 @@ func TestBuckler(t *testing.T) {
 
 	ck := celpc.GenAjtaiCommitKey(params)
 	c := TestCircuit{
-		NTTTransformer:    buckler.NewNTTTransformer(ringQ),
-		AutNTTTransformer: buckler.NewAutNTTTransformer(ringQ, autIdx),
+		NTTTransformer:    buckler_old.NewNTTTransformer(ringQ),
+		AutNTTTransformer: buckler_old.NewAutNTTTransformer(ringQ, autIdx),
 
 		YInfBound: YInfBound,
 		YSqBound:  YSqBound,
 	}
-	prover, verifier, err := buckler.Compile(params, &c)
+	prover, verifier, err := buckler_old.Compile(params, &c)
 	assert.NoError(t, err)
 
 	assignment := TestCircuit{

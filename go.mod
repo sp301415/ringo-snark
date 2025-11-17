@@ -3,7 +3,9 @@ module github.com/sp301415/ringo-snark
 go 1.24.0
 
 require (
+	github.com/bits-and-blooms/bitset v1.20.0
 	github.com/consensys/gnark-crypto v0.19.2
+	github.com/leanovate/gopter v0.2.11
 	github.com/stretchr/testify v1.10.0
 	github.com/tuneinsight/lattigo/v6 v6.1.0
 	golang.org/x/crypto v0.35.0

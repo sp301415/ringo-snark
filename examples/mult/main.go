@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/sp301415/ringo-snark/bigring"
-	"github.com/sp301415/ringo-snark/buckler"
+	"github.com/sp301415/ringo-snark/buckler_old"
 	"github.com/sp301415/ringo-snark/celpc"
 )
 
@@ -32,26 +32,26 @@ import (
 
 // Just like gnark, we define a circuit type.
 type MultCircuit struct {
-	NTTTransformer buckler.LinearCheckTransformer
+	NTTTransformer buckler_old.LinearCheckTransformer
 
-	YNTT buckler.PublicWitness
+	YNTT buckler_old.PublicWitness
 
-	XCoeffs buckler.Witness
-	ZCoeffs buckler.Witness
+	XCoeffs buckler_old.Witness
+	ZCoeffs buckler_old.Witness
 
-	XNTT buckler.Witness
-	ZNTT buckler.Witness
+	XNTT buckler_old.Witness
+	ZNTT buckler_old.Witness
 }
 
 // Again, just like gnark, we define a special method to constraint the circuit.
-func (c *MultCircuit) Define(ctx *buckler.Context) {
+func (c *MultCircuit) Define(ctx *buckler_old.Context) {
 	// XNTT = NTT(X)
 	ctx.AddLinearConstraint(c.NTTTransformer, c.XCoeffs, c.XNTT)
 	// ZNTT = NTT(Z)
 	ctx.AddLinearConstraint(c.NTTTransformer, c.ZCoeffs, c.ZNTT)
 
 	// XNTT * YNTT - ZNTT = 0
-	var multConstraint buckler.ArithmeticConstraint
+	var multConstraint buckler_old.ArithmeticConstraint
 	multConstraint.AddTerm(big.NewInt(1), c.YNTT, c.XNTT) // YNTT * XNTT
 	multConstraint.AddTerm(big.NewInt(-1), nil, c.ZNTT)   // - ZNTT
 	ctx.AddArithmeticConstraint(multConstraint)
@@ -107,9 +107,9 @@ func main() {
 	// We compile an empty circuit, and get prover and verifier.
 	// Ideally, this should be done by the prover and verifier, respectively.
 	c := MultCircuit{
-		NTTTransformer: buckler.NewNTTTransformer(ringQ),
+		NTTTransformer: buckler_old.NewNTTTransformer(ringQ),
 	}
-	prover, verifier, err := buckler.Compile(paramsLogN13LogQ212, &c)
+	prover, verifier, err := buckler_old.Compile(paramsLogN13LogQ212, &c)
 	if err != nil {
 		panic(err)
 	}

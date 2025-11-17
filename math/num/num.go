@@ -83,3 +83,19 @@ func ExpE[E Uint[E]](x E, e uint64) E {
 	}
 	return r
 }
+
+// BitReverseInPlace reorders v into bit-reversal order in-place.
+func BitReverseInPlace[T any](v []T) {
+	var bit, j int
+	for i := 1; i < len(v); i++ {
+		bit = len(v) >> 1
+		for j >= bit {
+			j -= bit
+			bit >>= 1
+		}
+		j += bit
+		if i < j {
+			v[i], v[j] = v[j], v[i]
+		}
+	}
+}

@@ -94,3 +94,15 @@ func isTernaryOperable[E num.Uint[E]](rank int, pOut, p0, p1 *Poly[E]) bool {
 	}
 	return true
 }
+
+// evaluatorBuffer is a buffer for polynomial evaluators.
+type evaluatorBuffer[E num.Uint[E]] struct {
+	p *Poly[E]
+}
+
+// newEvaluatorBuffer creates a new [evaluatorBuffer].
+func newEvaluatorBuffer[E num.Uint[E]](rank int) evaluatorBuffer[E] {
+	return evaluatorBuffer[E]{
+		p: NewPoly[E](rank, false),
+	}
+}

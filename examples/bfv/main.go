@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/sp301415/ringo-snark/bigring"
-	"github.com/sp301415/ringo-snark/buckler"
+	"github.com/sp301415/ringo-snark/buckler_old"
 	"github.com/sp301415/ringo-snark/celpc"
 	"github.com/tuneinsight/lattigo/v6/core/rlwe"
 	"github.com/tuneinsight/lattigo/v6/schemes/bgv"
@@ -26,30 +26,30 @@ import (
 // In our example, we set t = 2^16 + 1.
 
 type CiphertextCircuit struct {
-	NTTTransformer buckler.LinearCheckTransformer
+	NTTTransformer buckler_old.LinearCheckTransformer
 
 	Degree           int
 	PlaintextModulus uint64
 	ErrBound         uint64
 
-	CiphertextNTT [2]buckler.PublicWitness
+	CiphertextNTT [2]buckler_old.PublicWitness
 
-	SecretKeyNTT buckler.Witness
+	SecretKeyNTT buckler_old.Witness
 
 	Delta         *big.Int
-	MessageNTT    buckler.Witness
-	MessageCoeffs buckler.Witness
+	MessageNTT    buckler_old.Witness
+	MessageCoeffs buckler_old.Witness
 
-	ErrorNTT    buckler.Witness
-	ErrorCoeffs buckler.Witness
+	ErrorNTT    buckler_old.Witness
+	ErrorCoeffs buckler_old.Witness
 }
 
-func (c *CiphertextCircuit) Define(ctx *buckler.Context) {
+func (c *CiphertextCircuit) Define(ctx *buckler_old.Context) {
 	ctx.AddLinearConstraint(c.NTTTransformer, c.MessageCoeffs, c.MessageNTT)
 	ctx.AddLinearConstraint(c.NTTTransformer, c.ErrorCoeffs, c.ErrorNTT)
 
 	// Body + Mask * sk - Message - Error = 0
-	var ctConstraint buckler.ArithmeticConstraint
+	var ctConstraint buckler_old.ArithmeticConstraint
 	ctConstraint.AddTerm(big.NewInt(1), c.CiphertextNTT[0])
 	ctConstraint.AddTerm(big.NewInt(1), c.CiphertextNTT[1], c.SecretKeyNTT)
 	ctConstraint.AddTerm(big.NewInt(0).Neg(c.Delta), nil, c.MessageNTT)
@@ -190,21 +190,21 @@ func main() {
 	// Now we are ready to generate the proof.
 	c := CiphertextCircuit{
 		// All non-witness fields should be set for correct compilation.
-		NTTTransformer: buckler.NewNTTTransformer(bigringQ),
+		NTTTransformer: buckler_old.NewNTTTransformer(bigringQ),
 
 		Degree:           bfvParamsLogN13LogQ240.N(),
 		PlaintextModulus: bfvParamsLogN13LogQ240.PlaintextModulus(),
 		Delta:            delta,
 		ErrBound:         errBound,
 	}
-	prover, verifier, err := buckler.Compile(celpcParamsLogN13LogQ212, &c)
+	prover, verifier, err := buckler_old.Compile(celpcParamsLogN13LogQ212, &c)
 	if err != nil {
 		panic(err)
 	}
 	ck := celpc.GenAjtaiCommitKey(celpcParamsLogN13LogQ212)
 
 	assignment := CiphertextCircuit{
-		CiphertextNTT: [2]buckler.PublicWitness{ctNTT[0].Coeffs, ctNTT[1].Coeffs},
+		CiphertextNTT: [2]buckler_old.PublicWitness{ctNTT[0].Coeffs, ctNTT[1].Coeffs},
 
 		SecretKeyNTT: skNTT.Coeffs,
 

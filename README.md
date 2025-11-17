@@ -9,7 +9,7 @@
 
 This library consists of two parts:
 
-1. **Jindo**, a lattice-based PCS (Polynomial Commitment Scheme) with post-quantum security and transparent setup. More importantly, CELPC naturally supports polynomials over very large prime fields, making it a suitable candidate for proving relations over typical FHE parameters.
+1. **Jindo**, a lattice-based PCS (Polynomial Commitment Scheme) with post-quantum security and transparent setup. More importantly, Jindo naturally supports polynomials over very large prime fields, making it a suitable candidate for proving relations over typical FHE parameters.
 2. **Buckler** [[HLSS24](https://eprint.iacr.org/2024/1879)], a zero-knowledge PIOP (Polynomial Interactive Oracle Proof) toolkit for relationships over power-of-two cyclotomic rings, which is commonly used in lattice-based cryptography.
 
 ## Usage
