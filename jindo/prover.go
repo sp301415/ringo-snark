@@ -85,15 +85,15 @@ func (p *Prover[E]) commitColTo(i int, open *Opening, v []E, firstRow, lastRow [
 	rowStart := i * p.params.slots
 	rowEnd := (i + 1) * p.params.slots
 
-	p.ecd.EncodeTo(open.Encode[i][0], firstRow[rowStart:rowEnd])
+	p.ecd.RandEncodeStdDevTo(open.Encode[i][0], firstRow[rowStart:rowEnd], p.params.ecdBlindStdDev)
 
 	for j := 1; j < p.params.rows-1; j++ {
 		idxStart := (j * p.params.cols * p.params.slots) + rowStart
 		idxEnd := (j * p.params.cols * p.params.slots) + rowEnd
-		p.ecd.EncodeTo(open.Encode[i][j], v[min(idxStart, len(v)):min(idxEnd, len(v))])
+		p.ecd.RandEncodeTo(open.Encode[i][j], v[min(idxStart, len(v)):min(idxEnd, len(v))])
 	}
 
-	p.ecd.EncodeTo(open.Encode[i][p.params.rows-1], lastRow[rowStart:rowEnd])
+	p.ecd.RandEncodeTo(open.Encode[i][p.params.rows-1], lastRow[rowStart:rowEnd])
 
 	for j := 0; j < p.params.inMSISRank+p.params.mlweRank; j++ {
 		for k := 0; k < p.params.ringQ.N(); k++ {
@@ -149,7 +149,7 @@ func (p *Prover[E]) outerCommitTo(com *Commitment, open *Opening) {
 }
 
 // Evaluate batch evaluates v at x using batch randomness batch and returns the result with proof.
-func (p *Prover[E]) Evaluate(x E, batch []ring.Poly, v []*bigpoly.Poly[E], com []*Commitment, open []*Opening) ([]E, *Proof) {
+func (p *Prover[E]) Evaluate(x E, v []*bigpoly.Poly[E], com []*Commitment, open []*Opening) ([]E, *Proof) {
 	switch {
 	case len(v) != len(com) || len(v) != len(open):
 		panic("EvaluateBatch: len(v), len(com), len(open) are not equal")
@@ -157,8 +157,33 @@ func (p *Prover[E]) Evaluate(x E, batch []ring.Poly, v []*bigpoly.Poly[E], com [
 		panic("EvaluateBatch: len(v) != params.batch")
 	}
 
+	oracle := sha3.NewSHAKE128()
+	p.ck.WriteRawTo(oracle)
+	for i := 0; i < p.params.batch; i++ {
+		com[i].WriteRawTo(oracle)
+	}
+	oracle.Write(x.Marshal())
+
+	var batch []ring.Poly
+
 	var openBatch *Opening
 	if p.params.batch > 1 {
+		batch = make([]ring.Poly, p.params.batch)
+		batchBytes := make([]byte, p.params.batch*16)
+		for i := 0; i < p.params.batch; i++ {
+			batch[i] = p.params.ringQ.NewPoly()
+			oracle.Read(batchBytes[i*16 : (i+1)*16])
+			encodeChallengeTo(p.params, batch[i], batchBytes[i*16:(i+1)*16])
+		}
+		oracle.Reset()
+
+		p.ck.WriteRawTo(oracle)
+		for i := 0; i < p.params.batch; i++ {
+			com[i].WriteRawTo(oracle)
+		}
+		oracle.Write(x.Marshal())
+		oracle.Write(batchBytes)
+
 		openBatch = NewOpening(p.params)
 		for i := 0; i < p.params.batch; i++ {
 			for j := range openBatch.InCommit {
@@ -184,13 +209,6 @@ func (p *Prover[E]) Evaluate(x E, batch []ring.Poly, v []*bigpoly.Poly[E], com [
 		pf.InCommit[i].Copy(openBatch.InCommit[i])
 	}
 
-	oracle := sha3.NewSHAKE128()
-	p.ck.WriteRawTo(oracle)
-	for i := 0; i < p.params.batch; i++ {
-		com[i].WriteRawTo(oracle)
-	}
-	oracle.Write(x.Marshal())
-
 	leftE := leftVec(p.params, x)
 	left := make([]ring.Poly, p.params.rows)
 	for i := range left {
@@ -212,7 +230,7 @@ func (p *Prover[E]) Evaluate(x E, batch []ring.Poly, v []*bigpoly.Poly[E], com [
 	for i := 0; i < p.params.cols; i++ {
 		chals[i] = p.params.ringQ.NewPoly()
 		oracle.Read(chalBytes)
-		EncodeChallengeTo(p.params, chals[i], chalBytes)
+		encodeChallengeTo(p.params, chals[i], chalBytes)
 	}
 
 	p.lastMoveTo(pf, maskEcd, maskMLWE, chals, openBatch)

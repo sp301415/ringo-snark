@@ -213,8 +213,8 @@ func NewParameters[E num.Uint[E]](targetN, batch int) Parameters {
 				resMLWETwo *= t * cOne
 			}
 
-			qLimbs = int(math.Ceil(math.Log2(q) / 60))
-			qBits = int(math.Ceil(math.Log2(q) / float64(qLimbs)))
+			qLimbs = int(math.Ceil(float64(logQ) / 60))
+			qBits = int(math.Ceil(float64(logQ) / float64(qLimbs)))
 
 			inDcmpTwo = math.Sqrt(mu*n*d*float64(qLimbs)) * math.Exp2(float64(qBits))
 			if batch > 1 {

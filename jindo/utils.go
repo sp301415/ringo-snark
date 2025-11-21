@@ -7,22 +7,8 @@ import (
 	"github.com/tuneinsight/lattigo/v6/ring"
 )
 
-// setCoeffSigned sets the i-th coefficient of pOut to c.
-func setCoeffSigned(ringQ *ring.Ring, pOut ring.Poly, c int64, i int) {
-	if c >= 0 {
-		for l := 0; l <= ringQ.Level(); l++ {
-			pOut.Coeffs[l][i] = uint64(c)
-		}
-	} else {
-		for l := 0; l <= ringQ.Level(); l++ {
-			qi := int64(ringQ.SubRings[l].Modulus)
-			pOut.Coeffs[l][i] = uint64(c%qi + qi)
-		}
-	}
-}
-
-// EncodeChallengeTo encodes c to pOut.
-func EncodeChallengeTo(params Parameters, pOut ring.Poly, chalBytes []byte) {
+// encodeChallengeTo encodes c to pOut.
+func encodeChallengeTo(params Parameters, pOut ring.Poly, chalBytes []byte) {
 	pOut.Zero()
 
 	c := []uint64{
@@ -39,6 +25,20 @@ func EncodeChallengeTo(params Parameters, pOut ring.Poly, chalBytes []byte) {
 	}
 	params.ringQ.MForm(pOut, pOut)
 	params.ringQ.NTT(pOut, pOut)
+}
+
+// setCoeffSigned sets the i-th coefficient of pOut to c.
+func setCoeffSigned(ringQ *ring.Ring, pOut ring.Poly, c int64, i int) {
+	if c >= 0 {
+		for l := 0; l <= ringQ.Level(); l++ {
+			pOut.Coeffs[l][i] = uint64(c)
+		}
+	} else {
+		for l := 0; l <= ringQ.Level(); l++ {
+			qi := int64(ringQ.SubRings[l].Modulus)
+			pOut.Coeffs[l][i] = uint64(c%qi + qi)
+		}
+	}
 }
 
 // leftVec computes the left vector during the evaluation protocol.

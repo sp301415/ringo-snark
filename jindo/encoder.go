@@ -125,7 +125,7 @@ func (e *Encoder[E]) encodeTo(pOut ring.Poly, v []E) {
 		panic("EncodeTo: len(v) > slots")
 	}
 
-	for i := 0; i < len(v); i++ {
+	for i := range v {
 		v[i].Slice(e.buf.coeff)
 		for j := 0; j < e.params.ecd.exp-1; j++ {
 			r := divMod64(e.buf.coeff, e.params.ecd.base)

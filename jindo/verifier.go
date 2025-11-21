@@ -29,7 +29,7 @@ func NewVerifier[E num.Uint[E]](params Parameters, crs []byte) *Verifier[E] {
 }
 
 // Verify verfies the polynomial commitment.
-func (v *Verifier[E]) Verify(x E, batch []ring.Poly, com []*Commitment, y []E, pf *Proof) bool {
+func (v *Verifier[E]) Verify(x E, com []*Commitment, y []E, pf *Proof) bool {
 	switch {
 	case len(com) != v.params.batch:
 		panic("EvaluateBatch: len(v) != params.batch")
@@ -41,6 +41,25 @@ func (v *Verifier[E]) Verify(x E, batch []ring.Poly, com []*Commitment, y []E, p
 		com[i].WriteRawTo(oracle)
 	}
 	oracle.Write(x.Marshal())
+
+	var batch []ring.Poly
+	if v.params.batch > 1 {
+		batch = make([]ring.Poly, v.params.batch)
+		batchBytes := make([]byte, v.params.batch*16)
+		for i := 0; i < v.params.batch; i++ {
+			batch[i] = v.params.ringQ.NewPoly()
+			oracle.Read(batchBytes[i*16 : (i+1)*16])
+			encodeChallengeTo(v.params, batch[i], batchBytes[i*16:(i+1)*16])
+		}
+		oracle.Reset()
+
+		v.ck.WriteRawTo(oracle)
+		for i := 0; i < v.params.batch; i++ {
+			com[i].WriteRawTo(oracle)
+		}
+		oracle.Write(x.Marshal())
+		oracle.Write(batchBytes)
+	}
 
 	for i := range pf.Commit {
 		pf.Commit[i].WriteTo(oracle)
@@ -55,7 +74,7 @@ func (v *Verifier[E]) Verify(x E, batch []ring.Poly, com []*Commitment, y []E, p
 	for i := 0; i < v.params.cols; i++ {
 		chals[i] = v.params.ringQ.NewPoly()
 		oracle.Read(chalBytes)
-		EncodeChallengeTo(v.params, chals[i], chalBytes)
+		encodeChallengeTo(v.params, chals[i], chalBytes)
 	}
 
 	inCommitInv := make([]ring.Poly, v.params.inComDcmpLen)
