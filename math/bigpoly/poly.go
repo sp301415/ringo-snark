@@ -16,7 +16,7 @@ type Poly[E num.Uint[E]] struct {
 // NewPoly creates a new [Poly].
 func NewPoly[E num.Uint[E]](rank int, isNTT bool) *Poly[E] {
 	coeffs := make([]E, rank)
-	for i := 0; i < rank; i++ {
+	for i := range coeffs {
 		coeffs[i] = coeffs[i].New()
 	}
 

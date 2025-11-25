@@ -129,6 +129,11 @@ func (ntt *CyclicTransformer[E]) InvNTTTo(vOut, v []E) {
 	scalarMulVecTo(vOut, vOut, ntt.rankInv)
 }
 
+// Rank returns the rank of the transformer.
+func (ntt CyclicTransformer[E]) Rank() int {
+	return ntt.rank
+}
+
 // CyclotomicTransformer computes negacyclic NTT.
 type CyclotomicTransformer[E num.Uint[E]] struct {
 	rank int
@@ -452,4 +457,9 @@ func inttInPlaceUnroll[E num.Uint[E]](p, twInv []E) {
 		invButterfly(c0[6], c1[6], twInv[1])
 		invButterfly(c0[7], c1[7], twInv[1])
 	}
+}
+
+// Rank returns the rank of the transformer.
+func (ntt CyclotomicTransformer[E]) Rank() int {
+	return ntt.rank
 }
