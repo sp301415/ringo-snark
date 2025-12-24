@@ -10,19 +10,37 @@ import (
 
 // Verifier is a Jindo verifier.
 type Verifier[E num.Uint[E]] struct {
-	params Parameters
-	ecd    *Encoder[E]
-	rns    *RNSReconstructor
+	params     Parameters
+	ecd        *Encoder[E]
+	rnsOut     *RNSReconstructor
+	embQOutToQ *ring.BasisExtender
+
+	inCutOff  ring.RNSScalar
+	outCutOff ring.RNSScalar
 
 	ck *CommitKey
 }
 
 // NewVerifier creates a new [Verifier].
 func NewVerifier[E num.Uint[E]](params Parameters, crs []byte) *Verifier[E] {
+	inCutOff := big.NewInt(1)
+	inCutOff.Lsh(inCutOff, uint(params.logInCutOff))
+	inCutOffRNS := params.ringQ.NewRNSScalarFromBigint(inCutOff)
+	params.ringQ.MFormRNSScalar(inCutOffRNS, inCutOffRNS)
+
+	outCutOff := big.NewInt(1)
+	outCutOff.Lsh(outCutOff, uint(params.logOutCutOff))
+	outCutOffRNS := params.ringQOut.NewRNSScalarFromBigint(outCutOff)
+	params.ringQOut.MFormRNSScalar(outCutOffRNS, outCutOffRNS)
+
 	return &Verifier[E]{
-		params: params,
-		ecd:    NewEncoder[E](params),
-		rns:    NewRNSReconstructor(params.ringQ),
+		params:     params,
+		ecd:        NewEncoder[E](params),
+		rnsOut:     NewRNSReconstructor(params.ringQOut),
+		embQOutToQ: ring.NewBasisExtender(params.ringQOut, params.ringQ),
+
+		inCutOff:  inCutOffRNS,
+		outCutOff: outCutOffRNS,
 
 		ck: NewCommitKey(params, crs),
 	}
@@ -31,8 +49,8 @@ func NewVerifier[E num.Uint[E]](params Parameters, crs []byte) *Verifier[E] {
 // Verify verfies the polynomial commitment.
 func (v *Verifier[E]) Verify(x E, com []*Commitment, y []E, pf *Proof) bool {
 	switch {
-	case len(com) != v.params.batch:
-		panic("EvaluateBatch: len(v) != params.batch")
+	case len(com) != v.params.batch || len(y) != v.params.batch:
+		panic("len(v) != params.batch")
 	}
 
 	oracle := sha3.NewSHAKE128()
@@ -49,7 +67,7 @@ func (v *Verifier[E]) Verify(x E, com []*Commitment, y []E, pf *Proof) bool {
 		for i := 0; i < v.params.batch; i++ {
 			batch[i] = v.params.ringQ.NewPoly()
 			oracle.Read(batchBytes[i*16 : (i+1)*16])
-			encodeChallengeTo(v.params, batch[i], batchBytes[i*16:(i+1)*16])
+			encodeChallengeTo(v.params, v.params.ringQOut, batch[i], batchBytes[i*16:(i+1)*16])
 		}
 		oracle.Reset()
 
@@ -74,40 +92,14 @@ func (v *Verifier[E]) Verify(x E, com []*Commitment, y []E, pf *Proof) bool {
 	for i := 0; i < v.params.cols; i++ {
 		chals[i] = v.params.ringQ.NewPoly()
 		oracle.Read(chalBytes)
-		encodeChallengeTo(v.params, chals[i], chalBytes)
-	}
-
-	inCommitInv := make([]ring.Poly, v.params.inComDcmpLen)
-	for i := range inCommitInv {
-		inCommitInv[i] = *pf.InCommit[i].CopyNew()
-		v.params.ringQ.IMForm(inCommitInv[i], inCommitInv[i])
-		v.params.ringQ.INTT(inCommitInv[i], inCommitInv[i])
-	}
-
-	partialInv := make([]ring.Poly, v.params.cols)
-	for i := range partialInv {
-		partialInv[i] = *pf.Partial[i].CopyNew()
-		v.params.ringQ.IMForm(partialInv[i], partialInv[i])
-		v.params.ringQ.INTT(partialInv[i], partialInv[i])
-	}
-
-	resInv := make([]ring.Poly, v.params.cols+v.params.mlweRank+v.params.inMSISRank)
-	for i := 0; i < v.params.cols; i++ {
-		resInv[i] = *pf.Encode[i].CopyNew()
-		v.params.ringQ.IMForm(resInv[i], resInv[i])
-		v.params.ringQ.INTT(resInv[i], resInv[i])
-	}
-	for i := 0; i < v.params.mlweRank+v.params.inMSISRank; i++ {
-		resInv[v.params.cols+i] = *pf.MLWE[i].CopyNew()
-		v.params.ringQ.IMForm(resInv[v.params.cols+i], resInv[v.params.cols+i])
-		v.params.ringQ.INTT(resInv[v.params.cols+i], resInv[v.params.cols+i])
+		encodeChallengeTo(v.params, v.params.ringQ, chals[i], chalBytes)
 	}
 
 	if !v.verifyOuterCommitment(batch, com, pf) {
 		return false
 	}
 
-	if !v.verifyInnerCommitment(chals, inCommitInv, pf) {
+	if !v.verifyInnerCommitment(chals, pf) {
 		return false
 	}
 
@@ -115,19 +107,7 @@ func (v *Verifier[E]) Verify(x E, com []*Commitment, y []E, pf *Proof) bool {
 		return false
 	}
 
-	if !v.verifyEval(x, batch, y, partialInv) {
-		return false
-	}
-
-	if !v.verifyNorm(resInv, v.params.resTwoNm) {
-		return false
-	}
-
-	if !v.verifyNorm(partialInv, v.params.prTwoNm) {
-		return false
-	}
-
-	if !v.verifyNorm(inCommitInv, v.params.inComDcmpTwoNm) {
+	if !v.verifyEval(x, batch, y, pf) {
 		return false
 	}
 
@@ -135,64 +115,85 @@ func (v *Verifier[E]) Verify(x E, com []*Commitment, y []E, pf *Proof) bool {
 }
 
 // verifyOuterCommitment verfies the outer commitment.
-// Checks that \sum \alpha_i * u_i = D * G(t).
 func (v *Verifier[E]) verifyOuterCommitment(batch []ring.Poly, com []*Commitment, pf *Proof) bool {
-	zero := v.params.ringQ.NewPoly()
-	test := v.params.ringQ.NewPoly()
-	for i := 0; i < v.params.outMSISRank; i++ {
-		test.Zero()
-		if v.params.batch > 1 {
-			for j := 0; j < v.params.batch; j++ {
-				v.params.ringQ.MulCoeffsMontgomeryThenAdd(com[j].Value[i], batch[j], test)
-			}
-		} else {
-			test.Copy(com[0].Value[i])
-		}
-
-		for j := 0; j < v.params.cols*v.params.inMSISRank*v.params.ringQ.ModuliChainLength(); j++ {
-			v.params.ringQ.MulCoeffsMontgomeryThenSub(v.ck.Out[i][j], pf.InCommit[j], test)
-		}
-
-		if !test.Equal(&zero) {
-			return false
-		}
+	inDcmpInv := make([]ring.Poly, v.params.inComDcmpLen+v.params.outMSISRank)
+	for i := range v.params.inComDcmpLen {
+		inDcmpInv[i] = v.params.ringQOut.NewPoly()
+		v.params.ringQOut.IMForm(pf.InCommit[i], inDcmpInv[i])
+		v.params.ringQOut.INTT(inDcmpInv[i], inDcmpInv[i])
 	}
 
-	return true
+	cutoff := inDcmpInv[v.params.inComDcmpLen:]
+	for i := range v.params.outMSISRank {
+		cutoff[i] = v.params.ringQOut.NewPoly()
+		if v.params.batch > 1 {
+			for j := range v.params.batch {
+				v.params.ringQOut.MulCoeffsMontgomeryThenAdd(com[j].Value[i], batch[j], cutoff[i])
+			}
+		} else {
+			cutoff[i].Copy(com[0].Value[i])
+		}
+
+		v.params.ringQOut.MulRNSScalarMontgomery(cutoff[i], v.outCutOff, cutoff[i])
+
+		for j := range v.params.inComDcmpLen {
+			v.params.ringQOut.MulCoeffsMontgomeryThenSub(v.ck.Out[i][j], pf.InCommit[j], cutoff[i])
+		}
+
+		v.params.ringQOut.IMForm(cutoff[i], cutoff[i])
+		v.params.ringQOut.INTT(cutoff[i], cutoff[i])
+	}
+
+	return v.verifyNorm(v.params.ringQOut, v.rnsOut, inDcmpInv, v.params.inComDcmpTwoNm)
 }
 
 // verifyInnerCommitment verfies the inner commitment.
-// Checks that Ah + Bs = w + \sum c_i * t_i.
-func (v *Verifier[E]) verifyInnerCommitment(challenge, inCommitInv []ring.Poly, pf *Proof) bool {
-	zero := v.params.ringQ.NewPoly()
-	test := v.params.ringQ.NewPoly()
-	inCom := v.params.ringQ.NewPoly()
-	for i := 0; i < v.params.inMSISRank; i++ {
-		for j := 0; j < v.params.rows; j++ {
-			v.params.ringQ.MulCoeffsMontgomeryThenAdd(v.ck.In[i][j], pf.Encode[j], test)
-		}
-		for j := 0; j < v.params.mlweRank; j++ {
-			v.params.ringQ.MulCoeffsMontgomeryThenAdd(v.ck.MLWE[i][j], pf.MLWE[j], test)
-		}
-		v.params.ringQ.Add(pf.MLWE[v.params.mlweRank+i], test, test)
-
-		v.params.ringQ.Sub(test, pf.Commit[i], test)
-		for j := 0; j < v.params.cols; j++ {
-			idx := i + j*v.params.inMSISRank
-			for k := 0; k < v.params.ringQ.ModuliChainLength(); k++ {
-				copy(inCom.Coeffs[k], inCommitInv[idx*v.params.ringQ.ModuliChainLength()+k].Coeffs[k])
-			}
-			v.params.ringQ.MForm(inCom, inCom)
-			v.params.ringQ.NTT(inCom, inCom)
-			v.params.ringQ.MulCoeffsMontgomeryThenSub(inCom, challenge[j], test)
-		}
-
-		if !test.Equal(&zero) {
-			return false
-		}
+func (v *Verifier[E]) verifyInnerCommitment(chals []ring.Poly, pf *Proof) bool {
+	resInv := make([]ring.Poly, v.params.rows+(v.params.mlweRank+v.params.inMSISRank)+v.params.inMSISRank)
+	for i := range v.params.rows {
+		resInv[i] = v.params.ringQ.NewPoly()
+		v.params.ringQ.IMForm(pf.Encode[i], resInv[i])
+		v.params.ringQ.INTT(resInv[i], resInv[i])
+	}
+	for i, ii := 0, v.params.rows; i < v.params.mlweRank+v.params.inMSISRank; i, ii = i+1, ii+1 {
+		resInv[ii] = v.params.ringQ.NewPoly()
+		v.params.ringQ.IMForm(pf.MLWE[i], resInv[ii])
+		v.params.ringQ.INTT(resInv[ii], resInv[ii])
 	}
 
-	return true
+	inComQOut := v.params.ringQOut.NewPoly()
+	inComQ := v.params.ringQ.NewPoly()
+	cutoff := resInv[v.params.rows+v.params.mlweRank+v.params.inMSISRank:]
+	for i := range v.params.inMSISRank {
+		cutoff[i] = v.params.ringQ.NewPoly()
+		for j := range v.params.cols {
+			v.params.ringQOut.IMForm(pf.InCommit[j*v.params.inMSISRank+i], inComQOut)
+			v.params.ringQOut.INTT(inComQOut, inComQOut)
+
+			v.embQOutToQ.ModUpQtoP(v.params.ringQOut.Level(), v.params.ringQ.Level(), inComQOut, inComQ)
+
+			v.params.ringQ.MForm(inComQ, inComQ)
+			v.params.ringQ.NTT(inComQ, inComQ)
+
+			v.params.ringQ.MulCoeffsMontgomeryThenAdd(inComQ, chals[j], cutoff[i])
+		}
+
+		v.params.ringQ.MulRNSScalarMontgomery(cutoff[i], v.inCutOff, cutoff[i])
+
+		v.params.ringQ.Add(cutoff[i], pf.Commit[i], cutoff[i])
+		for j := range v.params.rows {
+			v.params.ringQ.MulCoeffsMontgomeryThenSub(v.ck.In[i][j], pf.Encode[j], cutoff[i])
+		}
+		for j := range v.params.mlweRank {
+			v.params.ringQ.MulCoeffsMontgomeryThenSub(v.ck.MLWE[i][j], pf.MLWE[j], cutoff[i])
+		}
+		v.params.ringQ.Sub(pf.MLWE[v.params.mlweRank+i], cutoff[i], cutoff[i])
+
+		v.params.ringQ.IMForm(cutoff[i], cutoff[i])
+		v.params.ringQ.INTT(cutoff[i], cutoff[i])
+	}
+
+	return v.verifyNorm(v.params.ringQ, v.ecd.rns, resInv, v.params.resTwoNm)
 }
 
 // verifyConsistency verifies the consistency of the proof.
@@ -217,7 +218,14 @@ func (v *Verifier[E]) verifyConsistency(x E, challenge []ring.Poly, pf *Proof) b
 }
 
 // verifyEval verifies the evaluation.
-func (v *Verifier[E]) verifyEval(x E, batch []ring.Poly, y []E, partialInv []ring.Poly) bool {
+func (v *Verifier[E]) verifyEval(x E, batch []ring.Poly, y []E, pf *Proof) bool {
+	partialInv := make([]ring.Poly, v.params.cols)
+	for i := range partialInv {
+		partialInv[i] = v.params.ringQ.NewPoly()
+		v.params.ringQ.IMForm(pf.Partial[i], partialInv[i])
+		v.params.ringQ.INTT(partialInv[i], partialInv[i])
+	}
+
 	right := rightVec(v.params, x)
 
 	yBatch := x.New()
@@ -255,16 +263,16 @@ func (v *Verifier[E]) verifyEval(x E, batch []ring.Poly, y []E, partialInv []rin
 }
 
 // verifyNorm checks the norm of the given polynomials.
-func (v *Verifier[E]) verifyNorm(p []ring.Poly, nm float64) bool {
+func (v *Verifier[E]) verifyNorm(ringQ *ring.Ring, rns *RNSReconstructor, p []ring.Poly, nm float64) bool {
 	nmSq := big.NewInt(0)
 	sq := big.NewInt(0)
-	pBig := make([]*big.Int, v.params.ringQ.N())
+	pBig := make([]*big.Int, ringQ.N())
 	for i := range pBig {
 		pBig[i] = big.NewInt(0)
 	}
 
 	for i := range p {
-		v.rns.ReconstructTo(pBig, p[i])
+		rns.ReconstructTo(pBig, p[i])
 		for j := 0; j < v.params.ringQ.N(); j++ {
 			sq.Mul(pBig[j], pBig[j])
 			nmSq.Add(nmSq, sq)

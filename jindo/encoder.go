@@ -1,6 +1,7 @@
 package jindo
 
 import (
+	"math"
 	"math/big"
 	"math/bits"
 
@@ -54,10 +55,16 @@ func NewEncoder[E num.Uint[E]](params Parameters) *Encoder[E] {
 	pFloatInv := new(big.Float).Quo(big.NewFloat(1), pFloat)
 	pFloatInv.Neg(pFloatInv)
 
-	deltaInv := make([]float64, params.ecd.exp)
+	threshold := math.Exp2(-50) / (float64(params.ecd.base) * float64(params.ecd.exp))
+
+	deltaInv := make([]float64, 0, params.ecd.exp)
 	for i := 0; i < params.ecd.exp; i++ {
-		deltaInv[i], _ = pFloatInv.Float64()
+		deltaInv64, _ := pFloatInv.Float64()
 		pFloatInv.Mul(pFloatInv, bFloat)
+		if math.Abs(deltaInv64) < threshold {
+			deltaInv64 = 0
+		}
+		deltaInv = append(deltaInv, deltaInv64)
 	}
 
 	return &Encoder[E]{
@@ -122,7 +129,7 @@ func (e *Encoder[E]) EncodeTo(pOut ring.Poly, v []E) {
 // encodeTo encodes v to pOut without NTT and MForm.
 func (e *Encoder[E]) encodeTo(pOut ring.Poly, v []E) {
 	if len(v) > e.params.slots {
-		panic("EncodeTo: len(v) > slots")
+		panic("len(v) > slots")
 	}
 
 	for i := range v {
@@ -149,18 +156,21 @@ func (e *Encoder[E]) encodeTo(pOut ring.Poly, v []E) {
 }
 
 // RandEncode returns an randomized encoding of v.
-func (e *Encoder[E]) RandEncode(v []E) ring.Poly {
+func (e *Encoder[E]) RandEncode(v []E, stdDev float64) ring.Poly {
 	pOut := e.params.ringQ.NewPoly()
-	e.RandEncodeTo(pOut, v)
+	e.RandEncodeTo(pOut, v, stdDev)
 	return pOut
 }
 
 // RandEncodeTo randomized encodes v to pOut.
-func (e *Encoder[E]) RandEncodeTo(pOut ring.Poly, v []E) {
+func (e *Encoder[E]) RandEncodeTo(pOut ring.Poly, v []E, stdDev float64) {
 	e.encodeTo(pOut, v)
 
 	clear(e.buf.fpSample)
 	for i := 0; i < e.params.ecd.exp; i++ {
+		if e.deltaInv[i] == 0 {
+			continue
+		}
 		d := e.params.ringQ.N() - (i+1)*e.params.slots
 		for j, jj := 0, d; jj < e.params.ringQ.N(); j, jj = j+1, jj+1 {
 			e.buf.fpSample[jj] += e.deltaInv[i] * float64(pOut.Coeffs[0][j])
@@ -171,7 +181,12 @@ func (e *Encoder[E]) RandEncodeTo(pOut ring.Poly, v []E) {
 	}
 
 	for i := 0; i < e.params.ringQ.N(); i++ {
-		c := e.twinCDT.Sample(-e.buf.fpSample[i])
+		var c int64
+		if stdDev == e.twinCDT.StdDev() {
+			c = e.twinCDT.Sample(-e.buf.fpSample[i])
+		} else {
+			c = e.cosac.Sample(-e.buf.fpSample[i], stdDev)
+		}
 		if c >= 0 {
 			for k := 0; k <= pOut.Level(); k++ {
 				e.buf.pSample.Coeffs[k][i] = uint64(c)
@@ -200,131 +215,12 @@ func (e *Encoder[E]) RandEncodeTo(pOut ring.Poly, v []E) {
 	e.params.ringQ.MForm(pOut, pOut)
 	e.params.ringQ.Add(pOut, e.buf.pSampleShift, pOut)
 	e.params.ringQ.NTT(pOut, pOut)
-}
-
-// RandEncode returns an randomized encoding of v with given stdDev.
-func (e *Encoder[E]) RandEncodeStdDev(v []E, stdDev float64) ring.Poly {
-	pOut := e.params.ringQ.NewPoly()
-	e.RandEncodeTo(pOut, v)
-	return pOut
-}
-
-// RandEncodeTo randomized encodes v to pOut with given stdDev.
-func (e *Encoder[E]) RandEncodeStdDevTo(pOut ring.Poly, v []E, stdDev float64) {
-	e.encodeTo(pOut, v)
-
-	clear(e.buf.fpSample)
-	for i := 0; i < e.params.ecd.exp; i++ {
-		d := e.params.ringQ.N() - (i+1)*e.params.slots
-		for j, jj := 0, d; jj < e.params.ringQ.N(); j, jj = j+1, jj+1 {
-			e.buf.fpSample[jj] += e.deltaInv[i] * float64(pOut.Coeffs[0][j])
-		}
-		for j, jj := e.params.ringQ.N()-d, 0; j < e.params.ringQ.N(); j, jj = j+1, jj+1 {
-			e.buf.fpSample[jj] -= e.deltaInv[i] * float64(pOut.Coeffs[0][j])
-		}
-	}
-
-	for i := 0; i < e.params.ringQ.N(); i++ {
-		c := e.cosac.Sample(-e.buf.fpSample[i], stdDev)
-		if c >= 0 {
-			for k := 0; k <= pOut.Level(); k++ {
-				e.buf.pSample.Coeffs[k][i] = uint64(c)
-			}
-		} else {
-			for k := 0; k <= pOut.Level(); k++ {
-				qi := int64(e.params.ringQ.SubRings[k].Modulus)
-				e.buf.pSample.Coeffs[k][i] = uint64(c%qi + qi)
-			}
-		}
-	}
-	e.params.ringQ.MForm(e.buf.pSample, e.buf.pSample)
-
-	for i, ii := 0, e.params.slots; ii < e.params.ringQ.N(); i, ii = i+1, ii+1 {
-		for k := 0; k <= pOut.Level(); k++ {
-			e.buf.pSampleShift.Coeffs[k][ii] = e.buf.pSample.Coeffs[k][i]
-		}
-	}
-	for i, ii := e.params.ringQ.N()-e.params.slots, 0; i < e.params.ringQ.N(); i, ii = i+1, ii+1 {
-		for k := 0; k <= pOut.Level(); k++ {
-			e.buf.pSampleShift.Coeffs[k][ii] = e.params.ringQ.SubRings[k].Modulus - e.buf.pSample.Coeffs[k][i]
-		}
-	}
-	e.params.ringQ.MulScalarThenSub(e.buf.pSample, e.params.ecd.base, e.buf.pSampleShift)
-
-	e.params.ringQ.MForm(pOut, pOut)
-	e.params.ringQ.Add(pOut, e.buf.pSampleShift, pOut)
-	e.params.ringQ.NTT(pOut, pOut)
-}
-
-// RoundRandEncode returns a randomized encoding of v using rounded Gaussian.
-func (e *Encoder[E]) RoundRandEncode(v []E, stdDev float64) ring.Poly {
-	pOut := e.params.ringQ.NewPoly()
-	e.RoundRandEncodeTo(pOut, v, stdDev)
-	return pOut
-}
-
-// RoundRandEncodeTo randomized encodes v to pOut using rounded Gaussian.
-func (e *Encoder[E]) RoundRandEncodeTo(pOut ring.Poly, v []E, stdDev float64) {
-	e.encodeTo(pOut, v)
-
-	clear(e.buf.fpSample)
-	for i := 0; i < e.params.ecd.exp; i++ {
-		d := e.params.ringQ.N() - (i+1)*e.params.slots
-		for j, jj := 0, d; jj < e.params.ringQ.N(); j, jj = j+1, jj+1 {
-			e.buf.fpSample[jj] += e.deltaInv[i] * float64(pOut.Coeffs[0][j])
-		}
-		for j, jj := e.params.ringQ.N()-d, 0; j < e.params.ringQ.N(); j, jj = j+1, jj+1 {
-			e.buf.fpSample[jj] -= e.deltaInv[i] * float64(pOut.Coeffs[0][j])
-		}
-	}
-
-	for i := 0; i < e.params.ringQ.N(); i++ {
-		c := e.rounded.Sample(-e.buf.fpSample[i], stdDev)
-		if c >= 0 {
-			for k := 0; k <= pOut.Level(); k++ {
-				e.buf.pSample.Coeffs[k][i] = uint64(c)
-			}
-		} else {
-			for k := 0; k <= pOut.Level(); k++ {
-				qi := int64(e.params.ringQ.SubRings[k].Modulus)
-				e.buf.pSample.Coeffs[k][i] = uint64(c%qi + qi)
-			}
-		}
-	}
-	e.params.ringQ.MForm(e.buf.pSample, e.buf.pSample)
-
-	for i, ii := 0, e.params.slots; ii < e.params.ringQ.N(); i, ii = i+1, ii+1 {
-		for k := 0; k <= pOut.Level(); k++ {
-			e.buf.pSampleShift.Coeffs[k][ii] = e.buf.pSample.Coeffs[k][i]
-		}
-	}
-	for i, ii := e.params.ringQ.N()-e.params.slots, 0; i < e.params.ringQ.N(); i, ii = i+1, ii+1 {
-		for k := 0; k <= pOut.Level(); k++ {
-			e.buf.pSampleShift.Coeffs[k][ii] = e.params.ringQ.SubRings[k].Modulus - e.buf.pSample.Coeffs[k][i]
-		}
-	}
-	e.params.ringQ.MulScalarThenSub(e.buf.pSample, e.params.ecd.base, e.buf.pSampleShift)
-
-	e.params.ringQ.MForm(pOut, pOut)
-	e.params.ringQ.Add(pOut, e.buf.pSampleShift, pOut)
-	e.params.ringQ.NTT(pOut, pOut)
-}
-
-// Decode returns a decoding of p.
-func (e *Encoder[E]) Decode(p ring.Poly) []E {
-	var z E
-	vOut := make([]E, e.params.slots)
-	for i := range vOut {
-		vOut[i] = z.New()
-	}
-	e.DecodeTo(vOut, p)
-	return vOut
 }
 
 // DecodeTo decodes p to vOut.
 func (e *Encoder[E]) DecodeTo(vOut []E, p ring.Poly) {
 	if len(vOut) > e.params.slots {
-		panic("DecodeTo: len(vOut) > slots")
+		panic("len(vOut) > slots")
 	}
 
 	e.rns.ReconstructTo(e.buf.coeffBig, p)

@@ -84,11 +84,18 @@ type Parameters struct {
 	// mlweRank is the rank of the MLWE hiding term.
 	mlweRank int
 
+	// logInCutOff is the cutoff for the inner commitment.
+	logInCutOff uint64
+	// logOutCutOff is the cutoff for the outer commitment.
+	logOutCutOff uint64
+
 	// inComDcmpLen is the length of the decomposed inner commitment.
 	inComDcmpLen int
 
 	// ringQ is the commitment ring.
 	ringQ *ring.Ring
+	// ringQOut is the outer commitment ring.
+	ringQOut *ring.Ring
 
 	// ecdStdDev is the standard deviation for encoding.
 	ecdStdDev float64
@@ -106,8 +113,6 @@ type Parameters struct {
 
 	// resTwoNm is the two-norm bound of the response.
 	resTwoNm float64
-	// prTwoNm is the two-norm bound of the partial evaluation.
-	prTwoNm float64
 	// inComDcmpTwoNm is the two-norm bound of the decomposed inner commitment.
 	inComDcmpTwoNm float64
 
@@ -143,8 +148,8 @@ func NewParameters[E num.Uint[E]](targetN, batch int) Parameters {
 		n := float64(nn)
 		m := math.Ceil(float64(targetN) / (n * l))
 
-		xOne := k * b
-		cOne := k * min(b, math.Exp2(128/k))
+		xOne := math.Sqrt(k) * b
+		cOne := math.Sqrt(k) * min(b, math.Exp2(120/k)) / 2
 
 		ecdStdDev := 2 / (b - 1) * (b + 1) * eta
 		ecdBlindStdDev := 2 * xOne / (b - 1) * (b + 1) * eta
@@ -154,110 +159,105 @@ func NewParameters[E num.Uint[E]](targetN, batch int) Parameters {
 		mlweStdDev := 2 * math.Sqrt2 * eta
 		maskMLWEStdDev := 2 * cOne * math.Sqrt2 * eta
 
-		cijTwo := (b + 1) * ecdStdDev * math.Sqrt(d)
-		c0jTwo := (b + 1) * math.Sqrt(m+1) * ecdBlindStdDev * math.Sqrt(d)
-		cinTwo := (b + 1) * math.Sqrt(n+1) * maskStdDev * math.Sqrt(d)
-		c0nTwo := (b + 1) * math.Sqrt((m+1)*n+1) * maskBlindStdDev * math.Sqrt(d)
+		fijInf := tailCut * (b + 1) * ecdStdDev
+		f0jInf := tailCut * (b + 1) * math.Sqrt(m+1) * ecdBlindStdDev
+		finInf := tailCut * (b + 1) * math.Sqrt(n+1) * maskStdDev
+		f0nInf := tailCut * (b + 1) * math.Sqrt((m+1)*n+1) * maskBlindStdDev
 
-		cjTwo := math.Sqrt((m-1)*cijTwo*cijTwo + c0jTwo*c0jTwo)
-		cnTwo := math.Sqrt((m-1)*cinTwo*cinTwo + c0nTwo*c0nTwo)
-
-		resEcdTwo := n*cOne*cjTwo + cnTwo
-		prTwo := math.Sqrt(n) * (m*xOne*cijTwo + c0jTwo)
-		if batch > 1 {
-			resEcdTwo *= t * cOne
-			prTwo *= t * cOne
+		resEcdiInf := math.Sqrt(n)*cOne*fijInf + finInf
+		resEcd0Inf := math.Sqrt(n)*cOne*f0jInf + f0nInf
+		prInf := math.Sqrt(m)*xOne*fijInf + f0jInf
+		if t > 1 {
+			resEcdiInf *= math.Sqrt(t) * cOne
+			resEcd0Inf *= math.Sqrt(t) * cOne
+			prInf *= math.Sqrt(t) * cOne
 		}
 
-		cijInf := (b + 1) * ecdStdDev
-		c0jInf := (b + 1) * math.Sqrt(m+1) * ecdBlindStdDev
-		cinInf := (b + 1) * math.Sqrt(n+1) * maskStdDev
-		c0nInf := (b + 1) * math.Sqrt((m+1)*n+1) * maskBlindStdDev
+		resEcdTwo := math.Sqrt(d * (m*resEcdiInf*resEcdiInf + resEcd0Inf*resEcd0Inf))
 
-		resEcdiInf := n*cOne*cijInf + cinInf
-		resEcd0Inf := n*cOne*c0jInf + c0nInf
-		prInf := m*xOne*cijInf + c0jInf
-		if batch > 1 {
-			resEcdiInf *= t * cOne
-			resEcd0Inf *= t * cOne
-			prInf *= t * cOne
+		mlweInf := tailCut * mlweStdDev
+		maskMLWEInf := tailCut * math.Sqrt(n+1) * maskMLWEStdDev
+		resMLWEInf := math.Sqrt(n)*cOne*mlweInf + maskMLWEInf
+		if t > 1 {
+			resMLWEInf *= math.Sqrt(t) * cOne
 		}
 
-		var qBits, qLimbs int
-		var q, mu, kap float64
-		var inDcmpTwo, resExtTwo, resMLWETwo, cExtTwo, dExtTwo float64
-		for logQ := 1; logQ <= maxLogQ; logQ++ {
-			q = math.Exp2(float64(logQ))
+		var q, inMSISRank, inCutOffTwo float64
+		var resTwo, dExtOne float64
+		for mu := 1; ; mu++ {
+			resMLWETwo := math.Sqrt(d*(float64(mu)+nu)) * resMLWEInf
+			resTwo = math.Sqrt(resEcdTwo*resEcdTwo + resMLWETwo*resMLWETwo)
+			inCutOffTwo = resTwo
 
-			if batch == 1 {
-				resExtTwo = 2 * resEcdTwo
-				cExtTwo = 2 * cOne
-				dExtTwo = 1.0
+			var extBeta, cExtOne float64
+			if t == 1 {
+				extBeta = 2 * (resTwo + inCutOffTwo)
+				cExtOne = 2 * cOne
+				dExtOne = 1
 			} else {
-				resExtTwo = 2 * (2 * cOne) * (2 * resEcdTwo)
-				cExtTwo = (2 * cOne) * (2 * cOne)
-				dExtTwo = 2 * cOne
+				extBeta = 2 * (2 * cOne) * (resTwo + inCutOffTwo)
+				cExtOne = (2 * cOne) * (2 * cOne)
+				dExtOne = 2 * cOne
 			}
 
-			inMSISBeta := 2 * dExtTwo * cExtTwo * resExtTwo
-			if inMSISBeta > q {
+			inMSISBeta := 2 * dExtOne * cExtOne * extBeta
+			logQ := math.Ceil(math.Log2(inMSISBeta))
+			qLimbs := int(math.Ceil(logQ / 60.0))
+			qBits := int(math.Ceil(logQ / float64(qLimbs)))
+			q = math.Exp2(float64(qBits * qLimbs))
+
+			if math.Log2(q) > maxLogQ {
 				continue
 			}
-			mu = float64(findMSISRank(d, q, inMSISBeta))
 
-			mlweTwo := mlweStdDev * math.Sqrt((nu+mu)*d)
-			mlweMaskTwo := maskMLWEStdDev * math.Sqrt((n+1)*(nu+mu)*d)
-
-			resMLWETwo = n*cOne*mlweTwo + mlweMaskTwo
-			if batch > 1 {
-				resMLWETwo *= t * cOne
+			if findMSISRank(d, q, inMSISBeta) == mu {
+				inMSISRank = float64(mu)
+				break
 			}
-
-			qLimbs = int(math.Ceil(float64(logQ) / 60))
-			qBits = int(math.Ceil(float64(logQ) / float64(qLimbs)))
-
-			inDcmpTwo = math.Sqrt(mu*n*d*float64(qLimbs)) * math.Exp2(float64(qBits))
-			if batch > 1 {
-				inDcmpTwo *= t * cOne
-			}
-
-			outMSISBeta := 2 * dExtTwo * (2 * inDcmpTwo)
-			if outMSISBeta > q {
-				continue
-			}
-			kap = float64(findMSISRank(d, q, outMSISBeta))
-
-			break
 		}
 
-		mlweInf := mlweStdDev
-		mlweMaskInf := maskMLWEStdDev * math.Sqrt(n+1)
-
-		resMLWEInf := n*cOne*mlweInf + mlweMaskInf
-		if batch > 1 {
-			resMLWEInf *= t * cOne
+		inCutOffInf := inCutOffTwo / (math.Sqrt(n) * cOne * math.Sqrt(inMSISRank*d))
+		if t > 1 {
+			inCutOffInf /= math.Sqrt(t) * cOne
 		}
 
-		outInf := math.Exp2(float64(qBits))
-		if batch > 1 {
-			outInf *= t * cOne
+		inDcmpInf := q / inCutOffInf
+		if t > 1 {
+			inDcmpInf *= math.Sqrt(t) * cOne
 		}
 
-		outComSize := kap * d * math.Log2(q)
-		inComSize := mu * d * math.Log2(q)
+		inDcmpTwo := math.Sqrt(n*inMSISRank*d) * inDcmpInf
+		outCutOffTwo := inDcmpTwo
 
-		var size float64
-		size += t * outComSize                                     // Outer Commitments
-		size += inComSize                                          // Mask
-		size += d * math.Log2(q)                                   // Partial * Mask
-		size += math.Log2(tailCut*prInf) * (n * d)                 // Partial
-		size += math.Log2(tailCut*resEcdiInf) * (m * d)            // Response 1 ~ m + 1
-		size += math.Log2(tailCut*resEcd0Inf) * (d)                // Response 0
-		size += math.Log2(tailCut*resMLWEInf) * ((mu + nu) * d)    // Response MLWE
-		size += (n * mu * d * float64(qLimbs)) * math.Log2(outInf) // Inner Commitments
+		outMSISBeta := 2 * dExtOne * (2 * (inDcmpTwo + outCutOffTwo))
 
-		if size < minSize {
-			minSize = size
+		logQQ := math.Ceil(math.Log2(outMSISBeta))
+		qqLimbs := int(math.Ceil(logQQ / 60.0))
+		qqBits := int(math.Ceil(logQQ / float64(qqLimbs)))
+		qq := math.Exp2(float64(qqBits * qqLimbs))
+		if math.Log2(qq) > maxLogQ {
+			continue
+		}
+		outMSISRank := float64(findMSISRank(d, qq, outMSISBeta))
+
+		outCutOffInf := outCutOffTwo / (math.Sqrt(outMSISRank * d))
+		if t > 1 {
+			outCutOffInf /= math.Sqrt(t) * cOne
+		}
+
+		comSize := t * outMSISRank * d * math.Log2(qq/outCutOffInf)
+
+		var pfSize float64
+		pfSize += inMSISRank * d * math.Log2(q)                 // Mask
+		pfSize += n * d * math.Log2(prInf)                      // Partial
+		pfSize += d * math.Log2(q)                              // Partial * Mask
+		pfSize += m * d * math.Log2(resEcdiInf)                 // Response 1 ~ m
+		pfSize += d * math.Log2(resEcd0Inf)                     // Response 0
+		pfSize += (inMSISRank + nu) * d * math.Log2(resMLWEInf) // Response MLWE
+		pfSize += (n * inMSISRank * d) * math.Log2(inDcmpInf)   // Inner Commitments
+
+		if comSize+pfSize < minSize {
+			minSize = comSize + pfSize
 
 			params.batch = batch
 
@@ -268,18 +268,35 @@ func NewParameters[E num.Uint[E]](targetN, batch int) Parameters {
 			params.ecd = ecd
 			params.slots = int(d) / ecd.exp
 
-			params.inMSISRank = int(mu)
-			params.outMSISRank = int(kap)
+			params.inMSISRank = int(inMSISRank)
+			params.outMSISRank = int(outMSISRank)
 			params.mlweRank = int(nu)
 
-			params.inComDcmpLen = int(n * mu * float64(qLimbs))
+			params.logInCutOff = uint64(math.Floor(math.Log2(inCutOffInf)))
+			params.logOutCutOff = uint64(math.Floor(math.Log2(outCutOffInf)))
 
-			nttGen := ring.NewNTTFriendlyPrimesGenerator(uint64(qBits), 2*uint64(d))
-			q, err := nttGen.NextUpstreamPrimes(qLimbs)
+			params.inComDcmpLen = int(n * inMSISRank)
+
+			qLimbs := int(math.Ceil(math.Log2(q) / 60))
+			qBits := int(math.Ceil(math.Log2(q) / float64(qLimbs)))
+			qGen := ring.NewNTTFriendlyPrimesGenerator(uint64(qBits), 2*uint64(d))
+			q, err := qGen.NextUpstreamPrimes(qLimbs)
 			if err != nil {
 				continue
 			}
 			params.ringQ, err = ring.NewRing(int(d), q)
+			if err != nil {
+				panic(err)
+			}
+
+			qqLimbs := int(math.Ceil(math.Log2(qq) / 60))
+			qqBits := int(math.Ceil(math.Log2(qq) / float64(qqLimbs)))
+			qqGen := ring.NewNTTFriendlyPrimesGenerator(uint64(qqBits), 2*uint64(d))
+			qq, err := qqGen.NextUpstreamPrimes(qqLimbs)
+			if err != nil {
+				continue
+			}
+			params.ringQOut, err = ring.NewRing(int(d), qq)
 			if err != nil {
 				panic(err)
 			}
@@ -292,12 +309,11 @@ func NewParameters[E num.Uint[E]](targetN, batch int) Parameters {
 			params.mlweStdDev = mlweStdDev / math.Sqrt(2*math.Pi)
 			params.maskMLWEStdDev = maskMLWEStdDev / math.Sqrt(2*math.Pi)
 
-			params.resTwoNm = math.Sqrt(resEcdTwo*resEcdTwo + resMLWETwo*resMLWETwo)
-			params.prTwoNm = prTwo
-			params.inComDcmpTwoNm = inDcmpTwo
+			params.resTwoNm = resTwo + inCutOffTwo
+			params.inComDcmpTwoNm = inDcmpTwo + outCutOffTwo
 
-			params.comSize = t * outComSize
-			params.pfSize = size - params.comSize
+			params.comSize = comSize
+			params.pfSize = pfSize
 		}
 	}
 
@@ -341,7 +357,7 @@ func (p Parameters) Slots() int {
 
 // ChallengeBound is the challenge bound.
 func (p Parameters) ChallengeBound() uint64 {
-	return min(p.ecd.base, 1<<(128/p.ecd.exp))
+	return min(p.ecd.base, 1<<(120/p.ecd.exp)) / 2
 }
 
 // InMSISRank is the rank of the inner MSIS commitment.
@@ -359,6 +375,16 @@ func (p Parameters) MLWERank() int {
 	return p.mlweRank
 }
 
+// LogInCutOff is the cutoff for the inner commitment.
+func (p Parameters) LogInCutOff() uint64 {
+	return p.logInCutOff
+}
+
+// LogOutCutOff is the cutoff for the outer commitment.
+func (p Parameters) OutCutOff() uint64 {
+	return p.logOutCutOff
+}
+
 // InCommitDecomposeLen is the length of the decomposed inner commitment.
 func (p Parameters) InCommitDecomposeLen() int {
 	return p.inComDcmpLen
@@ -367,6 +393,11 @@ func (p Parameters) InCommitDecomposeLen() int {
 // RingQ is the commitment ring.
 func (p Parameters) RingQ() *ring.Ring {
 	return p.ringQ
+}
+
+// RingQOut is the outer commitment ring.
+func (p Parameters) RingQOut() *ring.Ring {
+	return p.ringQOut
 }
 
 // EcdStdDev is the standard deviation for encoding.
@@ -404,11 +435,6 @@ func (p Parameters) ResTwoNm() float64 {
 	return p.resTwoNm
 }
 
-// PrTwoNm is the two-norm bound of the partial evaluation.
-func (p Parameters) PrTwoNm() float64 {
-	return p.prTwoNm
-}
-
 // InComDcmpTwoNm is the two-norm bound of the decomposed inner commitment.
 func (p Parameters) InComDcmpTwoNm() float64 {
 	return p.inComDcmpTwoNm
@@ -422,4 +448,9 @@ func (p Parameters) CommitmentSize() float64 {
 // ProofSize is the estimated size for proof.
 func (p Parameters) ProofSize() float64 {
 	return p.pfSize
+}
+
+// Size is the estimated size for commitment and proof.
+func (p Parameters) Size() float64 {
+	return p.comSize + p.pfSize
 }

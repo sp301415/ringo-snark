@@ -50,7 +50,7 @@ type TwinCDTGaussianSampler struct {
 // Panics when read from crypto/rand or AES initialization fails.
 func NewTwinCDTGaussianSampler(stdDev float64) *TwinCDTGaussianSampler {
 	tables := [blockSize][]uint64{}
-	for i := 0; i < blockSize; i++ {
+	for i := range blockSize {
 		tables[i] = computeCDT(float64(i)/blockSize, stdDev)
 	}
 

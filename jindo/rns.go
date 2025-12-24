@@ -11,7 +11,8 @@ type RNSReconstructor struct {
 	ringQ *ring.Ring
 	qHalf *big.Int
 
-	gad []*big.Int
+	qBig []*big.Int
+	gad  []*big.Int
 
 	buf rnsReconstructorBuffer
 }
@@ -31,19 +32,23 @@ type rnsReconstructorBuffer struct {
 // NewRNSReconstructor creates a new [RNSReconstructor].
 func NewRNSReconstructor(ringQ *ring.Ring) *RNSReconstructor {
 	gad := make([]*big.Int, len(ringQ.SubRings))
+	qBig := make([]*big.Int, len(ringQ.SubRings))
 	for i := range ringQ.SubRings {
 		qi := new(big.Int).SetUint64(ringQ.SubRings[i].Modulus)
 		qDiv := new(big.Int).Div(ringQ.Modulus(), qi)
 		qInv := new(big.Int).ModInverse(qDiv, qi)
 		gad[i] = new(big.Int).Mul(qDiv, qInv)
 		gad[i].Mod(gad[i], ringQ.Modulus())
+		qBig[i] = qi
 	}
 
 	return &RNSReconstructor{
 		ringQ: ringQ,
 		qHalf: new(big.Int).Rsh(ringQ.Modulus(), 1),
 
-		gad: gad,
+		qBig: qBig,
+		gad:  gad,
+
 		buf: newRNSReconstructorBuffer(ringQ),
 	}
 }
@@ -99,12 +104,23 @@ func (r *RNSReconstructor) ReconstructTo(vOut []*big.Int, p ring.Poly) {
 	}
 }
 
+// SetBigCoeffTo sets the coefficient of pOut as v.
+func (r *RNSReconstructor) SetBigCoeffTo(pOut ring.Poly, v []*big.Int) {
+	for i := 0; i < r.ringQ.N(); i++ {
+		for l := range r.ringQ.SubRings {
+			pOut.Coeffs[l][i] = r.buf.accTmp.Mod(v[i], r.qBig[l]).Uint64()
+		}
+	}
+}
+
 // SafeCopy returns a thread-safe copy.
 func (r *RNSReconstructor) SafeCopy() *RNSReconstructor {
 	return &RNSReconstructor{
 		ringQ: r.ringQ,
 		qHalf: r.qHalf,
-		gad:   r.gad,
+
+		gad:  r.gad,
+		qBig: r.qBig,
 
 		buf: newRNSReconstructorBuffer(r.ringQ),
 	}

@@ -51,10 +51,10 @@ func NewCommitKey(params Parameters, crs []byte) *CommitKey {
 	for i := range out {
 		out[i] = make([]ring.Poly, params.inComDcmpLen)
 		for j := range out[i] {
-			out[i][j] = params.ringQ.NewPoly()
-			for k := 0; k < params.ringQ.N(); k++ {
-				for l := 0; l < params.ringQ.ModuliChainLength(); l++ {
-					out[i][j].Coeffs[l][k] = u.SampleN(params.ringQ.SubRings[l].Modulus)
+			out[i][j] = params.ringQOut.NewPoly()
+			for k := 0; k < params.ringQOut.N(); k++ {
+				for l := 0; l < params.ringQOut.ModuliChainLength(); l++ {
+					out[i][j].Coeffs[l][k] = u.SampleN(params.ringQOut.SubRings[l].Modulus)
 				}
 			}
 		}
@@ -110,7 +110,7 @@ type Opening struct {
 func NewOpening(params Parameters) *Opening {
 	inDcmp := make([]ring.Poly, params.inComDcmpLen)
 	for i := range inDcmp {
-		inDcmp[i] = params.ringQ.NewPoly()
+		inDcmp[i] = params.ringQOut.NewPoly()
 	}
 
 	ecd := make([][]ring.Poly, params.cols)

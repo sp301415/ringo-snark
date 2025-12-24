@@ -9,6 +9,7 @@ type Uint[E any] interface {
 	New() E
 	Set(E) E
 	SetBytes([]byte) E
+	SetInt64(int64) E
 	SetUint64(uint64) E
 	MustSetRandom() E
 	Slice([]uint64)

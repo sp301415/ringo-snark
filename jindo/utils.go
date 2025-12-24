@@ -8,7 +8,7 @@ import (
 )
 
 // encodeChallengeTo encodes c to pOut.
-func encodeChallengeTo(params Parameters, pOut ring.Poly, chalBytes []byte) {
+func encodeChallengeTo(params Parameters, ringQ *ring.Ring, pOut ring.Poly, chalBytes []byte) {
 	pOut.Zero()
 
 	c := []uint64{
@@ -16,15 +16,21 @@ func encodeChallengeTo(params Parameters, pOut ring.Poly, chalBytes []byte) {
 		binary.BigEndian.Uint64(chalBytes[8:]),
 	}
 
-	cInfNm := params.ChallengeBound()
+	signBit := c[1] & 1
+	c[1] >>= 1
+
+	cInfNm := uint64(params.ChallengeBound())
 	for i := 0; i < params.ecd.exp; i++ {
 		r := divMod64(c, cInfNm)
 		for k := 0; k <= pOut.Level(); k++ {
 			pOut.Coeffs[k][i*params.slots] = r
 		}
 	}
-	params.ringQ.MForm(pOut, pOut)
-	params.ringQ.NTT(pOut, pOut)
+	if signBit == 1 {
+		ringQ.Neg(pOut, pOut)
+	}
+	ringQ.MForm(pOut, pOut)
+	ringQ.NTT(pOut, pOut)
 }
 
 // setCoeffSigned sets the i-th coefficient of pOut to c.
