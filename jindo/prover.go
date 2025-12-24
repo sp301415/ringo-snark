@@ -198,16 +198,19 @@ func (p *Prover[E]) Evaluate(x E, v []*bigpoly.Poly[E], com []*Commitment, open 
 	}
 	oracle.Write(x.Marshal())
 
-	var batch []ring.Poly
+	var batchOut, batch []ring.Poly
 
 	var openBatch *Opening
 	if p.params.batch > 1 {
 		batch = make([]ring.Poly, p.params.batch)
+		batchOut = make([]ring.Poly, p.params.batch)
 		batchBytes := make([]byte, p.params.batch*16)
 		for i := range p.params.batch {
-			batch[i] = p.params.ringQ.NewPoly()
 			oracle.Read(batchBytes[i*16 : (i+1)*16])
-			encodeChallengeTo(p.params, p.params.ringQOut, batch[i], batchBytes[i*16:(i+1)*16])
+			batch[i] = p.params.ringQ.NewPoly()
+			encodeChallengeTo(p.params, p.params.ringQ, batch[i], batchBytes[i*16:(i+1)*16])
+			batchOut[i] = p.params.ringQOut.NewPoly()
+			encodeChallengeTo(p.params, p.params.ringQOut, batchOut[i], batchBytes[i*16:(i+1)*16])
 		}
 		oracle.Reset()
 
@@ -221,7 +224,7 @@ func (p *Prover[E]) Evaluate(x E, v []*bigpoly.Poly[E], com []*Commitment, open 
 		openBatch = NewOpening(p.params)
 		for i := range p.params.batch {
 			for j := range open[i].InCommit {
-				p.params.ringQ.MulCoeffsMontgomeryThenAdd(open[i].InCommit[j], batch[i], openBatch.InCommit[j])
+				p.params.ringQOut.MulCoeffsMontgomeryThenAdd(open[i].InCommit[j], batchOut[i], openBatch.InCommit[j])
 			}
 			for j := range open[i].Encode {
 				for k := range open[i].Encode[j] {
