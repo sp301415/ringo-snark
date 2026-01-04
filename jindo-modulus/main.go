@@ -25,7 +25,7 @@ var (
 
 const (
 	maxRank   = 1 << 30
-	baseBound = 1 << 35
+	baseBound = 1 << 25
 )
 
 func findModulus(bitStart, bitEnd int) (p *big.Int, b uint64, k uint64) {

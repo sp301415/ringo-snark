@@ -3,7 +3,6 @@ package jindo
 import (
 	"math"
 	"math/big"
-	"math/bits"
 
 	"github.com/sp301415/ringo-snark/math/csprng"
 	"github.com/sp301415/ringo-snark/math/num"
@@ -101,15 +100,6 @@ func newEncoderBuffer[E num.Uint[E]](ringQ *ring.Ring) encoderBuffer[E] {
 		baseE:  z.New(),
 		coeffE: z.New(),
 	}
-}
-
-// divMod64 computes x = x / y and returns x mod y.
-func divMod64(x []uint64, y uint64) uint64 {
-	var r uint64
-	for i := len(x) - 1; i >= 0; i-- {
-		x[i], r = bits.Div64(r, x[i], y)
-	}
-	return r
 }
 
 // Encode returns an encoding of v.

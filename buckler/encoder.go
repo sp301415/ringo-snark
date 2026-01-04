@@ -30,7 +30,7 @@ func (e *Encoder[E]) Encode(v []E) *bigpoly.Poly[E] {
 // EncodeTo encodes a bigint vector to pOut.
 // v should have length rank.
 func (e *Encoder[E]) EncodeTo(pOut *bigpoly.Poly[E], v []E) {
-	e.ntt.NTTTo(pOut.Coeffs[:e.ntt.Rank()], v[:e.ntt.Rank()])
+	e.ntt.InvNTTTo(pOut.Coeffs[:e.ntt.Rank()], v[:e.ntt.Rank()])
 	for i := e.ntt.Rank(); i < pOut.Rank(); i++ {
 		pOut.Coeffs[i].SetUint64(0)
 	}

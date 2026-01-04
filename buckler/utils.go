@@ -30,3 +30,27 @@ func decomposeBase(x *big.Int) []*big.Int {
 	base[dcmpLen-1] = new(big.Int).Set(one)
 	return base
 }
+
+func decomposeBig(x *big.Int, base []*big.Int, q *big.Int) []int64 {
+	xSigned := new(big.Int).Set(x)
+	qHalf := new(big.Int).Rsh(q, 1)
+	if xSigned.Cmp(qHalf) > 0 {
+		xSigned.Sub(xSigned, q)
+	}
+
+	dcmpOut := make([]int64, len(base))
+	for i := range base {
+		baseNeg := new(big.Int).Neg(base[i])
+		switch {
+		case xSigned.Cmp(base[i]) >= 0:
+			dcmpOut[i] = 1
+			xSigned.Sub(xSigned, base[i])
+		case xSigned.Cmp(baseNeg) <= 0:
+			dcmpOut[i] = -1
+			xSigned.Add(xSigned, base[i])
+		default:
+			dcmpOut[i] = 0
+		}
+	}
+	return dcmpOut
+}

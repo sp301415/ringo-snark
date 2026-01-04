@@ -75,6 +75,13 @@ func (p *Poly[E]) Evaluate(x E) E {
 	return z
 }
 
+// Clear clears the polynomial.
+func (p *Poly[E]) Clear() {
+	for i := range p.Coeffs {
+		p.Coeffs[i].SetUint64(0)
+	}
+}
+
 // isBinaryOperable checks if pOut, p is operable.
 func isBinaryOperable[E num.Uint[E]](rank int, pOut, p *Poly[E]) bool {
 	switch {

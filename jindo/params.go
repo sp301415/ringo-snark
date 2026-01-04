@@ -137,7 +137,7 @@ func NewParameters[E num.Uint[E]](targetN, batch int) Parameters {
 	t := float64(batch)
 	b := float64(ecd.base)
 	k := float64(ecd.exp)
-	d := float64(max(k, 256))
+	d := float64(max(k, 1024))
 	l := d / k
 
 	nu := rlweRank / d

@@ -42,20 +42,18 @@ func NewProver[E num.Uint[E]](params Parameters, crs []byte) *Prover[E] {
 // Commit commits v.
 // Panics if len(v) > params.rank.
 // Otherwise, it pads zero.
-func (p *Prover[E]) Commit(v *bigpoly.Poly[E]) (*Commitment, *Opening) {
+func (p *Prover[E]) Commit(v []E) (*Commitment, *Opening) {
 	switch {
-	case v.Rank() > p.params.rank:
+	case len(v) > p.params.rank:
 		panic("len(v) > params.rank")
-	case v.IsNTT:
-		panic("v is in NTT form")
 	}
 
 	com := NewCommitment(p.params)
 	open := NewOpening(p.params)
 
-	firstRow, lastRow := p.genFirstLastRow(v.Coeffs)
+	firstRow, lastRow := p.genFirstLastRow(v)
 	for i := range p.params.cols {
-		p.commitColTo(i, open, v.Coeffs, firstRow, lastRow)
+		p.commitColTo(i, open, v, firstRow, lastRow)
 	}
 
 	p.outerCommitTo(com, open)
@@ -98,7 +96,7 @@ func (p *Prover[E]) commitColTo(i int, open *Opening, v []E, firstRow, lastRow [
 		idxStart := (j * p.params.cols * p.params.slots) + rowStart
 		idxEnd := (j * p.params.cols * p.params.slots) + rowEnd
 		if idxStart > len(v) {
-			continue
+			break
 		}
 		p.ecd.RandEncodeTo(open.Encode[i][j], v[idxStart:min(idxEnd, len(v))], p.params.ecdStdDev)
 	}
@@ -174,7 +172,7 @@ func (p *Prover[E]) outerCommitTo(com *Commitment, open *Opening) {
 }
 
 // Evaluate batch evaluates v at x using batch randomness batch and returns the result with proof.
-func (p *Prover[E]) Evaluate(x E, v []*bigpoly.Poly[E], com []*Commitment, open []*Opening) ([]E, *Proof) {
+func (p *Prover[E]) Evaluate(x E, v [][]E, com []*Commitment, open []*Opening) ([]E, *Proof) {
 	switch {
 	case len(v) != len(com) || len(v) != len(open):
 		panic("len(v), len(com), len(open) are not equal")
@@ -184,10 +182,8 @@ func (p *Prover[E]) Evaluate(x E, v []*bigpoly.Poly[E], com []*Commitment, open 
 
 	for i := range p.params.batch {
 		switch {
-		case v[i].Rank() > p.params.rank:
+		case len(v[i]) > p.params.rank:
 			panic(fmt.Sprintf("len(v[%v]) > params.rank", i))
-		case v[i].IsNTT:
-			panic(fmt.Sprintf("v[%v] is in NTT form", i))
 		}
 	}
 
@@ -274,7 +270,7 @@ func (p *Prover[E]) Evaluate(x E, v []*bigpoly.Poly[E], com []*Commitment, open 
 
 	evals := make([]E, p.params.batch)
 	for i := 0; i < p.params.batch; i++ {
-		evals[i] = v[i].Evaluate(x)
+		evals[i] = (&bigpoly.Poly[E]{Coeffs: v[i]}).Evaluate(x)
 	}
 
 	return evals, pf

@@ -27,6 +27,11 @@ func (e *CyclicEvaluator[E]) NewPoly(isNTT bool) *Poly[E] {
 	return NewPoly[E](e.rank, isNTT)
 }
 
+// Rank returns the rank of the evaluator.
+func (e *CyclicEvaluator[E]) Rank() int {
+	return e.rank
+}
+
 // Add returns p0 + p1.
 func (e *CyclicEvaluator[E]) Add(p0, p1 *Poly[E]) *Poly[E] {
 	pOut := e.NewPoly(p0.IsNTT)
@@ -203,6 +208,28 @@ func (e *CyclicEvaluator[E]) InvNTTTo(pOut, p *Poly[E]) {
 
 	e.ntt.InvNTTTo(pOut.Coeffs, p.Coeffs)
 	pOut.IsNTT = false
+}
+
+// QuoRemByVanishing returns the quotient and remainder of p by the polynomial X^N - 1.
+func (e *CyclicEvaluator[E]) QuoRemByVanishing(p *Poly[E], N int) (quo, rem *Poly[E]) {
+	switch {
+	case p.Rank() != e.rank:
+		panic("inputs not consistent")
+	case p.IsNTT:
+		panic("input in NTT domain")
+	}
+
+	quo = e.NewPoly(false)
+	rem = e.NewPoly(false)
+	rem.CopyFrom(p)
+
+	for i := e.rank - 1; i >= N; i-- {
+		quo.Coeffs[i-N].Add(quo.Coeffs[i-N], rem.Coeffs[i])
+		rem.Coeffs[i-N].Add(rem.Coeffs[i-N], rem.Coeffs[i])
+		rem.Coeffs[i].SetUint64(0)
+	}
+
+	return quo, rem
 }
 
 // SafeCopy returns a thread-safe copy.

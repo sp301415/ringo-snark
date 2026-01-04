@@ -2,10 +2,20 @@ package jindo
 
 import (
 	"encoding/binary"
+	"math/bits"
 
 	"github.com/sp301415/ringo-snark/math/num"
 	"github.com/tuneinsight/lattigo/v6/ring"
 )
+
+// divMod64 computes x = x / y and returns x mod y.
+func divMod64(x []uint64, y uint64) uint64 {
+	var r uint64
+	for i := len(x) - 1; i >= 0; i-- {
+		x[i], r = bits.Div64(r, x[i], y)
+	}
+	return r
+}
 
 // encodeChallengeTo encodes c to pOut.
 func encodeChallengeTo(params Parameters, ringQ *ring.Ring, pOut ring.Poly, chalBytes []byte) {
@@ -16,19 +26,21 @@ func encodeChallengeTo(params Parameters, ringQ *ring.Ring, pOut ring.Poly, chal
 		binary.BigEndian.Uint64(chalBytes[8:]),
 	}
 
-	signBit := c[1] & 1
-	c[1] >>= 1
-
 	cInfNm := uint64(params.ChallengeBound())
 	for i := 0; i < params.ecd.exp; i++ {
 		r := divMod64(c, cInfNm)
-		for k := 0; k <= pOut.Level(); k++ {
-			pOut.Coeffs[k][i*params.slots] = r
+		if r > cInfNm/2 {
+			r = cInfNm - r
+			for k := 0; k <= pOut.Level(); k++ {
+				pOut.Coeffs[k][i*params.slots] = ringQ.SubRings[k].Modulus - r
+			}
+		} else {
+			for k := 0; k <= pOut.Level(); k++ {
+				pOut.Coeffs[k][i*params.slots] = r
+			}
 		}
 	}
-	if signBit == 1 {
-		ringQ.Neg(pOut, pOut)
-	}
+
 	ringQ.MForm(pOut, pOut)
 	ringQ.NTT(pOut, pOut)
 }

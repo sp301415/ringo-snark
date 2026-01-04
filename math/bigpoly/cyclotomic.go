@@ -27,6 +27,11 @@ func (e *CyclotomicEvaluator[E]) NewPoly(isNTT bool) *Poly[E] {
 	return NewPoly[E](e.rank, isNTT)
 }
 
+// Rank returns the rank of the evaluator.
+func (e *CyclotomicEvaluator[E]) Rank() int {
+	return e.rank
+}
+
 // Add returns p0 + p1.
 func (e *CyclotomicEvaluator[E]) Add(p0, p1 *Poly[E]) *Poly[E] {
 	pOut := e.NewPoly(p0.IsNTT)

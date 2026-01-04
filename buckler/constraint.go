@@ -1,13 +1,16 @@
 package buckler
 
-import "github.com/sp301415/ringo-snark/math/num"
+import (
+	"github.com/sp301415/ringo-snark/math/num"
+)
 
 // ArithmeticConstraint is the arithmetic constraint for the circuit.
 type ArithmeticConstraint[E num.Uint[E]] struct {
-	rank                int
-	coeffs              []E
-	coeffsPublicWitness []uint64
-	witness             [][]uint64
+	wRank                 int
+	coeffs                []E
+	hasCoeffPublicWitness []bool
+	coeffsPublicWitness   []uint64
+	witness               [][]uint64
 }
 
 // AddTerm adds a term to the constraint.
@@ -16,22 +19,37 @@ type ArithmeticConstraint[E num.Uint[E]] struct {
 func (c *ArithmeticConstraint[E]) AddTerm(coeff E, coeffPublicWitness PublicWitness[E], witness ...Witness[E]) {
 	c.coeffs = append(c.coeffs, coeff)
 
-	digits := make([]uint64, coeff.Limb())
 	if coeffPublicWitness != nil {
-		coeffPublicWitness[0].Slice(digits)
-		c.coeffsPublicWitness = append(c.coeffsPublicWitness, digits[0])
+		c.hasCoeffPublicWitness = append(c.hasCoeffPublicWitness, true)
+		c.coeffsPublicWitness = append(c.coeffsPublicWitness, witnessToID(coeffPublicWitness))
 	} else {
+		c.hasCoeffPublicWitness = append(c.hasCoeffPublicWitness, false)
 		c.coeffsPublicWitness = append(c.coeffsPublicWitness, 0)
 	}
 
 	witnessID := make([]uint64, len(witness))
 	for i := range witness {
-		witness[i][0].Slice(digits)
-		witnessID[i] = digits[0]
+		witnessID[i] = witnessToID(witness[i])
 	}
 	c.witness = append(c.witness, witnessID)
 
-	if len(witness) > c.rank {
-		c.rank = len(witness)
+	if len(witness) > c.wRank {
+		c.wRank = len(witness)
 	}
+}
+
+// maxRank returns the maximum polynomial rank of the constraint.
+func (c *ArithmeticConstraint[E]) maxRank(rank int) int {
+	maxDeg := 0
+	for i := range c.witness {
+		deg := 0
+		if c.hasCoeffPublicWitness[i] {
+			deg += rank - 1
+		}
+		deg += len(c.witness[i]) * rank
+		if deg > maxDeg {
+			maxDeg = deg
+		}
+	}
+	return maxDeg + 1
 }
