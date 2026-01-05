@@ -3,7 +3,7 @@ package jindo
 import (
 	"io"
 
-	"github.com/sp301415/ringo-snark/csprng"
+	"github.com/sp301415/ringo-snark/math/csprng"
 	"github.com/tuneinsight/lattigo/v6/ring"
 )
 

@@ -1,18 +1,18 @@
 package buckler
 
 import (
+	"github.com/sp301415/ringo-snark/math/bignum"
 	"github.com/sp301415/ringo-snark/math/bigpoly"
-	"github.com/sp301415/ringo-snark/math/num"
 )
 
 // Encoder computes the encoding of a vector to polynomial.
-type Encoder[E num.Uint[E]] struct {
+type Encoder[E bignum.Uint[E]] struct {
 	ntt       *bigpoly.CyclicTransformer[E]
 	embedRank int
 }
 
 // newEncoder creates a new [Encoder].
-func newEncoder[E num.Uint[E]](rank, embedRank int) *Encoder[E] {
+func newEncoder[E bignum.Uint[E]](rank, embedRank int) *Encoder[E] {
 	return &Encoder[E]{
 		ntt:       bigpoly.NewCyclicTransformer[E](rank),
 		embedRank: embedRank,

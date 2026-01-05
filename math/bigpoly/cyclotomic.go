@@ -1,9 +1,13 @@
 package bigpoly
 
-import "github.com/sp301415/ringo-snark/math/num"
+import (
+	"math/big"
+
+	"github.com/sp301415/ringo-snark/math/bignum"
+)
 
 // CyclotomicEvaluator evaluates polynomial over power-of-two cyclotomic ring.
-type CyclotomicEvaluator[E num.Uint[E]] struct {
+type CyclotomicEvaluator[E bignum.Uint[E]] struct {
 	rank int
 
 	ntt *CyclotomicTransformer[E]
@@ -12,7 +16,7 @@ type CyclotomicEvaluator[E num.Uint[E]] struct {
 }
 
 // NewCyclotomicEvaluator creates a new [CyclotomicEvaluator].
-func NewCyclotomicEvaluator[E num.Uint[E]](rank int) *CyclotomicEvaluator[E] {
+func NewCyclotomicEvaluator[E bignum.Uint[E]](rank int) *CyclotomicEvaluator[E] {
 	return &CyclotomicEvaluator[E]{
 		rank: rank,
 
@@ -207,6 +211,41 @@ func (e *CyclotomicEvaluator[E]) InvNTTTo(pOut, p *Poly[E]) {
 	}
 
 	e.ntt.InvNTTTo(pOut.Coeffs, p.Coeffs)
+	pOut.IsNTT = false
+}
+
+// ModSwitch switches the modulus of pBig of modulus qBig.
+func (e *CyclotomicEvaluator[E]) ModSwitch(pBig []*big.Int, qBig *big.Int) *Poly[E] {
+	pOut := e.NewPoly(false)
+	e.ModSwitchTo(pOut, pBig, qBig)
+	return pOut
+}
+
+// ModSwitchTo switches the modulus of pBig of modulus q and writes to pOut.
+func (e *CyclotomicEvaluator[E]) ModSwitchTo(pOut *Poly[E], pBig []*big.Int, qBig *big.Int) {
+	if len(pBig) != e.rank {
+		panic("ModSwitch: input size not consistent")
+	}
+
+	var z E
+
+	q := z.New().SetInt64(-1).BigInt(new(big.Int))
+	q.Add(q, big.NewInt(1))
+	qBigHalf := new(big.Int).Rsh(qBig, 1)
+
+	c, cRem := new(big.Int), new(big.Int)
+	for i := range e.rank {
+		c.Mul(pBig[i], q)
+		cRem.Mod(c, qBig)
+		if cRem.Cmp(qBigHalf) > 0 {
+			cRem.Sub(cRem, qBig)
+		}
+		c.Sub(c, cRem)
+		c.Div(c, qBig)
+		c.Mod(c, q)
+		pOut.Coeffs[i].SetBigInt(c)
+	}
+
 	pOut.IsNTT = false
 }
 

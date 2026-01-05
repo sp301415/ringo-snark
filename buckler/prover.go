@@ -9,12 +9,12 @@ import (
 
 	fiatshamir "github.com/consensys/gnark-crypto/fiat-shamir"
 	"github.com/sp301415/ringo-snark/jindo"
+	"github.com/sp301415/ringo-snark/math/bignum"
 	"github.com/sp301415/ringo-snark/math/bigpoly"
-	"github.com/sp301415/ringo-snark/math/num"
 )
 
 // Prover proves the given circuit.
-type Prover[E num.Uint[E]] struct {
+type Prover[E bignum.Uint[E]] struct {
 	JindoParams jindo.Parameters
 
 	polyEval *bigpoly.CyclicEvaluator[E]
@@ -27,7 +27,7 @@ type Prover[E num.Uint[E]] struct {
 }
 
 // witnessData holds the data of the witnesses during proving.
-type witnessData[E num.Uint[E]] struct {
+type witnessData[E bignum.Uint[E]] struct {
 	pw []PublicWitness[E]
 	w  []Witness[E]
 
@@ -68,8 +68,7 @@ func (p *Prover[E]) Prove(c Circuit[E]) (*Proof[E], error) {
 		}
 	}
 
-	mod := new(big.Int).SetUint64(p.JindoParams.Base())
-	mod.Exp(mod, big.NewInt(int64(p.JindoParams.Exp())), nil)
+	mod := z.New().SetInt64(-1).BigInt(new(big.Int))
 	mod.Add(mod, big.NewInt(1))
 
 	bigCoeff := new(big.Int)

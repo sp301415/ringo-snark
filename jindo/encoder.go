@@ -4,13 +4,13 @@ import (
 	"math"
 	"math/big"
 
+	"github.com/sp301415/ringo-snark/math/bignum"
 	"github.com/sp301415/ringo-snark/math/csprng"
-	"github.com/sp301415/ringo-snark/math/num"
 	"github.com/tuneinsight/lattigo/v6/ring"
 )
 
 // Encoder encodes large integer vector to small ring elements.
-type Encoder[E num.Uint[E]] struct {
+type Encoder[E bignum.Uint[E]] struct {
 	params Parameters
 
 	twinCDT *csprng.TwinCDTGaussianSampler
@@ -27,7 +27,7 @@ type Encoder[E num.Uint[E]] struct {
 }
 
 // encoderBuffer is a buffer for [Encoder].
-type encoderBuffer[E num.Uint[E]] struct {
+type encoderBuffer[E bignum.Uint[E]] struct {
 	// coeff is a buffer for E.
 	coeff []uint64
 	// fpSample is a buffer for Gaussian samples.
@@ -46,7 +46,7 @@ type encoderBuffer[E num.Uint[E]] struct {
 }
 
 // NewEncoder creates a new [Encoder].
-func NewEncoder[E num.Uint[E]](params Parameters) *Encoder[E] {
+func NewEncoder[E bignum.Uint[E]](params Parameters) *Encoder[E] {
 	pBig := new(big.Int).Exp(new(big.Int).SetUint64(params.ecd.base), new(big.Int).SetUint64(uint64(params.ecd.exp)), nil)
 	bFloat := new(big.Float).SetPrec(uint(pBig.BitLen())).SetUint64(params.ecd.base)
 	pBig.Add(pBig, big.NewInt(1))
@@ -82,7 +82,7 @@ func NewEncoder[E num.Uint[E]](params Parameters) *Encoder[E] {
 }
 
 // newEncoderBuffer creates a new [encoderBuffer].
-func newEncoderBuffer[E num.Uint[E]](ringQ *ring.Ring) encoderBuffer[E] {
+func newEncoderBuffer[E bignum.Uint[E]](ringQ *ring.Ring) encoderBuffer[E] {
 	var z E
 
 	coeffBig := make([]*big.Int, ringQ.N())

@@ -6,8 +6,8 @@ import (
 	"reflect"
 
 	"github.com/sp301415/ringo-snark/jindo"
+	"github.com/sp301415/ringo-snark/math/bignum"
 	"github.com/sp301415/ringo-snark/math/bigpoly"
-	"github.com/sp301415/ringo-snark/math/num"
 )
 
 var (
@@ -15,7 +15,7 @@ var (
 	errRankMismatch = fmt.Errorf("witness rank mismatch")
 )
 
-func idToWitness[E num.Uint[E], W Witness[E] | PublicWitness[E]](id uint64) W {
+func idToWitness[E bignum.Uint[E], W Witness[E] | PublicWitness[E]](id uint64) W {
 	var z E
 	var w W
 
@@ -31,7 +31,7 @@ func idToWitness[E num.Uint[E], W Witness[E] | PublicWitness[E]](id uint64) W {
 	return nil
 }
 
-func witnessToID[E num.Uint[E], W Witness[E] | PublicWitness[E]](w W) uint64 {
+func witnessToID[E bignum.Uint[E], W Witness[E] | PublicWitness[E]](w W) uint64 {
 	var z E
 
 	digits := make([]uint64, z.Limb())
@@ -39,7 +39,7 @@ func witnessToID[E num.Uint[E], W Witness[E] | PublicWitness[E]](w W) uint64 {
 	return (digits[0] >> 1) - 1
 }
 
-type walker[E num.Uint[E]] struct {
+type walker[E bignum.Uint[E]] struct {
 	pwCnt       uint64
 	wCnt        uint64
 	circuitType reflect.Type
@@ -161,7 +161,7 @@ func (w *walker[E]) vrfWalk(vrf *Verifier[E], v reflect.Value, pw []PublicWitnes
 //
 // For correct compilation, the [PublicWitness] and [Witness] field must be empty.
 // Moreover, all other fields must be set correctly.
-func Compile[E num.Uint[E]](witnessRank int, c Circuit[E], crs []byte) (*Prover[E], *Verifier[E], error) {
+func Compile[E bignum.Uint[E]](witnessRank int, c Circuit[E], crs []byte) (*Prover[E], *Verifier[E], error) {
 	if reflect.TypeOf(c).Kind() != reflect.Pointer {
 		return nil, nil, fmt.Errorf("circuit must be defined with a pointer receiver")
 	}

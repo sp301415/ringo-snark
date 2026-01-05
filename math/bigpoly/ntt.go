@@ -4,11 +4,11 @@ import (
 	"math/big"
 	"unsafe"
 
-	"github.com/sp301415/ringo-snark/math/num"
+	"github.com/sp301415/ringo-snark/math/bignum"
 )
 
 // CyclicTransformer computes cyclic NTT.
-type CyclicTransformer[E num.Uint[E]] struct {
+type CyclicTransformer[E bignum.Uint[E]] struct {
 	rank int
 
 	tw      []E
@@ -17,8 +17,8 @@ type CyclicTransformer[E num.Uint[E]] struct {
 }
 
 // NewCyclicTransformer creates a new [CyclicTransformer].
-func NewCyclicTransformer[E num.Uint[E]](rank int) *CyclicTransformer[E] {
-	if !num.IsPowerOfTwo(rank) {
+func NewCyclicTransformer[E bignum.Uint[E]](rank int) *CyclicTransformer[E] {
+	if !isPowerOfTwo(rank) {
 		panic("rank must be a power of two")
 	}
 
@@ -55,8 +55,8 @@ func NewCyclicTransformer[E num.Uint[E]](rank int) *CyclicTransformer[E] {
 		twRef[i] = z.New().Mul(twRef[i-1], g)
 		twInvRef[i] = z.New().Mul(twInvRef[i-1], gInv)
 	}
-	num.BitReverseInPlace(twRef)
-	num.BitReverseInPlace(twInvRef)
+	bitReverseInPlace(twRef)
+	bitReverseInPlace(twInvRef)
 
 	tw := make([]E, rank)
 	twInv := make([]E, rank)
@@ -135,7 +135,7 @@ func (ntt CyclicTransformer[E]) Rank() int {
 }
 
 // CyclotomicTransformer computes negacyclic NTT.
-type CyclotomicTransformer[E num.Uint[E]] struct {
+type CyclotomicTransformer[E bignum.Uint[E]] struct {
 	rank int
 
 	tw      []E
@@ -144,8 +144,8 @@ type CyclotomicTransformer[E num.Uint[E]] struct {
 }
 
 // NewCyclotomicTransformer creates a new [CyclotomicTransformer].
-func NewCyclotomicTransformer[E num.Uint[E]](rank int) *CyclotomicTransformer[E] {
-	if !num.IsPowerOfTwo(rank) {
+func NewCyclotomicTransformer[E bignum.Uint[E]](rank int) *CyclotomicTransformer[E] {
+	if !isPowerOfTwo(rank) {
 		panic("rank must be a power of two")
 	}
 
@@ -182,8 +182,8 @@ func NewCyclotomicTransformer[E num.Uint[E]](rank int) *CyclotomicTransformer[E]
 		tw[i] = z.New().Mul(tw[i-1], g)
 		twInv[i] = z.New().Mul(twInv[i-1], gInv)
 	}
-	num.BitReverseInPlace(tw)
-	num.BitReverseInPlace(twInv)
+	bitReverseInPlace(tw)
+	bitReverseInPlace(twInv)
 
 	rankInv := z.New().SetUint64(uint64(rank))
 	rankInv.Inverse(rankInv)
@@ -237,7 +237,7 @@ func (ntt *CyclotomicTransformer[E]) InvNTTTo(vOut, v []E) {
 	scalarMulVecTo(vOut, vOut, ntt.rankInv)
 }
 
-func nttInPlace[E num.Uint[E]](p, tw []E) {
+func nttInPlace[E bignum.Uint[E]](p, tw []E) {
 	if len(p) < 32 {
 		nttInPlaceRef(p, tw)
 		return
@@ -245,14 +245,14 @@ func nttInPlace[E num.Uint[E]](p, tw []E) {
 	nttInPlaceUnroll(p, tw)
 }
 
-func butterfly[E num.Uint[E]](u, v, w E) {
+func butterfly[E bignum.Uint[E]](u, v, w E) {
 	v.Mul(v, w)
 	u.Add(u, v)
 	v.Add(v, v)
 	v.Sub(u, v)
 }
 
-func nttInPlaceRef[E num.Uint[E]](p, tw []E) {
+func nttInPlaceRef[E bignum.Uint[E]](p, tw []E) {
 	N := len(p)
 
 	t := N
@@ -268,7 +268,7 @@ func nttInPlaceRef[E num.Uint[E]](p, tw []E) {
 	}
 }
 
-func nttInPlaceUnroll[E num.Uint[E]](p, tw []E) {
+func nttInPlaceUnroll[E bignum.Uint[E]](p, tw []E) {
 	N := len(p)
 
 	t := N / 2
@@ -348,7 +348,7 @@ func nttInPlaceUnroll[E num.Uint[E]](p, tw []E) {
 	}
 }
 
-func inttInPlace[E num.Uint[E]](p, twInv []E) {
+func inttInPlace[E bignum.Uint[E]](p, twInv []E) {
 	if len(p) < 32 {
 		inttInPlaceRef(p, twInv)
 		return
@@ -356,14 +356,14 @@ func inttInPlace[E num.Uint[E]](p, twInv []E) {
 	inttInPlaceUnroll(p, twInv)
 }
 
-func invButterfly[E num.Uint[E]](u, v, w E) {
+func invButterfly[E bignum.Uint[E]](u, v, w E) {
 	u.Add(u, v)
 	v.Add(v, v)
 	v.Sub(u, v)
 	v.Mul(v, w)
 }
 
-func inttInPlaceRef[E num.Uint[E]](p, twInv []E) {
+func inttInPlaceRef[E bignum.Uint[E]](p, twInv []E) {
 	N := len(p)
 
 	t := 1
@@ -379,7 +379,7 @@ func inttInPlaceRef[E num.Uint[E]](p, twInv []E) {
 	}
 }
 
-func inttInPlaceUnroll[E num.Uint[E]](p, twInv []E) {
+func inttInPlaceUnroll[E bignum.Uint[E]](p, twInv []E) {
 	N := len(p)
 
 	// t = 1, m = N / 2

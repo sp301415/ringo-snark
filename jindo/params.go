@@ -4,7 +4,7 @@ import (
 	"math"
 	"math/big"
 
-	"github.com/sp301415/ringo-snark/math/num"
+	"github.com/sp301415/ringo-snark/math/bignum"
 	"github.com/tuneinsight/lattigo/v6/ring"
 )
 
@@ -15,7 +15,7 @@ type encodeParameters struct {
 }
 
 // newEncodeParameters creates a new [encodeParameters].
-func newEncodeParameters[E num.Uint[E]]() encodeParameters {
+func newEncodeParameters[E bignum.Uint[E]]() encodeParameters {
 	var z E
 
 	logExp := 0
@@ -123,7 +123,7 @@ type Parameters struct {
 }
 
 // NewParameters creates a new [Parameters].
-func NewParameters[E num.Uint[E]](targetN, batch int) Parameters {
+func NewParameters[E bignum.Uint[E]](targetN, batch int) Parameters {
 	switch {
 	case targetN < 1:
 		panic("NewParameters: targetN must be >= 1")

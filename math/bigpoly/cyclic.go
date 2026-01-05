@@ -1,9 +1,9 @@
 package bigpoly
 
-import "github.com/sp301415/ringo-snark/math/num"
+import "github.com/sp301415/ringo-snark/math/bignum"
 
 // CyclicEvaluator evaluates polynomial over power-of-two cyclic ring.
-type CyclicEvaluator[E num.Uint[E]] struct {
+type CyclicEvaluator[E bignum.Uint[E]] struct {
 	rank int
 
 	ntt *CyclicTransformer[E]
@@ -12,7 +12,7 @@ type CyclicEvaluator[E num.Uint[E]] struct {
 }
 
 // NewCyclicEvaluator creates a new [CyclicEvaluator].
-func NewCyclicEvaluator[E num.Uint[E]](rank int) *CyclicEvaluator[E] {
+func NewCyclicEvaluator[E bignum.Uint[E]](rank int) *CyclicEvaluator[E] {
 	return &CyclicEvaluator[E]{
 		rank: rank,
 

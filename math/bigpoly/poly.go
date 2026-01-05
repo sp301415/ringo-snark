@@ -4,17 +4,17 @@ import (
 	"bytes"
 	"unsafe"
 
-	"github.com/sp301415/ringo-snark/math/num"
+	"github.com/sp301415/ringo-snark/math/bignum"
 )
 
 // Poly represents a polynomial with elements of type [Uint].
-type Poly[E num.Uint[E]] struct {
+type Poly[E bignum.Uint[E]] struct {
 	Coeffs []E
 	IsNTT  bool
 }
 
 // NewPoly creates a new [Poly].
-func NewPoly[E num.Uint[E]](rank int, isNTT bool) *Poly[E] {
+func NewPoly[E bignum.Uint[E]](rank int, isNTT bool) *Poly[E] {
 	coeffs := make([]E, rank)
 	for i := range coeffs {
 		coeffs[i] = coeffs[i].New()
@@ -83,7 +83,7 @@ func (p *Poly[E]) Clear() {
 }
 
 // isBinaryOperable checks if pOut, p is operable.
-func isBinaryOperable[E num.Uint[E]](rank int, pOut, p *Poly[E]) bool {
+func isBinaryOperable[E bignum.Uint[E]](rank int, pOut, p *Poly[E]) bool {
 	switch {
 	case len(pOut.Coeffs) != rank || len(p.Coeffs) != rank:
 		return false
@@ -92,7 +92,7 @@ func isBinaryOperable[E num.Uint[E]](rank int, pOut, p *Poly[E]) bool {
 }
 
 // isTernaryOperable checks if pOut, p0, p1 is operable.
-func isTernaryOperable[E num.Uint[E]](rank int, pOut, p0, p1 *Poly[E]) bool {
+func isTernaryOperable[E bignum.Uint[E]](rank int, pOut, p0, p1 *Poly[E]) bool {
 	switch {
 	case len(pOut.Coeffs) != rank || len(p0.Coeffs) != rank || len(p1.Coeffs) != rank:
 		return false
@@ -103,12 +103,12 @@ func isTernaryOperable[E num.Uint[E]](rank int, pOut, p0, p1 *Poly[E]) bool {
 }
 
 // evaluatorBuffer is a buffer for polynomial evaluators.
-type evaluatorBuffer[E num.Uint[E]] struct {
+type evaluatorBuffer[E bignum.Uint[E]] struct {
 	p *Poly[E]
 }
 
 // newEvaluatorBuffer creates a new [evaluatorBuffer].
-func newEvaluatorBuffer[E num.Uint[E]](rank int) evaluatorBuffer[E] {
+func newEvaluatorBuffer[E bignum.Uint[E]](rank int) evaluatorBuffer[E] {
 	return evaluatorBuffer[E]{
 		p: NewPoly[E](rank, false),
 	}

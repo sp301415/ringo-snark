@@ -2,11 +2,11 @@ package buckler
 
 import (
 	"github.com/sp301415/ringo-snark/jindo"
-	"github.com/sp301415/ringo-snark/math/num"
+	"github.com/sp301415/ringo-snark/math/bignum"
 )
 
 // Proof is the proof for the circuit.
-type Proof[E num.Uint[E]] struct {
+type Proof[E bignum.Uint[E]] struct {
 	Witness []*jindo.Commitment
 
 	LinCheckMaskSum E

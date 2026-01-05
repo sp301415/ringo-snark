@@ -3,10 +3,10 @@ package bigpoly
 import (
 	"unsafe"
 
-	"github.com/sp301415/ringo-snark/math/num"
+	"github.com/sp301415/ringo-snark/math/bignum"
 )
 
-func addVecTo[E num.Uint[E]](xOut, x0, x1 []E) {
+func addVecTo[E bignum.Uint[E]](xOut, x0, x1 []E) {
 	M := (len(xOut) >> 3) << 3
 	for i := 0; i < M; i += 8 {
 		wOut := (*[8]E)(unsafe.Pointer(&xOut[i]))
@@ -29,7 +29,7 @@ func addVecTo[E num.Uint[E]](xOut, x0, x1 []E) {
 	}
 }
 
-func subVecTo[E num.Uint[E]](xOut, x0, x1 []E) {
+func subVecTo[E bignum.Uint[E]](xOut, x0, x1 []E) {
 	M := (len(xOut) >> 3) << 3
 	for i := 0; i < M; i += 8 {
 		wOut := (*[8]E)(unsafe.Pointer(&xOut[i]))
@@ -52,7 +52,7 @@ func subVecTo[E num.Uint[E]](xOut, x0, x1 []E) {
 	}
 }
 
-func negVecTo[E num.Uint[E]](xOut, x0 []E) {
+func negVecTo[E bignum.Uint[E]](xOut, x0 []E) {
 	M := (len(xOut) >> 3) << 3
 	for i := 0; i < M; i += 8 {
 		wOut := (*[8]E)(unsafe.Pointer(&xOut[i]))
@@ -74,7 +74,7 @@ func negVecTo[E num.Uint[E]](xOut, x0 []E) {
 	}
 }
 
-func scalarMulVecTo[E num.Uint[E]](xOut, x0 []E, c E) {
+func scalarMulVecTo[E bignum.Uint[E]](xOut, x0 []E, c E) {
 	M := (len(xOut) >> 3) << 3
 	for i := 0; i < M; i += 8 {
 		wOut := (*[8]E)(unsafe.Pointer(&xOut[i]))
@@ -96,7 +96,7 @@ func scalarMulVecTo[E num.Uint[E]](xOut, x0 []E, c E) {
 	}
 }
 
-func mulVecTo[E num.Uint[E]](xOut, x0, x1 []E) {
+func mulVecTo[E bignum.Uint[E]](xOut, x0, x1 []E) {
 	M := (len(xOut) >> 3) << 3
 	for i := 0; i < M; i += 8 {
 		wOut := (*[8]E)(unsafe.Pointer(&xOut[i]))
@@ -116,5 +116,21 @@ func mulVecTo[E num.Uint[E]](xOut, x0, x1 []E) {
 
 	for i := M; i < len(xOut); i++ {
 		xOut[i].Mul(x0[i], x1[i])
+	}
+}
+
+// bitReverseInPlace reorders v into bit-reversal order in-place.
+func bitReverseInPlace[T any](v []T) {
+	var bit, j int
+	for i := 1; i < len(v); i++ {
+		bit = len(v) >> 1
+		for j >= bit {
+			j -= bit
+			bit >>= 1
+		}
+		j += bit
+		if i < j {
+			v[i], v[j] = v[j], v[i]
+		}
 	}
 }

@@ -4,7 +4,7 @@ import (
 	"encoding/binary"
 	"math/bits"
 
-	"github.com/sp301415/ringo-snark/math/num"
+	"github.com/sp301415/ringo-snark/math/bignum"
 	"github.com/tuneinsight/lattigo/v6/ring"
 )
 
@@ -60,8 +60,8 @@ func setCoeffSigned(ringQ *ring.Ring, pOut ring.Poly, c int64, i int) {
 }
 
 // leftVec computes the left vector during the evaluation protocol.
-func leftVec[E num.Uint[E]](params Parameters, x E) []E {
-	skip := num.ExpE(x, uint64(params.cols*params.slots))
+func leftVec[E bignum.Uint[E]](params Parameters, x E) []E {
+	skip := bignum.Exp(x, uint64(params.cols*params.slots))
 	left := make([]E, params.rows)
 	left[0] = x.New().SetUint64(1)
 	for i := 1; i < params.rows; i++ {
@@ -72,7 +72,7 @@ func leftVec[E num.Uint[E]](params Parameters, x E) []E {
 }
 
 // rightVec computes the right vector during the evaluation protocol.
-func rightVec[E num.Uint[E]](params Parameters, x E) []E {
+func rightVec[E bignum.Uint[E]](params Parameters, x E) []E {
 	right := make([]E, params.cols*params.slots)
 	right[0] = x.New().SetUint64(1)
 	for i := 1; i < params.cols*params.slots; i++ {

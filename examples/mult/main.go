@@ -3,13 +3,14 @@ package main
 import (
 	crand "crypto/rand"
 	"fmt"
+	"math"
 	"math/rand"
 	"time"
 
 	"github.com/sp301415/ringo-snark/buckler"
+	"github.com/sp301415/ringo-snark/examples/mult/zp"
+	"github.com/sp301415/ringo-snark/math/bignum"
 	"github.com/sp301415/ringo-snark/math/bigpoly"
-	"github.com/sp301415/ringo-snark/math/num"
-	"github.com/sp301415/ringo-snark/scratchpad/zp"
 )
 
 // In this example, we show how to prove the follwing relations:
@@ -31,7 +32,7 @@ import (
 // Where * and - are element-wise vector operations.
 
 // Just like gnark, we define a circuit type.
-type MultCircuit[E num.Uint[E]] struct {
+type MultCircuit[E bignum.Uint[E]] struct {
 	NTTTransformer buckler.LinearTransformer[E]
 
 	YNTT buckler.PublicWitness[E]
@@ -123,4 +124,6 @@ func main() {
 	vf := verifier.Verify(&publicAssignment, proof)
 	fmt.Println("Verifier time:", time.Since(now))
 	fmt.Println("Verification result:", vf)
+
+	fmt.Println("Estimated Proof Size:", prover.JindoParams.Size()/math.Exp2(23), "MB")
 }

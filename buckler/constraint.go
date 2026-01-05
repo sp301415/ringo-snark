@@ -1,11 +1,9 @@
 package buckler
 
-import (
-	"github.com/sp301415/ringo-snark/math/num"
-)
+import "github.com/sp301415/ringo-snark/math/bignum"
 
 // ArithmeticConstraint is the arithmetic constraint for the circuit.
-type ArithmeticConstraint[E num.Uint[E]] struct {
+type ArithmeticConstraint[E bignum.Uint[E]] struct {
 	wRank                 int
 	coeffs                []E
 	hasCoeffPublicWitness []bool

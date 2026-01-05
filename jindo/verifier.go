@@ -4,12 +4,12 @@ import (
 	"crypto/sha3"
 	"math/big"
 
-	"github.com/sp301415/ringo-snark/math/num"
+	"github.com/sp301415/ringo-snark/math/bignum"
 	"github.com/tuneinsight/lattigo/v6/ring"
 )
 
 // Verifier is a Jindo verifier.
-type Verifier[E num.Uint[E]] struct {
+type Verifier[E bignum.Uint[E]] struct {
 	params     Parameters
 	ecd        *Encoder[E]
 	rnsOut     *RNSReconstructor
@@ -22,7 +22,7 @@ type Verifier[E num.Uint[E]] struct {
 }
 
 // NewVerifier creates a new [Verifier].
-func NewVerifier[E num.Uint[E]](params Parameters, crs []byte) *Verifier[E] {
+func NewVerifier[E bignum.Uint[E]](params Parameters, crs []byte) *Verifier[E] {
 	inCutOff := big.NewInt(1)
 	inCutOff.Lsh(inCutOff, uint(params.logInCutOff))
 	inCutOffRNS := params.ringQ.NewRNSScalarFromBigint(inCutOff)

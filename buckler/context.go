@@ -4,12 +4,12 @@ import (
 	"math/big"
 	"reflect"
 
-	"github.com/sp301415/ringo-snark/math/num"
+	"github.com/sp301415/ringo-snark/math/bignum"
 )
 
 // Context is a context for compiling a circuit.
 // It runs through the circuit and collects the information needed to compile it.
-type Context[E num.Uint[E]] struct {
+type Context[E bignum.Uint[E]] struct {
 	rank int
 
 	// pwCnt is the number of public witnesses.
@@ -42,7 +42,7 @@ type Context[E num.Uint[E]] struct {
 }
 
 // newContext creates a new [Context].
-func newContext[E num.Uint[E]](rank int, walker *walker[E]) *Context[E] {
+func newContext[E bignum.Uint[E]](rank int, walker *walker[E]) *Context[E] {
 	return &Context[E]{
 		rank: rank,
 

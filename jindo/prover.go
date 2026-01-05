@@ -5,14 +5,14 @@ import (
 	"fmt"
 	"math/big"
 
+	"github.com/sp301415/ringo-snark/math/bignum"
 	"github.com/sp301415/ringo-snark/math/bigpoly"
 	"github.com/sp301415/ringo-snark/math/csprng"
-	"github.com/sp301415/ringo-snark/math/num"
 	"github.com/tuneinsight/lattigo/v6/ring"
 )
 
 // Prover is a Jindo prover.
-type Prover[E num.Uint[E]] struct {
+type Prover[E bignum.Uint[E]] struct {
 	params Parameters
 	ecd    *Encoder[E]
 	rnsOut *RNSReconstructor
@@ -25,7 +25,7 @@ type Prover[E num.Uint[E]] struct {
 }
 
 // NewProver creates a new [Prover].
-func NewProver[E num.Uint[E]](params Parameters, crs []byte) *Prover[E] {
+func NewProver[E bignum.Uint[E]](params Parameters, crs []byte) *Prover[E] {
 	return &Prover[E]{
 		params: params,
 		ecd:    NewEncoder[E](params),

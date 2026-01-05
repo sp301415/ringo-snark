@@ -7,12 +7,12 @@ import (
 
 	fiatshamir "github.com/consensys/gnark-crypto/fiat-shamir"
 	"github.com/sp301415/ringo-snark/jindo"
+	"github.com/sp301415/ringo-snark/math/bignum"
 	"github.com/sp301415/ringo-snark/math/bigpoly"
-	"github.com/sp301415/ringo-snark/math/num"
 )
 
 // Verifier verifies the given circuit.
-type Verifier[E num.Uint[E]] struct {
+type Verifier[E bignum.Uint[E]] struct {
 	JindoParams jindo.Parameters
 
 	polyEval *bigpoly.CyclicEvaluator[E]
@@ -137,7 +137,7 @@ func (v *Verifier[E]) Verify(c Circuit[E], pf *Proof[E]) bool {
 		return false
 	}
 
-	vanishEval := num.ExpE(evalPoint, uint64(v.ctx.rank))
+	vanishEval := bignum.Exp(evalPoint, uint64(v.ctx.rank))
 	vanishEval.Sub(vanishEval, z.New().SetUint64(1))
 
 	pwEvals := make([]E, v.ctx.pwCnt)
@@ -211,7 +211,7 @@ func (v *Verifier[E]) arithCheck(batchConst, vanishEval, quoEval E, evals []E, p
 func (v *Verifier[E]) linCheck(batchConst, linCheckConst, linCheckMaskEval, evalPoint, vanishEval, linCheckMaskSum, quoEval, remLoEval, remHiEval E, evals []E, pwEvals []E) bool {
 	var z E
 
-	remLoShiftEval := num.ExpE(evalPoint, uint64(v.JindoParams.Rank()-(v.ctx.rank-1)))
+	remLoShiftEval := bignum.Exp(evalPoint, uint64(v.JindoParams.Rank()-(v.ctx.rank-1)))
 	remLoShiftEval.Mul(remLoShiftEval, remLoEval)
 	if remHiEval.Cmp(remLoShiftEval) != 0 {
 		return false
@@ -258,7 +258,7 @@ func (v *Verifier[E]) linCheck(batchConst, linCheckConst, linCheckMaskEval, eval
 func (v *Verifier[E]) sumCheck(batchConst, sumCheckMaskEval, evalPoint, vanishEval, sumCheckMaskSum, quoEval, remLoEval, remHiEval E, evals []E, pwEvals []E) bool {
 	var z E
 
-	remLoShiftEval := num.ExpE(evalPoint, uint64(v.JindoParams.Rank()-(v.ctx.rank-1)))
+	remLoShiftEval := bignum.Exp(evalPoint, uint64(v.JindoParams.Rank()-(v.ctx.rank-1)))
 	remLoShiftEval.Mul(remLoShiftEval, remLoEval)
 	if remHiEval.Cmp(remLoShiftEval) != 0 {
 		return false

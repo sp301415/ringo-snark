@@ -1,14 +1,16 @@
 package main
 
 import (
+	"crypto/rand"
 	"fmt"
 	"math"
 	"math/big"
 	"time"
 
-	"github.com/sp301415/ringo-snark/bigring"
-	"github.com/sp301415/ringo-snark/buckler_old"
-	"github.com/sp301415/ringo-snark/celpc"
+	"github.com/sp301415/ringo-snark/buckler"
+	"github.com/sp301415/ringo-snark/examples/bfv/zp"
+	"github.com/sp301415/ringo-snark/math/bignum"
+	"github.com/sp301415/ringo-snark/math/bigpoly"
 	"github.com/tuneinsight/lattigo/v6/core/rlwe"
 	"github.com/tuneinsight/lattigo/v6/schemes/bgv"
 )
@@ -25,35 +27,38 @@ import (
 // Where t is the plaintext modulus and B_e is the error bound.
 // In our example, we set t = 2^16 + 1.
 
-type CiphertextCircuit struct {
-	NTTTransformer buckler_old.LinearCheckTransformer
+type CiphertextCircuit[E bignum.Uint[E]] struct {
+	NTTTransformer buckler.LinearTransformer[E]
 
 	Degree           int
 	PlaintextModulus uint64
 	ErrBound         uint64
 
-	CiphertextNTT [2]buckler_old.PublicWitness
+	CiphertextNTT [2]buckler.PublicWitness[E]
 
-	SecretKeyNTT buckler_old.Witness
+	SecretKeyNTT buckler.Witness[E]
 
 	Delta         *big.Int
-	MessageNTT    buckler_old.Witness
-	MessageCoeffs buckler_old.Witness
+	MessageNTT    buckler.Witness[E]
+	MessageCoeffs buckler.Witness[E]
 
-	ErrorNTT    buckler_old.Witness
-	ErrorCoeffs buckler_old.Witness
+	ErrorNTT    buckler.Witness[E]
+	ErrorCoeffs buckler.Witness[E]
 }
 
-func (c *CiphertextCircuit) Define(ctx *buckler_old.Context) {
-	ctx.AddLinearConstraint(c.NTTTransformer, c.MessageCoeffs, c.MessageNTT)
-	ctx.AddLinearConstraint(c.NTTTransformer, c.ErrorCoeffs, c.ErrorNTT)
+func (c *CiphertextCircuit[E]) Define(ctx *buckler.Context[E]) {
+	// "Empty" element for initialization
+	var z E
+
+	ctx.AddLinearConstraint(c.MessageNTT, c.MessageCoeffs, c.NTTTransformer)
+	ctx.AddLinearConstraint(c.ErrorNTT, c.ErrorCoeffs, c.NTTTransformer)
 
 	// Body + Mask * sk - Message - Error = 0
-	var ctConstraint buckler_old.ArithmeticConstraint
-	ctConstraint.AddTerm(big.NewInt(1), c.CiphertextNTT[0])
-	ctConstraint.AddTerm(big.NewInt(1), c.CiphertextNTT[1], c.SecretKeyNTT)
-	ctConstraint.AddTerm(big.NewInt(0).Neg(c.Delta), nil, c.MessageNTT)
-	ctConstraint.AddTerm(big.NewInt(-1), nil, c.ErrorNTT)
+	var ctConstraint buckler.ArithmeticConstraint[E]
+	ctConstraint.AddTerm(z.New().SetInt64(1), c.CiphertextNTT[0])
+	ctConstraint.AddTerm(z.New().SetInt64(1), c.CiphertextNTT[1], c.SecretKeyNTT)
+	ctConstraint.AddTerm(z.New().SetBigInt(new(big.Int).Neg(c.Delta)), nil, c.MessageNTT)
+	ctConstraint.AddTerm(z.New().SetInt64(-1), nil, c.ErrorNTT)
 	ctx.AddArithmeticConstraint(ctConstraint)
 
 	// |m| < t
@@ -82,31 +87,6 @@ func (c *CiphertextCircuit) Define(ctx *buckler_old.Context) {
 // In this example, we use the first way.
 
 func main() {
-	celpcParamsLogN13LogQ212 := celpc.ParametersLiteral{
-		AjtaiSize:     1,
-		AjtaiRandSize: 1 + 1,
-
-		Degree:           1 << 13,
-		BigIntCommitSize: 1 << 11,
-
-		ModulusBase: 9694,
-		Digits:      16,
-
-		RingDegree:     1 << 11,
-		LogRingModulus: []int{55, 55},
-
-		CommitStdDev:       10,
-		OpeningProofStdDev: 32,
-		BlindStdDev:        math.Exp2(19),
-
-		CommitRandStdDev:       20,
-		OpeningProofRandStdDev: 64,
-		BlindRandStdDev:        math.Exp2(20),
-
-		OpenProofBound: math.Exp2(32.754070623437386),
-		EvalProofBound: math.Exp2(48.75847312606874),
-	}.Compile()
-
 	bfvParamsLiteralLogN13LogQ240 := bgv.ParametersLiteral{
 		LogN:             13,
 		LogQ:             []int{60, 60, 60, 60},
@@ -141,70 +121,78 @@ func main() {
 	ringQ.INTT(sk.Value.Q, sk.Value.Q)
 
 	// ptT is already in coefficient representation.
-
 	ringQ.INTT(ct.Value[0], ct.Value[0])
 	ringQ.INTT(ct.Value[1], ct.Value[1])
 
-	// sk lives in R, so we can simply move it to big.Int.
-	bigringQ := bigring.NewCyclotomicRing(celpcParamsLogN13LogQ212.Degree(), celpcParamsLogN13LogQ212.Modulus())
-	skCoeffs := bigringQ.NewPoly()
-	ringQ.PolyToBigintCentered(sk.Value.Q, 1, skCoeffs.Coeffs)
-	skNTT := bigringQ.ToNTTPoly(skCoeffs)
+	bigringQ := bigpoly.NewCyclotomicEvaluator[*zp.Uint](bfvParamsLogN13LogQ240.N())
+	bufBig := make([]*big.Int, bigringQ.Rank())
+	for i := range bufBig {
+		bufBig[i] = new(big.Int)
+	}
+	bfvQ := bfvParamsLogN13LogQ240.QBigInt()
 
-	// ptT lives in R_t, so again we simply move it to big.Int.
-	ptCoeffs := bigringQ.NewPoly()
-	ringT.PolyToBigintCentered(ptT, 1, ptCoeffs.Coeffs)
-	ptNTT := bigringQ.ToNTTPoly(ptCoeffs)
+	// sk lives in R, so we can simply move it to zp.
+	ringQ.PolyToBigintCentered(sk.Value.Q, 1, bufBig)
+	skCoeffs := bigringQ.NewPoly(false)
+	for i := range bigringQ.Rank() {
+		skCoeffs.Coeffs[i].SetBigInt(bufBig[i])
+	}
+	skNTT := bigringQ.NTT(skCoeffs)
+
+	// ptT lives in R_t, so again we simply move it to zp.
+	ringT.PolyToBigintCentered(ptT, 1, bufBig)
+	ptCoeffs := bigringQ.NewPoly(false)
+	for i := range bigringQ.Rank() {
+		ptCoeffs.Coeffs[i].SetBigInt(bufBig[i])
+	}
+	ptNTT := bigringQ.NTT(ptCoeffs)
 
 	// Finally, we modulus switch the ciphertext.
-	ctCoeffs := [2]bigring.BigPoly{bigringQ.NewPoly(), bigringQ.NewPoly()}
-	ringQ.PolyToBigintCentered(ct.Value[0], 1, ctCoeffs[0].Coeffs)
-	ringQ.PolyToBigintCentered(ct.Value[1], 1, ctCoeffs[1].Coeffs)
-	for i := 0; i < bigringQ.Degree(); i++ {
-		ctCoeffs[0].Coeffs[i].Mul(ctCoeffs[0].Coeffs[i], bigringQ.Modulus())
-		ctCoeffs[0].Coeffs[i].Div(ctCoeffs[0].Coeffs[i], ringQ.Modulus())
-
-		ctCoeffs[1].Coeffs[i].Mul(ctCoeffs[1].Coeffs[i], bigringQ.Modulus())
-		ctCoeffs[1].Coeffs[i].Div(ctCoeffs[1].Coeffs[i], ringQ.Modulus())
-	}
-	ctNTT := [2]bigring.BigNTTPoly{bigringQ.ToNTTPoly(ctCoeffs[0]), bigringQ.ToNTTPoly(ctCoeffs[1])}
+	ctCoeffs := [2]*bigpoly.Poly[*zp.Uint]{}
+	ringQ.PolyToBigintCentered(ct.Value[0], 1, bufBig)
+	ctCoeffs[0] = bigringQ.ModSwitch(bufBig, bfvQ)
+	ringQ.PolyToBigintCentered(ct.Value[1], 1, bufBig)
+	ctCoeffs[1] = bigringQ.ModSwitch(bufBig, bfvQ)
+	ctNTT := [2]*bigpoly.Poly[*zp.Uint]{bigringQ.NTT(ctCoeffs[0]), bigringQ.NTT(ctCoeffs[1])}
 
 	// We need to recompute the error so that we can generate aritmetic contraints.
 	// Recall that c0 = -c1*s + (q/t)*m + e.
 	// So, e = c0 + c1*s - (q/t)*m.
 	delta := big.NewInt(0).ModInverse(ringT.Modulus(), ringQ.Modulus())
 	// We also modulus switch the scaling factor.
-	delta.Mul(delta, bigringQ.Modulus())
+	delta.Mul(delta, zp.Modulus())
 	delta.Div(delta, ringQ.Modulus())
 
-	errNTT := bigringQ.NewNTTPoly()
-	bigringQ.MulNTTAssign(ctNTT[1], skNTT, errNTT)
-	bigringQ.AddNTTAssign(errNTT, ctNTT[0], errNTT)
-	bigringQ.ScalarMulSubNTTAssign(ptNTT, delta, errNTT)
-	errCoeffs := bigringQ.ToPoly(errNTT)
+	errNTT := bigringQ.NewPoly(true)
+	bigringQ.MulTo(errNTT, ctNTT[1], skNTT)
+	bigringQ.AddTo(errNTT, errNTT, ctNTT[0])
+	bigringQ.ScalarMulSubTo(errNTT, ptNTT, new(zp.Uint).New().SetBigInt(delta))
+	errCoeffs := bigringQ.InvNTT(errNTT)
 
 	// After modulus switching, the existing error is replaced by the rounding error,
 	// which has infinity norm ~ t + N.
 	errBound := uint64(bfvParamsLogN13LogQ240.N()) + bfvParamsLogN13LogQ240.PlaintextModulus()
 
 	// Now we are ready to generate the proof.
-	c := CiphertextCircuit{
+	crs := make([]byte, 16)
+	rand.Read(crs)
+
+	c := CiphertextCircuit[*zp.Uint]{
 		// All non-witness fields should be set for correct compilation.
-		NTTTransformer: buckler_old.NewNTTTransformer(bigringQ),
+		NTTTransformer: buckler.NewNTTTransformer[*zp.Uint](bigringQ.Rank()),
 
 		Degree:           bfvParamsLogN13LogQ240.N(),
 		PlaintextModulus: bfvParamsLogN13LogQ240.PlaintextModulus(),
 		Delta:            delta,
 		ErrBound:         errBound,
 	}
-	prover, verifier, err := buckler_old.Compile(celpcParamsLogN13LogQ212, &c)
+
+	prover, verifier, err := buckler.Compile(bigringQ.Rank(), &c, crs)
 	if err != nil {
 		panic(err)
 	}
-	ck := celpc.GenAjtaiCommitKey(celpcParamsLogN13LogQ212)
-
-	assignment := CiphertextCircuit{
-		CiphertextNTT: [2]buckler_old.PublicWitness{ctNTT[0].Coeffs, ctNTT[1].Coeffs},
+	assignment := CiphertextCircuit[*zp.Uint]{
+		CiphertextNTT: [2]buckler.PublicWitness[*zp.Uint]{ctNTT[0].Coeffs, ctNTT[1].Coeffs},
 
 		SecretKeyNTT: skNTT.Coeffs,
 
@@ -216,14 +204,20 @@ func main() {
 	}
 
 	now := time.Now()
-	pf, err := prover.Prove(ck, &assignment)
+	pf, err := prover.Prove(&assignment)
 	fmt.Println("Prover time:", time.Since(now))
 	if err != nil {
 		panic(err)
 	}
 
+	publicAssignment := CiphertextCircuit[*zp.Uint]{
+		CiphertextNTT: [2]buckler.PublicWitness[*zp.Uint]{ctNTT[0].Coeffs, ctNTT[1].Coeffs},
+	}
+
 	now = time.Now()
-	vf := verifier.Verify(ck, pf)
+	vf := verifier.Verify(&publicAssignment, pf)
 	fmt.Println("Verifier time:", time.Since(now))
 	fmt.Println("Verification result:", vf)
+
+	fmt.Println("Estimated Size:", prover.JindoParams.Size()/math.Exp2(23), "MB")
 }
