@@ -45,8 +45,8 @@ type encoderBuffer[E bignum.Uint[E]] struct {
 	coeffE E
 }
 
-// NewEncoder creates a new [Encoder].
-func NewEncoder[E bignum.Uint[E]](params Parameters) *Encoder[E] {
+// newEncoder creates a new [Encoder].
+func newEncoder[E bignum.Uint[E]](params Parameters) *Encoder[E] {
 	pBig := new(big.Int).Exp(new(big.Int).SetUint64(params.ecd.base), new(big.Int).SetUint64(uint64(params.ecd.exp)), nil)
 	bFloat := new(big.Float).SetPrec(uint(pBig.BitLen())).SetUint64(params.ecd.base)
 	pBig.Add(pBig, big.NewInt(1))
@@ -73,7 +73,7 @@ func NewEncoder[E bignum.Uint[E]](params Parameters) *Encoder[E] {
 		cosac:   csprng.NewCOSACSampler(),
 		rounded: csprng.NewRoundedGaussianSampler(),
 
-		rns: NewRNSReconstructor(params.ringQ),
+		rns: newRNSReconstructor(params.ringQ),
 
 		deltaInv: deltaInv,
 
@@ -102,22 +102,22 @@ func newEncoderBuffer[E bignum.Uint[E]](ringQ *ring.Ring) encoderBuffer[E] {
 	}
 }
 
-// Encode returns an encoding of v.
-func (e *Encoder[E]) Encode(v []E) ring.Poly {
+// encode returns an encoding of v.
+func (e *Encoder[E]) encode(v []E) ring.Poly {
 	pOut := e.params.ringQ.NewPoly()
-	e.EncodeTo(pOut, v)
+	e.encodeTo(pOut, v)
 	return pOut
 }
 
-// EncodeTo encodes v to pOut.
-func (e *Encoder[E]) EncodeTo(pOut ring.Poly, v []E) {
-	e.encodeTo(pOut, v)
+// encodeTo encodes v to pOut.
+func (e *Encoder[E]) encodeTo(pOut ring.Poly, v []E) {
+	e.baseEncodeTo(pOut, v)
 	e.params.ringQ.MFormLazy(pOut, pOut)
 	e.params.ringQ.NTT(pOut, pOut)
 }
 
-// encodeTo encodes v to pOut without NTT and MForm.
-func (e *Encoder[E]) encodeTo(pOut ring.Poly, v []E) {
+// baseEncodeTo encodes v to pOut without NTT and MForm.
+func (e *Encoder[E]) baseEncodeTo(pOut ring.Poly, v []E) {
 	if len(v) > e.params.slots {
 		panic("len(v) > slots")
 	}
@@ -145,16 +145,9 @@ func (e *Encoder[E]) encodeTo(pOut ring.Poly, v []E) {
 	}
 }
 
-// RandEncode returns an randomized encoding of v.
-func (e *Encoder[E]) RandEncode(v []E, stdDev float64) ring.Poly {
-	pOut := e.params.ringQ.NewPoly()
-	e.RandEncodeTo(pOut, v, stdDev)
-	return pOut
-}
-
-// RandEncodeTo randomized encodes v to pOut.
-func (e *Encoder[E]) RandEncodeTo(pOut ring.Poly, v []E, stdDev float64) {
-	e.encodeTo(pOut, v)
+// randEncodeTo randomized encodes v to pOut.
+func (e *Encoder[E]) randEncodeTo(pOut ring.Poly, v []E, stdDev float64) {
+	e.baseEncodeTo(pOut, v)
 
 	clear(e.buf.fpSample)
 	for i := 0; i < e.params.ecd.exp; i++ {
@@ -213,7 +206,7 @@ func (e *Encoder[E]) DecodeTo(vOut []E, p ring.Poly) {
 		panic("len(vOut) > slots")
 	}
 
-	e.rns.ReconstructTo(e.buf.coeffBig, p)
+	e.rns.reconstructTo(e.buf.coeffBig, p)
 	e.buf.baseE.SetUint64(e.params.ecd.base)
 	for i := 0; i < e.params.slots; i++ {
 		vOut[i].SetUint64(0)
@@ -225,8 +218,8 @@ func (e *Encoder[E]) DecodeTo(vOut []E, p ring.Poly) {
 	}
 }
 
-// SafeCopy returns a thread-safe copy.
-func (e *Encoder[E]) SafeCopy() *Encoder[E] {
+// safeCopy returns a thread-safe copy.
+func (e *Encoder[E]) safeCopy() *Encoder[E] {
 	return &Encoder[E]{
 		params: e.params,
 
@@ -234,7 +227,7 @@ func (e *Encoder[E]) SafeCopy() *Encoder[E] {
 		cosac:   csprng.NewCOSACSampler(),
 		rounded: csprng.NewRoundedGaussianSampler(),
 
-		rns: e.rns.SafeCopy(),
+		rns: e.rns.safeCopy(),
 
 		deltaInv: e.deltaInv,
 

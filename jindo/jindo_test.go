@@ -9,6 +9,48 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+var (
+	crs = []byte("Jindo!")
+)
+
+func TestJindo(t *testing.T) {
+	t.Run("Single", func(t *testing.T) {
+		testJindo(t, 1)
+	})
+
+	t.Run("Batch", func(t *testing.T) {
+		testJindo(t, 8)
+	})
+}
+
+func testJindo(t *testing.T, batch int) {
+	N := 1 << 10
+	params := jindo.NewParameters[*zp.Uint](N, batch)
+	v := make([][]*zp.Uint, batch)
+	for i := range batch {
+		v[i] = make([]*zp.Uint, N)
+		for j := range N {
+			v[i][j] = new(zp.Uint).New().MustSetRandom()
+		}
+	}
+
+	prv := jindo.NewProver[*zp.Uint](params, crs)
+	vrf := jindo.NewVerifier[*zp.Uint](params, crs)
+
+	com := make([]*jindo.Commitment, batch)
+	open := make([]*jindo.Opening, batch)
+
+	for i := range batch {
+		com[i], open[i] = prv.Commit(v[i])
+	}
+
+	x := new(zp.Uint).New().MustSetRandom()
+	y, pf := prv.Evaluate(x, v, com, open)
+
+	ok := vrf.Verify(x, com, y, pf)
+	assert.True(t, ok)
+}
+
 func BenchmarkSingle(b *testing.B) {
 	crs := []byte("Jindo!")
 	for _, logN := range []int{13, 15, 17, 19} {

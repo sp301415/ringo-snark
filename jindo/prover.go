@@ -28,8 +28,8 @@ type Prover[E bignum.Uint[E]] struct {
 func NewProver[E bignum.Uint[E]](params Parameters, crs []byte) *Prover[E] {
 	return &Prover[E]{
 		params: params,
-		ecd:    NewEncoder[E](params),
-		rnsOut: NewRNSReconstructor(params.ringQOut),
+		ecd:    newEncoder[E](params),
+		rnsOut: newRNSReconstructor(params.ringQOut),
 
 		ck: NewCommitKey(params, crs),
 
@@ -96,7 +96,7 @@ func (p *Prover[E]) commitColTo(i int, open *Opening, v []E, firstRow, lastRow [
 		for j := range mask {
 			mask[j] = z.New().MustSetRandom()
 		}
-		p.ecd.RandEncodeTo(open.Encode[i][0], mask, p.params.maskBlindStdDev)
+		p.ecd.randEncodeTo(open.Encode[i][0], mask, p.params.maskBlindStdDev)
 
 		for j := 1; j < p.params.rows-1; j++ {
 			idxStart := j * p.params.cols * p.params.slots
@@ -106,26 +106,25 @@ func (p *Prover[E]) commitColTo(i int, open *Opening, v []E, firstRow, lastRow [
 			for k := range mask {
 				mask[k].MustSetRandom()
 			}
-			p.ecd.RandEncodeTo(open.Encode[i][j], mask, p.params.maskStdDev)
+			p.ecd.randEncodeTo(open.Encode[i][j], mask, p.params.maskStdDev)
 		}
 
 		for k := range mask {
 			mask[k].MustSetRandom()
 		}
-		p.ecd.RandEncodeTo(open.Encode[i][p.params.rows-1], mask, p.params.maskStdDev)
+		p.ecd.randEncodeTo(open.Encode[i][p.params.rows-1], mask, p.params.maskStdDev)
 	} else {
-		p.ecd.RandEncodeTo(open.Encode[i][0], firstRow[rowStart:rowEnd], p.params.ecdBlindStdDev)
-
+		p.ecd.randEncodeTo(open.Encode[i][0], firstRow[rowStart:rowEnd], p.params.ecdBlindStdDev)
 		for j := 1; j < p.params.rows-1; j++ {
 			idxStart := (j * p.params.cols * p.params.slots) + rowStart
 			idxEnd := (j * p.params.cols * p.params.slots) + rowEnd
 			if idxStart > len(v) {
 				break
 			}
-			p.ecd.RandEncodeTo(open.Encode[i][j], v[idxStart:min(idxEnd, len(v))], p.params.ecdStdDev)
+			p.ecd.randEncodeTo(open.Encode[i][j], v[idxStart:min(idxEnd, len(v))], p.params.ecdStdDev)
 		}
 
-		p.ecd.RandEncodeTo(open.Encode[i][p.params.rows-1], lastRow[rowStart:rowEnd], p.params.ecdStdDev)
+		p.ecd.randEncodeTo(open.Encode[i][p.params.rows-1], lastRow[rowStart:rowEnd], p.params.ecdStdDev)
 	}
 
 	for j := range p.params.inMSISRank + p.params.mlweRank {
@@ -166,11 +165,11 @@ func (p *Prover[E]) commitColTo(i int, open *Opening, v []E, firstRow, lastRow [
 		p.params.ringQ.IMForm(com[j], com[j])
 		p.params.ringQ.INTT(com[j], com[j])
 
-		p.ecd.rns.ReconstructTo(inComBig, com[j])
+		p.ecd.rns.reconstructTo(inComBig, com[j])
 		for k := range p.params.ringQ.N() {
 			inComBig[k].Rsh(inComBig[k], uint(p.params.logInCutOff))
 		}
-		p.rnsOut.SetBigCoeffTo(open.InCommit[i*p.params.inMSISRank+j], inComBig)
+		p.rnsOut.setBigCoeffTo(open.InCommit[i*p.params.inMSISRank+j], inComBig)
 
 		p.params.ringQOut.MForm(open.InCommit[i*p.params.inMSISRank+j], open.InCommit[i*p.params.inMSISRank+j])
 		p.params.ringQOut.NTT(open.InCommit[i*p.params.inMSISRank+j], open.InCommit[i*p.params.inMSISRank+j])
@@ -191,11 +190,11 @@ func (p *Prover[E]) outerCommitTo(com *Commitment, open *Opening) {
 		p.params.ringQOut.IMForm(com.Value[i], com.Value[i])
 		p.params.ringQOut.INTT(com.Value[i], com.Value[i])
 
-		p.rnsOut.ReconstructTo(comBig, com.Value[i])
+		p.rnsOut.reconstructTo(comBig, com.Value[i])
 		for k := range p.params.ringQOut.N() {
 			comBig[k].Rsh(comBig[k], uint(p.params.logOutCutOff))
 		}
-		p.rnsOut.SetBigCoeffTo(com.Value[i], comBig)
+		p.rnsOut.setBigCoeffTo(com.Value[i], comBig)
 
 		p.params.ringQOut.MForm(com.Value[i], com.Value[i])
 		p.params.ringQOut.NTT(com.Value[i], com.Value[i])
@@ -276,7 +275,7 @@ func (p *Prover[E]) Evaluate(x E, v [][]E, com []*Commitment, open []*Opening) (
 	leftE := leftVec(p.params, x)
 	left := make([]ring.Poly, p.params.rows)
 	for i := range left {
-		left[i] = p.ecd.Encode([]E{leftE[i]})
+		left[i] = p.ecd.encode([]E{leftE[i]})
 	}
 
 	for i := range p.params.cols {
@@ -328,8 +327,8 @@ func (p *Prover[E]) Evaluate(x E, v [][]E, com []*Commitment, open []*Opening) (
 func (p *Prover[E]) SafeCopy() *Prover[E] {
 	return &Prover[E]{
 		params: p.params,
-		ecd:    p.ecd.SafeCopy(),
-		rnsOut: p.rnsOut.SafeCopy(),
+		ecd:    p.ecd.safeCopy(),
+		rnsOut: p.rnsOut.safeCopy(),
 
 		ck: p.ck,
 

@@ -157,7 +157,7 @@ func (v *Verifier[E]) Verify(c Circuit[E], pf *Proof[E]) bool {
 		linCheckConst := z.New().SetBytes(linCheckConstBytes)
 
 		quoEval, remLoEval, remHiEval := pf.Evals[roundComIdx], pf.Evals[roundComIdx+1], pf.Evals[roundComIdx+2]
-		if !v.linCheck(batchConst, linCheckConst, linCheckMaskEval, evalPoint, vanishEval, pf.LinCheckMaskSum, quoEval, remLoEval, remHiEval, pf.Evals, pwEvals) {
+		if !v.linCheck(batchConst, linCheckConst, linCheckMaskEval, evalPoint, vanishEval, pf.LinCheckMaskSum, quoEval, remLoEval, remHiEval, pf.Evals) {
 			return false
 		}
 		roundComIdx += 3
@@ -206,7 +206,7 @@ func (v *Verifier[E]) arithCheck(batchConst, vanishEval, quoEval E, evals []E, p
 	return eval.Cmp(test) == 0
 }
 
-func (v *Verifier[E]) linCheck(batchConst, linCheckConst, linCheckMaskEval, evalPoint, vanishEval, linCheckMaskSum, quoEval, remLoEval, remHiEval E, evals []E, pwEvals []E) bool {
+func (v *Verifier[E]) linCheck(batchConst, linCheckConst, linCheckMaskEval, evalPoint, vanishEval, linCheckMaskSum, quoEval, remLoEval, remHiEval E, evals []E) bool {
 	var z E
 
 	remLoShiftEval := bignum.Exp(evalPoint, uint64(v.JindoParams.Rank()-(v.ctx.rank-1)))

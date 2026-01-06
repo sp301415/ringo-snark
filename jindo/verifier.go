@@ -35,8 +35,8 @@ func NewVerifier[E bignum.Uint[E]](params Parameters, crs []byte) *Verifier[E] {
 
 	return &Verifier[E]{
 		params:     params,
-		ecd:        NewEncoder[E](params),
-		rnsOut:     NewRNSReconstructor(params.ringQOut),
+		ecd:        newEncoder[E](params),
+		rnsOut:     newRNSReconstructor(params.ringQOut),
 		embQOutToQ: ring.NewBasisExtender(params.ringQOut, params.ringQ),
 
 		inCutOff:  inCutOffRNS,
@@ -125,7 +125,7 @@ func (v *Verifier[E]) Verify(x E, com []*Commitment, y []E, pf *Proof) bool {
 		return false
 	}
 
-	if !v.verifyEval(x, batch, y, pf, pfInv) {
+	if !v.verifyEval(x, batch, y, pfInv) {
 		return false
 	}
 
@@ -208,7 +208,7 @@ func (v *Verifier[E]) verifyConsistency(x E, challenge []ring.Poly, pf *Proof) b
 	leftEcd := v.params.ringQ.NewPoly()
 
 	for i := 0; i < v.params.rows; i++ {
-		v.ecd.EncodeTo(leftEcd, []E{left[i]})
+		v.ecd.encodeTo(leftEcd, []E{left[i]})
 		v.params.ringQ.MulCoeffsMontgomeryThenAdd(leftEcd, pf.Encode[i], test)
 	}
 
@@ -221,7 +221,7 @@ func (v *Verifier[E]) verifyConsistency(x E, challenge []ring.Poly, pf *Proof) b
 }
 
 // verifyEval verifies the evaluation.
-func (v *Verifier[E]) verifyEval(x E, batch []ring.Poly, y []E, pf, pfInv *Proof) bool {
+func (v *Verifier[E]) verifyEval(x E, batch []ring.Poly, y []E, pfInv *Proof) bool {
 	right := rightVec(v.params, x)
 
 	yBatch := x.New()
@@ -268,7 +268,7 @@ func (v *Verifier[E]) verifyNorm(ringQ *ring.Ring, rns *RNSReconstructor, p []ri
 	}
 
 	for i := range p {
-		rns.ReconstructTo(pBig, p[i])
+		rns.reconstructTo(pBig, p[i])
 		for j := 0; j < v.params.ringQ.N(); j++ {
 			sq.Mul(pBig[j], pBig[j])
 			nmSq.Add(nmSq, sq)
