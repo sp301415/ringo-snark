@@ -82,9 +82,6 @@ func (v *Verifier[E]) Verify(x E, com []*Commitment, y []E, pf *Proof) bool {
 		oracle.Write(batchBytes)
 	}
 
-	for i := range pf.InCommit {
-		pf.InCommit[i].WriteTo(oracle)
-	}
 	for i := range pf.Partial {
 		pf.Partial[i].WriteTo(oracle)
 	}

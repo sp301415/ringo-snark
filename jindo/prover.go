@@ -289,9 +289,6 @@ func (p *Prover[E]) Evaluate(x E, v [][]E, com []*Commitment, open []*Opening) (
 		p.params.ringQ.MulCoeffsMontgomeryThenAdd(left[j], openBatch.Encode[p.params.cols][j], pf.PartialMask)
 	}
 
-	for i := range pf.InCommit {
-		pf.InCommit[i].WriteTo(oracle)
-	}
 	for i := range pf.Partial {
 		pf.Partial[i].WriteTo(oracle)
 	}
