@@ -67,10 +67,8 @@ func (v *Verifier[E]) Verify(c Circuit[E], pf *Proof[E]) bool {
 	var oracleBuf bytes.Buffer
 
 	pwEcd := make([]*bigpoly.Poly[E], v.ctx.pwCnt)
-	pwEcdNTT := make([]*bigpoly.Poly[E], v.ctx.pwCnt)
 	for i := range pw {
 		pwEcd[i] = v.ecd.Encode(pw[i])
-		pwEcdNTT[i] = v.polyEval.NTT(pwEcd[i])
 	}
 
 	for i := range v.ctx.wCnt {
