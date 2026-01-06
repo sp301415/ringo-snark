@@ -79,7 +79,26 @@ func newPkCircuit[E bignum.Uint[E]](rank int) *PublicKeyCircuit[E] {
 	}
 }
 
-func BenchmarkPK(b *testing.B) {
+func TestPublicKey(t *testing.T) {
+	crs := []byte("Buckler!")
+	N := 1 << 10
+
+	c := PublicKeyCircuit[*zp220.Uint]{
+		NTT: buckler.NewNTTTransformer[*zp220.Uint](N),
+	}
+
+	prv, vrf, err := buckler.Compile(N, &c, crs)
+	assert.NoError(t, err)
+
+	pk := newPkCircuit[*zp220.Uint](N)
+	pf, err := prv.Prove(pk)
+	assert.NoError(t, err)
+
+	ok := vrf.Verify(pk, pf)
+	assert.True(t, ok)
+}
+
+func BenchmarkPublicKey(b *testing.B) {
 	crs := []byte("Buckler!")
 	b.Run("LogN=12/LogQ=110", func(b *testing.B) {
 		N := 1 << 12

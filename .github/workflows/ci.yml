@@ -24,4 +24,4 @@ jobs:
 
       - name: Test Buckler
         run: |
-          go test ./buckler_old -timeout=0 -count=1
+          go test ./buckler -timeout=0 -count=1
