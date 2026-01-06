@@ -52,7 +52,7 @@ func (p *Prover[E]) Commit(v []E) (*Commitment, *Opening) {
 	open := NewOpening(p.params)
 
 	firstRow, lastRow := p.genFirstLastRow(v)
-	for i := range p.params.cols {
+	for i := range p.params.cols + 1 {
 		p.commitColTo(i, open, v, firstRow, lastRow)
 	}
 
@@ -90,22 +90,49 @@ func (p *Prover[E]) commitColTo(i int, open *Opening, v []E, firstRow, lastRow [
 	rowStart := i * p.params.slots
 	rowEnd := (i + 1) * p.params.slots
 
-	p.ecd.RandEncodeTo(open.Encode[i][0], firstRow[rowStart:rowEnd], p.params.ecdBlindStdDev)
-
-	for j := 1; j < p.params.rows-1; j++ {
-		idxStart := (j * p.params.cols * p.params.slots) + rowStart
-		idxEnd := (j * p.params.cols * p.params.slots) + rowEnd
-		if idxStart > len(v) {
-			break
+	if i == p.params.cols {
+		var z E
+		mask := make([]E, p.params.slots)
+		for j := range mask {
+			mask[j] = z.New().MustSetRandom()
 		}
-		p.ecd.RandEncodeTo(open.Encode[i][j], v[idxStart:min(idxEnd, len(v))], p.params.ecdStdDev)
+		p.ecd.RandEncodeTo(open.Encode[i][0], mask, p.params.maskBlindStdDev)
+
+		for j := 1; j < p.params.rows-1; j++ {
+			for k := range mask {
+				mask[k].MustSetRandom()
+			}
+			p.ecd.RandEncodeTo(open.Encode[i][j], mask, p.params.maskStdDev)
+		}
+
+		for k := range mask {
+			mask[k].MustSetRandom()
+		}
+		p.ecd.RandEncodeTo(open.Encode[i][p.params.rows-1], mask, p.params.maskStdDev)
+	} else {
+		p.ecd.RandEncodeTo(open.Encode[i][0], firstRow[rowStart:rowEnd], p.params.ecdBlindStdDev)
+
+		for j := 1; j < p.params.rows-1; j++ {
+			idxStart := (j * p.params.cols * p.params.slots) + rowStart
+			idxEnd := (j * p.params.cols * p.params.slots) + rowEnd
+			if idxStart > len(v) {
+				break
+			}
+			p.ecd.RandEncodeTo(open.Encode[i][j], v[idxStart:min(idxEnd, len(v))], p.params.ecdStdDev)
+		}
+
+		p.ecd.RandEncodeTo(open.Encode[i][p.params.rows-1], lastRow[rowStart:rowEnd], p.params.ecdStdDev)
 	}
 
-	p.ecd.RandEncodeTo(open.Encode[i][p.params.rows-1], lastRow[rowStart:rowEnd], p.params.ecdStdDev)
-
 	for j := range p.params.inMSISRank + p.params.mlweRank {
-		for k := range p.params.ringQ.N() {
-			setCoeffSigned(p.params.ringQ, open.MLWE[i][j], p.mlweSampler.Sample(0), k)
+		if i == p.params.cols {
+			for k := range p.params.ringQ.N() {
+				setCoeffSigned(p.params.ringQ, open.MLWE[i][j], p.roundedSampler.Sample(0, p.params.maskMLWEStdDev), k)
+			}
+		} else {
+			for k := range p.params.ringQ.N() {
+				setCoeffSigned(p.params.ringQ, open.MLWE[i][j], p.mlweSampler.Sample(0), k)
+			}
 		}
 		p.params.ringQ.MForm(open.MLWE[i][j], open.MLWE[i][j])
 		p.params.ringQ.NTT(open.MLWE[i][j], open.MLWE[i][j])
@@ -248,10 +275,18 @@ func (p *Prover[E]) Evaluate(x E, v [][]E, com []*Commitment, open []*Opening) (
 		left[i] = p.ecd.Encode([]E{leftE[i]})
 	}
 
-	maskEcd, maskMLWE := p.firstMoveTo(pf, left, batch, openBatch)
+	for i := range p.params.cols {
+		for j := range p.params.rows {
+			p.params.ringQ.MulCoeffsMontgomeryThenAdd(left[j], openBatch.Encode[i][j], pf.Partial[i])
+		}
+	}
 
-	for i := range pf.Commit {
-		pf.Commit[i].WriteTo(oracle)
+	for j := range p.params.rows {
+		p.params.ringQ.MulCoeffsMontgomeryThenAdd(left[j], openBatch.Encode[p.params.cols][j], pf.PartialMask)
+	}
+
+	for i := range pf.InCommit {
+		pf.InCommit[i].WriteTo(oracle)
 	}
 	for i := range pf.Partial {
 		pf.Partial[i].WriteTo(oracle)
@@ -266,7 +301,19 @@ func (p *Prover[E]) Evaluate(x E, v [][]E, com []*Commitment, open []*Opening) (
 		encodeChallengeTo(p.params, p.params.ringQ, chals[i], chalBytes)
 	}
 
-	p.lastMoveTo(pf, maskEcd, maskMLWE, chals, openBatch)
+	for i := range p.params.rows {
+		pf.Encode[i].Copy(openBatch.Encode[p.params.cols][i])
+		for j := range p.params.cols {
+			p.params.ringQ.MulCoeffsMontgomeryThenAdd(chals[j], openBatch.Encode[j][i], pf.Encode[i])
+		}
+	}
+
+	for i := range p.params.mlweRank + p.params.inMSISRank {
+		pf.MLWE[i].Copy(openBatch.MLWE[p.params.cols][i])
+		for j := range p.params.cols {
+			p.params.ringQ.MulCoeffsMontgomeryThenAdd(chals[j], openBatch.MLWE[j][i], pf.MLWE[i])
+		}
+	}
 
 	evals := make([]E, p.params.batch)
 	for i := 0; i < p.params.batch; i++ {
@@ -274,95 +321,6 @@ func (p *Prover[E]) Evaluate(x E, v [][]E, com []*Commitment, open []*Opening) (
 	}
 
 	return evals, pf
-}
-
-// firstMoveTo computes the first move of proving.
-func (p *Prover[E]) firstMoveTo(pf *Proof, left []ring.Poly, batch []ring.Poly, open *Opening) (maskEcd, maskMLWE []ring.Poly) {
-	maskEcd = make([]ring.Poly, p.params.rows)
-	for i := range maskEcd {
-		maskEcd[i] = p.params.ringQ.NewPoly()
-	}
-	maskMLWE = make([]ring.Poly, p.params.mlweRank+p.params.inMSISRank)
-	for i := range maskMLWE {
-		maskMLWE[i] = p.params.ringQ.NewPoly()
-	}
-	pSingle := p.params.ringQ.NewPoly()
-
-	for i := range p.params.batch {
-		for j := range p.params.rows {
-			for k := range p.params.ringQ.N() {
-				var c int64
-				if j == 0 {
-					c = p.roundedSampler.Sample(0, float64(p.params.ecd.base+1)*p.params.maskBlindStdDev)
-				} else {
-					c = p.roundedSampler.Sample(0, float64(p.params.ecd.base+1)*p.params.maskStdDev)
-				}
-				setCoeffSigned(p.params.ringQ, pSingle, c, k)
-			}
-			p.params.ringQ.MForm(pSingle, pSingle)
-			p.params.ringQ.NTT(pSingle, pSingle)
-			if p.params.batch > 1 {
-				p.params.ringQ.MulCoeffsMontgomeryThenAdd(pSingle, batch[i], maskEcd[j])
-			} else {
-				maskEcd[j].Copy(pSingle)
-			}
-		}
-
-		for j := range p.params.mlweRank + p.params.inMSISRank {
-			for k := range p.params.ringQ.N() {
-				setCoeffSigned(p.params.ringQ, pSingle, p.roundedSampler.Sample(0, p.params.maskMLWEStdDev), k)
-			}
-			p.params.ringQ.MForm(pSingle, pSingle)
-			p.params.ringQ.NTT(pSingle, pSingle)
-			if p.params.batch > 1 {
-				p.params.ringQ.MulCoeffsMontgomeryThenAdd(pSingle, batch[i], maskMLWE[j])
-			} else {
-				maskMLWE[j].Copy(pSingle)
-			}
-		}
-	}
-
-	for i := range p.params.inMSISRank {
-		pf.Commit[i].Zero()
-		for j := range p.params.rows {
-			p.params.ringQ.MulCoeffsMontgomeryThenAdd(p.ck.In[i][j], maskEcd[j], pf.Commit[i])
-		}
-		for j := range p.params.mlweRank {
-			p.params.ringQ.MulCoeffsMontgomeryThenAdd(p.ck.MLWE[i][j], maskMLWE[j], pf.Commit[i])
-		}
-		p.params.ringQ.Add(maskMLWE[p.params.mlweRank+i], pf.Commit[i], pf.Commit[i])
-	}
-
-	for i := range p.params.cols {
-		pf.Partial[i].Zero()
-		for j := range p.params.rows {
-			p.params.ringQ.MulCoeffsMontgomeryThenAdd(left[j], open.Encode[i][j], pf.Partial[i])
-		}
-	}
-
-	pf.PartialMask.Zero()
-	for j := range p.params.rows {
-		p.params.ringQ.MulCoeffsMontgomeryThenAdd(left[j], maskEcd[j], pf.PartialMask)
-	}
-
-	return
-}
-
-// lastMoveTo computes the last move of proving.
-func (p *Prover[E]) lastMoveTo(pf *Proof, maskEcd, maskMLWE, chals []ring.Poly, open *Opening) {
-	for i := range p.params.rows {
-		pf.Encode[i].Copy(maskEcd[i])
-		for j := range p.params.cols {
-			p.params.ringQ.MulCoeffsMontgomeryThenAdd(chals[j], open.Encode[j][i], pf.Encode[i])
-		}
-	}
-
-	for i := range p.params.mlweRank + p.params.inMSISRank {
-		pf.MLWE[i].Copy(maskMLWE[i])
-		for j := range p.params.cols {
-			p.params.ringQ.MulCoeffsMontgomeryThenAdd(chals[j], open.MLWE[j][i], pf.MLWE[i])
-		}
-	}
 }
 
 // SafeCopy returns a thread-safe copy.

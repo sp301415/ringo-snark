@@ -82,8 +82,8 @@ func (v *Verifier[E]) Verify(x E, com []*Commitment, y []E, pf *Proof) bool {
 		oracle.Write(batchBytes)
 	}
 
-	for i := range pf.Commit {
-		pf.Commit[i].WriteTo(oracle)
+	for i := range pf.InCommit {
+		pf.InCommit[i].WriteTo(oracle)
 	}
 	for i := range pf.Partial {
 		pf.Partial[i].WriteTo(oracle)
@@ -172,25 +172,28 @@ func (v *Verifier[E]) verifyInnerCommitment(chals []ring.Poly, pf, pfInv *Proof)
 	cutoff := resInv[v.params.rows+v.params.mlweRank+v.params.inMSISRank:]
 	for i := range v.params.inMSISRank {
 		cutoff[i] = v.params.ringQ.NewPoly()
-		for j := range v.params.cols {
+		for j := range v.params.cols + 1 {
 			v.embQOutToQ.ModUpQtoP(v.params.ringQOut.Level(), v.params.ringQ.Level(), pfInv.InCommit[j*v.params.inMSISRank+i], inComQ)
 
 			v.params.ringQ.MForm(inComQ, inComQ)
 			v.params.ringQ.NTT(inComQ, inComQ)
 
-			v.params.ringQ.MulCoeffsMontgomeryThenAdd(inComQ, chals[j], cutoff[i])
+			if j == v.params.cols {
+				v.params.ringQ.Add(inComQ, cutoff[i], cutoff[i])
+			} else {
+				v.params.ringQ.MulCoeffsMontgomeryThenAdd(inComQ, chals[j], cutoff[i])
+			}
 		}
 
 		v.params.ringQ.MulRNSScalarMontgomery(cutoff[i], v.inCutOff, cutoff[i])
 
-		v.params.ringQ.Add(cutoff[i], pf.Commit[i], cutoff[i])
 		for j := range v.params.rows {
 			v.params.ringQ.MulCoeffsMontgomeryThenSub(v.ck.In[i][j], pf.Encode[j], cutoff[i])
 		}
 		for j := range v.params.mlweRank {
 			v.params.ringQ.MulCoeffsMontgomeryThenSub(v.ck.MLWE[i][j], pf.MLWE[j], cutoff[i])
 		}
-		v.params.ringQ.Sub(pf.MLWE[v.params.mlweRank+i], cutoff[i], cutoff[i])
+		v.params.ringQ.Sub(cutoff[i], pf.MLWE[v.params.mlweRank+i], cutoff[i])
 
 		v.params.ringQ.IMForm(cutoff[i], cutoff[i])
 		v.params.ringQ.INTT(cutoff[i], cutoff[i])
@@ -277,5 +280,6 @@ func (v *Verifier[E]) verifyNorm(ringQ *ring.Ring, rns *RNSReconstructor, p []ri
 
 	nmSq.Sqrt(nmSq)
 	nmTest, _ := nmSq.Float64()
+
 	return nmTest < nm
 }

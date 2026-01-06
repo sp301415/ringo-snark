@@ -216,7 +216,7 @@ func NewParameters[E bignum.Uint[E]](targetN, batch int) Parameters {
 			}
 		}
 
-		inCutOffInf := inCutOffTwo / (math.Sqrt(n) * cOne * math.Sqrt(inMSISRank*d))
+		inCutOffInf := inCutOffTwo / ((1 + math.Sqrt(n)*cOne) * math.Sqrt(inMSISRank*d))
 		if t > 1 {
 			inCutOffInf /= math.Sqrt(t) * cOne
 		}
@@ -226,7 +226,7 @@ func NewParameters[E bignum.Uint[E]](targetN, batch int) Parameters {
 			inDcmpInf *= math.Sqrt(t) * cOne
 		}
 
-		inDcmpTwo := math.Sqrt(n*inMSISRank*d) * inDcmpInf
+		inDcmpTwo := math.Sqrt((n+1)*inMSISRank*d) * inDcmpInf
 		outCutOffTwo := inDcmpTwo
 
 		outMSISBeta := 2 * dExtOne * (2 * (inDcmpTwo + outCutOffTwo))
@@ -248,13 +248,12 @@ func NewParameters[E bignum.Uint[E]](targetN, batch int) Parameters {
 		comSize := t * outMSISRank * d * math.Log2(qq/outCutOffInf)
 
 		var pfSize float64
-		pfSize += inMSISRank * d * math.Log2(q)                 // Mask
-		pfSize += n * d * math.Log2(prInf)                      // Partial
-		pfSize += d * math.Log2(q)                              // Partial * Mask
-		pfSize += m * d * math.Log2(resEcdiInf)                 // Response 1 ~ m
-		pfSize += d * math.Log2(resEcd0Inf)                     // Response 0
-		pfSize += (inMSISRank + nu) * d * math.Log2(resMLWEInf) // Response MLWE
-		pfSize += (n * inMSISRank * d) * math.Log2(inDcmpInf)   // Inner Commitments
+		pfSize += n * d * math.Log2(prInf)                          // Partial
+		pfSize += d * math.Log2(q)                                  // Partial * Mask
+		pfSize += m * d * math.Log2(resEcdiInf)                     // Response 1 ~ m
+		pfSize += d * math.Log2(resEcd0Inf)                         // Response 0
+		pfSize += (inMSISRank + nu) * d * math.Log2(resMLWEInf)     // Response MLWE
+		pfSize += ((n + 1) * inMSISRank * d) * math.Log2(inDcmpInf) // Inner Commitments
 
 		if comSize+pfSize < minSize {
 			minSize = comSize + pfSize
@@ -275,7 +274,7 @@ func NewParameters[E bignum.Uint[E]](targetN, batch int) Parameters {
 			params.logInCutOff = uint64(math.Floor(math.Log2(inCutOffInf)))
 			params.logOutCutOff = uint64(math.Floor(math.Log2(outCutOffInf)))
 
-			params.inComDcmpLen = int(n * inMSISRank)
+			params.inComDcmpLen = int((n + 1) * inMSISRank)
 
 			qLimbs := int(math.Ceil(math.Log2(q) / 60))
 			qBits := int(math.Ceil(math.Log2(q) / float64(qLimbs)))

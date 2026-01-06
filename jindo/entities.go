@@ -26,7 +26,7 @@ func NewCommitKey(params Parameters, crs []byte) *CommitKey {
 		in[i] = make([]ring.Poly, params.rows)
 		for j := range in[i] {
 			in[i][j] = params.ringQ.NewPoly()
-			for k := 0; k < params.ringQ.N(); k++ {
+			for k := range params.ringQOut.N() {
 				for l := 0; l < params.ringQ.ModuliChainLength(); l++ {
 					in[i][j].Coeffs[l][k] = u.SampleN(params.ringQ.SubRings[l].Modulus)
 				}
@@ -39,7 +39,7 @@ func NewCommitKey(params Parameters, crs []byte) *CommitKey {
 		mlwe[i] = make([]ring.Poly, params.mlweRank)
 		for j := range mlwe[i] {
 			mlwe[i][j] = params.ringQ.NewPoly()
-			for k := 0; k < params.ringQ.N(); k++ {
+			for k := range params.ringQOut.N() {
 				for l := 0; l < params.ringQ.ModuliChainLength(); l++ {
 					mlwe[i][j].Coeffs[l][k] = u.SampleN(params.ringQ.SubRings[l].Modulus)
 				}
@@ -52,7 +52,7 @@ func NewCommitKey(params Parameters, crs []byte) *CommitKey {
 		out[i] = make([]ring.Poly, params.inComDcmpLen)
 		for j := range out[i] {
 			out[i][j] = params.ringQOut.NewPoly()
-			for k := 0; k < params.ringQOut.N(); k++ {
+			for k := range params.ringQOut.N() {
 				for l := 0; l < params.ringQOut.ModuliChainLength(); l++ {
 					out[i][j].Coeffs[l][k] = u.SampleN(params.ringQOut.SubRings[l].Modulus)
 				}
@@ -113,7 +113,7 @@ func NewOpening(params Parameters) *Opening {
 		inDcmp[i] = params.ringQOut.NewPoly()
 	}
 
-	ecd := make([][]ring.Poly, params.cols)
+	ecd := make([][]ring.Poly, params.cols+1)
 	for i := range ecd {
 		ecd[i] = make([]ring.Poly, params.rows)
 		for j := range ecd[i] {
@@ -121,7 +121,7 @@ func NewOpening(params Parameters) *Opening {
 		}
 	}
 
-	mlwe := make([][]ring.Poly, params.cols)
+	mlwe := make([][]ring.Poly, params.cols+1)
 	for i := range mlwe {
 		mlwe[i] = make([]ring.Poly, params.mlweRank+params.inMSISRank)
 		for j := range mlwe[i] {
@@ -138,22 +138,16 @@ func NewOpening(params Parameters) *Opening {
 
 // Proof is a proof of evaluation.
 type Proof struct {
-	Commit      []ring.Poly
+	InCommit    []ring.Poly
 	Partial     []ring.Poly
 	PartialMask ring.Poly
 
-	Encode   []ring.Poly
-	MLWE     []ring.Poly
-	InCommit []ring.Poly
+	Encode []ring.Poly
+	MLWE   []ring.Poly
 }
 
 // NewProof creates a new [Proof].
 func NewProof(params Parameters) *Proof {
-	com := make([]ring.Poly, params.inMSISRank)
-	for i := 0; i < params.inMSISRank; i++ {
-		com[i] = params.ringQ.NewPoly()
-	}
-
 	resEcd := make([]ring.Poly, params.rows)
 	for i := 0; i < params.rows; i++ {
 		resEcd[i] = params.ringQ.NewPoly()
@@ -175,7 +169,6 @@ func NewProof(params Parameters) *Proof {
 	}
 
 	return &Proof{
-		Commit:      com,
 		Partial:     partial,
 		PartialMask: params.ringQ.NewPoly(),
 
