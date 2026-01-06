@@ -10,6 +10,7 @@ import (
 )
 
 func BenchmarkSingle(b *testing.B) {
+	crs := []byte("Jindo!")
 	for _, logN := range []int{13, 15, 17, 19} {
 		N := 1 << logN
 		params := jindo.NewParameters[*zp.Uint](N, 1)
@@ -19,8 +20,8 @@ func BenchmarkSingle(b *testing.B) {
 		}
 		x := new(zp.Uint).New().MustSetRandom()
 
-		prv := jindo.NewProver[*zp.Uint](params, nil)
-		vrf := jindo.NewVerifier[*zp.Uint](params, nil)
+		prv := jindo.NewProver[*zp.Uint](params, crs)
+		vrf := jindo.NewVerifier[*zp.Uint](params, crs)
 
 		com := make([]*jindo.Commitment, 1)
 		open := make([]*jindo.Opening, 1)
@@ -52,7 +53,8 @@ func BenchmarkSingle(b *testing.B) {
 
 func BenchmarkBatch(b *testing.B) {
 	N := 1 << 19
-	for _, t := range []int{8, 16, 32, 64} {
+	crs := []byte("Jindo!")
+	for _, t := range []int{8, 16, 32} {
 		params := jindo.NewParameters[*zp.Uint](N, t)
 		v := make([][]*zp.Uint, t)
 		for i := range t {
@@ -63,8 +65,8 @@ func BenchmarkBatch(b *testing.B) {
 		}
 		x := new(zp.Uint).New().MustSetRandom()
 
-		prv := jindo.NewProver[*zp.Uint](params, nil)
-		vrf := jindo.NewVerifier[*zp.Uint](params, nil)
+		prv := jindo.NewProver[*zp.Uint](params, crs)
+		vrf := jindo.NewVerifier[*zp.Uint](params, crs)
 
 		com := make([]*jindo.Commitment, t)
 		open := make([]*jindo.Opening, t)

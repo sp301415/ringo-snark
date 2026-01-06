@@ -80,6 +80,7 @@ func newPkCircuit[E bignum.Uint[E]](rank int) *PublicKeyCircuit[E] {
 }
 
 func BenchmarkPK(b *testing.B) {
+	crs := []byte("Buckler!")
 	b.Run("LogN=12/LogQ=110", func(b *testing.B) {
 		N := 1 << 12
 		type E = *zp110.Uint
@@ -89,7 +90,7 @@ func BenchmarkPK(b *testing.B) {
 			NTT: buckler.NewNTTTransformer[E](N),
 		}
 
-		prv, vrf, err := buckler.Compile(N, &c, nil)
+		prv, vrf, err := buckler.Compile(N, &c, crs)
 		if err != nil {
 			b.Fatal(err)
 		}
@@ -119,7 +120,7 @@ func BenchmarkPK(b *testing.B) {
 			NTT: buckler.NewNTTTransformer[E](N),
 		}
 
-		prv, vrf, err := buckler.Compile(N, &c, nil)
+		prv, vrf, err := buckler.Compile(N, &c, crs)
 		if err != nil {
 			b.Fatal(err)
 		}
@@ -149,7 +150,7 @@ func BenchmarkPK(b *testing.B) {
 			NTT: buckler.NewNTTTransformer[E](N),
 		}
 
-		prv, vrf, err := buckler.Compile(N, &c, nil)
+		prv, vrf, err := buckler.Compile(N, &c, crs)
 		if err != nil {
 			b.Fatal(err)
 		}
@@ -179,7 +180,7 @@ func BenchmarkPK(b *testing.B) {
 			NTT: buckler.NewNTTTransformer[E](N),
 		}
 
-		prv, vrf, err := buckler.Compile(N, &c, nil)
+		prv, vrf, err := buckler.Compile(N, &c, crs)
 		if err != nil {
 			b.Fatal(err)
 		}

@@ -99,6 +99,10 @@ func (p *Prover[E]) commitColTo(i int, open *Opening, v []E, firstRow, lastRow [
 		p.ecd.RandEncodeTo(open.Encode[i][0], mask, p.params.maskBlindStdDev)
 
 		for j := 1; j < p.params.rows-1; j++ {
+			idxStart := j * p.params.cols * p.params.slots
+			if idxStart > len(v) {
+				break
+			}
 			for k := range mask {
 				mask[k].MustSetRandom()
 			}
