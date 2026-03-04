@@ -56,8 +56,8 @@ func (c *MultCircuit[E]) Define(ctx *buckler.Context[E]) {
 
 	// XNTT * YNTT - ZNTT = 0
 	var multConstraint buckler.ArithmeticConstraint[E]
-	multConstraint.AddTerm(z.New().SetInt64(1), c.YNTT, c.XNTT) // YNTT * XNTT
-	multConstraint.AddTerm(z.New().SetInt64(-1), nil, c.ZNTT)   // - ZNTT
+	multConstraint.AddTermWithConst(z.New().SetInt64(1), c.YNTT, c.XNTT) // YNTT * XNTT
+	multConstraint.AddTermWithConst(z.New().SetInt64(-1), nil, c.ZNTT)   // - ZNTT
 	ctx.AddArithmeticConstraint(multConstraint)
 
 	// |X| <= 5

@@ -12,9 +12,25 @@ type ArithmeticConstraint[E bignum.Uint[E]] struct {
 }
 
 // AddTerm adds a term to the constraint.
+// Specifically, it adds coeffPublicWitness * witness[0] * ... * witness[n] to the constraint.
+// If coeffPublicWitness is nil, it is ignored.
+func (c *ArithmeticConstraint[E]) AddTerm(coeffPublicWitness PublicWitness[E], witness ...Witness[E]) {
+	var z E
+	c.AddTermWithConst(z.New().SetInt64(1), coeffPublicWitness, witness...)
+}
+
+// SubTerm subtracts a term to the constraint.
+// Specifically, it subtracts coeffPublicWitness * witness[0] * ... * witness[n] from the constraint.
+// If coeffPublicWitness is nil, it is ignored.
+func (c *ArithmeticConstraint[E]) SubTerm(coeffPublicWitness PublicWitness[E], witness ...Witness[E]) {
+	var z E
+	c.AddTermWithConst(z.New().SetInt64(-1), coeffPublicWitness, witness...)
+}
+
+// AddTermWithConst adds a term to the constraint.
 // Specifically, it adds coeff * coeffPublicWitness * witness[0] * ... * witness[n] to the constraint.
 // If coeffPublicWitness is nil, it is ignored.
-func (c *ArithmeticConstraint[E]) AddTerm(coeff E, coeffPublicWitness PublicWitness[E], witness ...Witness[E]) {
+func (c *ArithmeticConstraint[E]) AddTermWithConst(coeff E, coeffPublicWitness PublicWitness[E], witness ...Witness[E]) {
 	c.coeffs = append(c.coeffs, coeff)
 
 	if coeffPublicWitness != nil {

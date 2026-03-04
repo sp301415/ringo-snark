@@ -110,13 +110,13 @@ func (ctx *Context[E]) AddInfNormConstraintBig(w Witness[E], bound *big.Int) {
 		return
 	case bound.Sign() == 0:
 		var zeroConstraint ArithmeticConstraint[E]
-		zeroConstraint.AddTerm(z.New().SetInt64(1), nil, w)
+		zeroConstraint.AddTermWithConst(z.New().SetInt64(1), nil, w)
 		ctx.AddArithmeticConstraint(zeroConstraint)
 		return
 	case bound.Cmp(big.NewInt(1)) == 0:
 		var ternaryConstraint ArithmeticConstraint[E]
-		ternaryConstraint.AddTerm(z.New().SetInt64(1), nil, w, w, w)
-		ternaryConstraint.AddTerm(z.New().SetInt64(-1), nil, w)
+		ternaryConstraint.AddTermWithConst(z.New().SetInt64(1), nil, w, w, w)
+		ternaryConstraint.AddTermWithConst(z.New().SetInt64(-1), nil, w)
 		ctx.AddArithmeticConstraint(ternaryConstraint)
 		return
 	}
@@ -134,16 +134,16 @@ func (ctx *Context[E]) AddInfNormConstraintBig(w Witness[E], bound *big.Int) {
 
 	for i := range wDcmp {
 		var ternaryConstraint ArithmeticConstraint[E]
-		ternaryConstraint.AddTerm(z.New().SetInt64(1), nil, wDcmp[i], wDcmp[i], wDcmp[i])
-		ternaryConstraint.AddTerm(z.New().SetInt64(-1), nil, wDcmp[i])
+		ternaryConstraint.AddTermWithConst(z.New().SetInt64(1), nil, wDcmp[i], wDcmp[i], wDcmp[i])
+		ternaryConstraint.AddTermWithConst(z.New().SetInt64(-1), nil, wDcmp[i])
 		ctx.AddArithmeticConstraint(ternaryConstraint)
 	}
 
 	var dcmpConstraint ArithmeticConstraint[E]
-	dcmpConstraint.AddTerm(z.New().SetInt64(1), nil, w)
+	dcmpConstraint.AddTermWithConst(z.New().SetInt64(1), nil, w)
 	for i := range dcmpBase {
 		negBase := z.New().SetBigInt(dcmpBase[i])
-		dcmpConstraint.AddTerm(negBase.Neg(negBase), nil, wDcmp[i])
+		dcmpConstraint.AddTermWithConst(negBase.Neg(negBase), nil, wDcmp[i])
 	}
 	ctx.AddArithmeticConstraint(dcmpConstraint)
 }
@@ -173,13 +173,13 @@ func (ctx *Context[E]) AddSqNormConstraintBig(w Witness[E], bound *big.Int) {
 	ctx.twoDcmpWitness[id] = wDcmp
 
 	var binConstraint ArithmeticConstraint[E]
-	binConstraint.AddTerm(z.New().SetInt64(1), nil, wDcmp, wDcmp)
-	binConstraint.AddTerm(z.New().SetInt64(-1), pwMask, wDcmp)
+	binConstraint.AddTermWithConst(z.New().SetInt64(1), nil, wDcmp, wDcmp)
+	binConstraint.AddTermWithConst(z.New().SetInt64(-1), pwMask, wDcmp)
 	ctx.AddArithmeticConstraint(binConstraint)
 
 	var dcmpConstraint ArithmeticConstraint[E]
-	dcmpConstraint.AddTerm(z.New().SetInt64(1), nil, w, w)
-	dcmpConstraint.AddTerm(z.New().SetInt64(-1), pwBase, wDcmp)
+	dcmpConstraint.AddTermWithConst(z.New().SetInt64(1), nil, w, w)
+	dcmpConstraint.AddTermWithConst(z.New().SetInt64(-1), pwBase, wDcmp)
 	ctx.AddSumCheckConstraint(dcmpConstraint, 0)
 }
 

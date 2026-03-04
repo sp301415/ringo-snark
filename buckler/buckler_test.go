@@ -34,9 +34,9 @@ func (c *PublicKeyCircuit[E]) Define(ctx *buckler.Context[E]) {
 
 	// pk[1] - pk[0] * sk - noise = 0
 	var pkCircuit buckler.ArithmeticConstraint[E]
-	pkCircuit.AddTerm(z.New().SetInt64(1), c.PkNTT[1])
-	pkCircuit.AddTerm(z.New().SetInt64(-1), c.PkNTT[0], c.SkNTT)
-	pkCircuit.AddTerm(z.New().SetInt64(-1), nil, c.NoiseNTT)
+	pkCircuit.AddTermWithConst(z.New().SetInt64(1), c.PkNTT[1])
+	pkCircuit.AddTermWithConst(z.New().SetInt64(-1), c.PkNTT[0], c.SkNTT)
+	pkCircuit.AddTermWithConst(z.New().SetInt64(-1), nil, c.NoiseNTT)
 	ctx.AddArithmeticConstraint(pkCircuit)
 
 	ctx.AddInfNormConstraint(c.Sk, 1)

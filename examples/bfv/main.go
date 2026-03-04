@@ -55,10 +55,10 @@ func (c *CiphertextCircuit[E]) Define(ctx *buckler.Context[E]) {
 
 	// Body + Mask * sk - Message - Error = 0
 	var ctConstraint buckler.ArithmeticConstraint[E]
-	ctConstraint.AddTerm(z.New().SetInt64(1), c.CiphertextNTT[0])
-	ctConstraint.AddTerm(z.New().SetInt64(1), c.CiphertextNTT[1], c.SecretKeyNTT)
-	ctConstraint.AddTerm(z.New().SetBigInt(new(big.Int).Neg(c.Delta)), nil, c.MessageNTT)
-	ctConstraint.AddTerm(z.New().SetInt64(-1), nil, c.ErrorNTT)
+	ctConstraint.AddTermWithConst(z.New().SetInt64(1), c.CiphertextNTT[0])
+	ctConstraint.AddTermWithConst(z.New().SetInt64(1), c.CiphertextNTT[1], c.SecretKeyNTT)
+	ctConstraint.AddTermWithConst(z.New().SetBigInt(new(big.Int).Neg(c.Delta)), nil, c.MessageNTT)
+	ctConstraint.AddTermWithConst(z.New().SetInt64(-1), nil, c.ErrorNTT)
 	ctx.AddArithmeticConstraint(ctConstraint)
 
 	// |m| < t
