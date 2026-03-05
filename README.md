@@ -114,7 +114,7 @@ fmt.Println("Estimated Proof Size:", prover.JindoParams.Size()/math.Exp2(23), "M
 - [x] Arithmetic Constraints
 - [x] Infinite-Norm Contraints
 - [x] NTT Contraints
-- [ ] Automorphism Constraints
+- [x] Automorphism Constraints
 - [x] Arbitrary Linear Constraints
 - [x] Sumcheck
 - [x] Two-Norm Constraints
