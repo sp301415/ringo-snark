@@ -174,6 +174,65 @@ func (e *CyclotomicEvaluator[E]) MulSubTo(pOut, p0, p1 *Poly[E]) {
 	pOut.IsNTT = true
 }
 
+// Aut returns Aut(p, idx).
+func (e *CyclotomicEvaluator[E]) Aut(p *Poly[E], idx int) *Poly[E] {
+	pOut := e.NewPoly(p.IsNTT)
+	e.AutTo(pOut, p, idx)
+	return pOut
+}
+
+// AutTo computes pOut = Aut(p, idx).
+func (e *CyclotomicEvaluator[E]) AutTo(pOut, p *Poly[E], idx int) {
+	if !isBinaryOperable(e.rank, pOut, p) {
+		panic("AutTo: inputs not consistent")
+	}
+
+	if idx%2 == 0 {
+		panic("AutTo: idx must be odd")
+	}
+
+	idx %= 2 * e.rank
+	if idx < 0 {
+		idx += 2 * e.rank
+	}
+
+	if p.IsNTT {
+		e.autNTTTo(pOut, p, idx)
+	} else {
+		e.autTo(pOut, p, idx)
+	}
+}
+
+// autTo computes pOut = Aut(p, idx).
+func (e *CyclotomicEvaluator[E]) autTo(pOut, p *Poly[E], idx int) {
+	for i := 0; i < e.rank; i++ {
+		j := (i * idx) % (2 * e.rank)
+		if j < e.rank {
+			e.buf.p.Coeffs[j].Set(p.Coeffs[i])
+		} else {
+			e.buf.p.Coeffs[j-e.rank].Neg(p.Coeffs[i])
+		}
+	}
+
+	pOut.CopyFrom(e.buf.p)
+	pOut.IsNTT = false
+}
+
+// autNTTTo computes pOut = Aut(p, idx).
+func (e *CyclotomicEvaluator[E]) autNTTTo(pOut, p *Poly[E], idx int) {
+	e.buf.p.CopyFrom(p)
+	bitReverseInPlace(e.buf.p.Coeffs)
+
+	for i := 0; i < e.rank; i++ {
+		j := ((2*i + 1) * idx) % (2 * e.rank)
+		j = (j - 1) >> 1
+		pOut.Coeffs[i].Set(e.buf.p.Coeffs[j])
+	}
+
+	bitReverseInPlace(pOut.Coeffs)
+	pOut.IsNTT = true
+}
+
 // NTT returns NTT(p).
 func (e *CyclotomicEvaluator[E]) NTT(p *Poly[E]) *Poly[E] {
 	pOut := e.NewPoly(true)

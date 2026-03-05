@@ -39,3 +39,51 @@ func (ntt *nttTransformer[E]) TransposeTo(vOut, v []E) {
 	}
 	ntt.ntt.InvNTTTo(vOut, vOut)
 }
+
+// autTransformer computes the automrophism on coefficients.
+type autTransformer[E bignum.Uint[E]] struct {
+	eval   *bigpoly.CyclotomicEvaluator[E]
+	isNTT  bool
+	idx    int
+	idxInv int
+}
+
+// NewAutTransformer creates a new [autTransformer].
+func NewAutTransformer[E bignum.Uint[E]](eval *bigpoly.CyclotomicEvaluator[E], idx int, isNTT bool) LinearTransformer[E] {
+	return &autTransformer[E]{
+		eval:   eval.SafeCopy(),
+		isNTT:  isNTT,
+		idx:    idx,
+		idxInv: int(modInverse(uint64(idx), uint64(2*eval.Rank()))),
+	}
+}
+
+func (t *autTransformer[E]) TransformTo(vOut, v []E) {
+	p := &bigpoly.Poly[E]{Coeffs: v, IsNTT: t.isNTT}
+	pOut := &bigpoly.Poly[E]{Coeffs: vOut}
+	t.eval.AutTo(pOut, p, t.idx)
+}
+
+func (t *autTransformer[E]) TransposeTo(vOut, v []E) {
+	p := &bigpoly.Poly[E]{Coeffs: v, IsNTT: t.isNTT}
+	pOut := &bigpoly.Poly[E]{Coeffs: vOut}
+	t.eval.AutTo(pOut, p, t.idxInv)
+}
+
+func modInverse(x, m uint64) uint64 {
+	x %= m
+
+	a, b := x, m
+	u, v := uint64(1), uint64(0)
+	for b != 0 {
+		q := a / b
+		a, b = b, a-q*b
+		u, v = v, u-q*v
+	}
+
+	if a != 1 {
+		panic("modular inverse does not exist")
+	}
+
+	return u % m
+}
