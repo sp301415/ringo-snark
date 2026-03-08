@@ -16,7 +16,8 @@ This library consists of two parts:
 
 First, run `jindo-modulus` binary to generate optimized code for input modulus.
 ```
-$ go run ./jindo-modulus -n <target bits> -o <target-directory>
+$ go install github.com/sp301415/ringo-snark/jindo-modulus@latest
+$ jindo-modulus -n <target bits> -o <target-directory>
 ```
 This creates a package called `zp` in the target directory. You may need to install `asmfmt` as follows.
 ```
