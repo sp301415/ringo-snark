@@ -28,7 +28,7 @@ import (
 // In our example, we set t = 2^16 + 1.
 
 type CiphertextCircuit[E bignum.Uint[E]] struct {
-	NTTTransformer buckler.LinearTransformer[E]
+	NTTChecker buckler.LinearChecker[E]
 
 	Degree           int
 	PlaintextModulus uint64
@@ -50,8 +50,8 @@ func (c *CiphertextCircuit[E]) Define(ctx *buckler.Context[E]) {
 	// "Empty" element for initialization
 	var z E
 
-	ctx.AddLinearConstraint(c.MessageNTT, c.MessageCoeffs, c.NTTTransformer)
-	ctx.AddLinearConstraint(c.ErrorNTT, c.ErrorCoeffs, c.NTTTransformer)
+	ctx.AddLinearConstraint(c.MessageNTT, c.MessageCoeffs, c.NTTChecker)
+	ctx.AddLinearConstraint(c.ErrorNTT, c.ErrorCoeffs, c.NTTChecker)
 
 	// Body + Mask * sk - Message - Error = 0
 	var ctConstraint buckler.ArithmeticConstraint[E]
@@ -179,7 +179,7 @@ func main() {
 
 	c := CiphertextCircuit[*zp.Uint]{
 		// All non-witness fields should be set for correct compilation.
-		NTTTransformer: buckler.NewNTTTransformer[*zp.Uint](bigringQ.Rank()),
+		NTTChecker: buckler.NewNTTChecker[*zp.Uint](bigringQ.Rank()),
 
 		Degree:           bfvParamsLogN13LogQ240.N(),
 		PlaintextModulus: bfvParamsLogN13LogQ240.PlaintextModulus(),

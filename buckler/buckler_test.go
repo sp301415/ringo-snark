@@ -15,7 +15,7 @@ import (
 )
 
 type PublicKeyCircuit[E bignum.Uint[E]] struct {
-	NTT buckler.LinearTransformer[E]
+	NTT buckler.LinearChecker[E]
 
 	Sk    buckler.Witness[E]
 	SkNTT buckler.Witness[E]
@@ -84,7 +84,7 @@ func TestPublicKey(t *testing.T) {
 	N := 1 << 10
 
 	c := PublicKeyCircuit[*zp220.Uint]{
-		NTT: buckler.NewNTTTransformer[*zp220.Uint](N),
+		NTT: buckler.NewNTTChecker[*zp220.Uint](N),
 	}
 
 	prv, vrf, err := buckler.Compile(N, &c, crs)
@@ -106,7 +106,7 @@ func BenchmarkPublicKey(b *testing.B) {
 
 		var pf *buckler.Proof[E]
 		c := PublicKeyCircuit[E]{
-			NTT: buckler.NewNTTTransformer[E](N),
+			NTT: buckler.NewNTTChecker[E](N),
 		}
 
 		prv, vrf, err := buckler.Compile(N, &c, crs)
@@ -136,7 +136,7 @@ func BenchmarkPublicKey(b *testing.B) {
 
 		var pf *buckler.Proof[E]
 		c := PublicKeyCircuit[E]{
-			NTT: buckler.NewNTTTransformer[E](N),
+			NTT: buckler.NewNTTChecker[E](N),
 		}
 
 		prv, vrf, err := buckler.Compile(N, &c, crs)
@@ -166,7 +166,7 @@ func BenchmarkPublicKey(b *testing.B) {
 
 		var pf *buckler.Proof[E]
 		c := PublicKeyCircuit[E]{
-			NTT: buckler.NewNTTTransformer[E](N),
+			NTT: buckler.NewNTTChecker[E](N),
 		}
 
 		prv, vrf, err := buckler.Compile(N, &c, crs)
@@ -196,7 +196,7 @@ func BenchmarkPublicKey(b *testing.B) {
 
 		var pf *buckler.Proof[E]
 		c := PublicKeyCircuit[E]{
-			NTT: buckler.NewNTTTransformer[E](N),
+			NTT: buckler.NewNTTChecker[E](N),
 		}
 
 		prv, vrf, err := buckler.Compile(N, &c, crs)

@@ -7,6 +7,12 @@ import (
 	"github.com/sp301415/ringo-snark/math/bignum"
 )
 
+// transformer computes NTT.
+type transformer[E bignum.Uint[E]] interface {
+	FwdNTTTo(vOut, v []E)
+	InvNTTTo(vOut, v []E)
+}
+
 // CyclicTransformer computes cyclic NTT.
 type CyclicTransformer[E bignum.Uint[E]] struct {
 	rank int
@@ -88,8 +94,8 @@ func NewCyclicTransformer[E bignum.Uint[E]](rank int) *CyclicTransformer[E] {
 	}
 }
 
-// NTTTo computes vOut = NTT(v).
-func (ntt *CyclicTransformer[E]) NTTTo(vOut, v []E) {
+// FwdNTTTo computes vOut = NTT(v).
+func (ntt *CyclicTransformer[E]) FwdNTTTo(vOut, v []E) {
 	for i := 0; i < len(vOut); i += 8 {
 		cOut := (*[8]E)(unsafe.Pointer(&vOut[i]))
 		c0 := (*[8]E)(unsafe.Pointer(&v[i]))
@@ -196,8 +202,8 @@ func NewCyclotomicTransformer[E bignum.Uint[E]](rank int) *CyclotomicTransformer
 	}
 }
 
-// NTTTo computes vOut = NTT(v).
-func (ntt *CyclotomicTransformer[E]) NTTTo(vOut, v []E) {
+// FwdNTTTo computes vOut = NTT(v).
+func (ntt *CyclotomicTransformer[E]) FwdNTTTo(vOut, v []E) {
 	for i := 0; i < len(vOut); i += 8 {
 		cOut := (*[8]E)(unsafe.Pointer(&vOut[i]))
 		c0 := (*[8]E)(unsafe.Pointer(&v[i]))

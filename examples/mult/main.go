@@ -33,7 +33,7 @@ import (
 
 // Just like gnark, we define a circuit type.
 type MultCircuit[E bignum.Uint[E]] struct {
-	NTTTransformer buckler.LinearTransformer[E]
+	NTTChecker buckler.LinearChecker[E]
 
 	YNTT buckler.PublicWitness[E]
 
@@ -50,9 +50,9 @@ func (c *MultCircuit[E]) Define(ctx *buckler.Context[E]) {
 	var z E
 
 	// XNTT = NTT(X)
-	ctx.AddLinearConstraint(c.XNTT, c.XCoeffs, c.NTTTransformer)
+	ctx.AddLinearConstraint(c.XNTT, c.XCoeffs, c.NTTChecker)
 	// // ZNTT = NTT(Z)
-	ctx.AddLinearConstraint(c.ZNTT, c.ZCoeffs, c.NTTTransformer)
+	ctx.AddLinearConstraint(c.ZNTT, c.ZCoeffs, c.NTTChecker)
 
 	// XNTT * YNTT - ZNTT = 0
 	var multConstraint buckler.ArithmeticConstraint[E]
@@ -89,7 +89,7 @@ func main() {
 	// We compile an empty circuit, and get prover and verifier.
 	// Ideally, this should be done by the prover and verifier, respectively.
 	c := MultCircuit[*zp.Uint]{
-		NTTTransformer: buckler.NewNTTTransformer[*zp.Uint](rank),
+		NTTChecker: buckler.NewNTTChecker[*zp.Uint](rank),
 	}
 	prover, verifier, err := buckler.Compile(rank, &c, crs)
 	if err != nil {

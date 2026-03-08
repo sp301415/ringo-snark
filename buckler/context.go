@@ -29,8 +29,8 @@ type Context[E bignum.Uint[E]] struct {
 	sumCheckConstraints []ArithmeticConstraint[E]
 	sumCheckSums        []*big.Int
 
-	linTransformers     []LinearTransformer[E]
-	linCheckConstraints map[LinearTransformer[E]][][2]uint64
+	linCheckers         []LinearChecker[E]
+	linCheckConstraints map[LinearChecker[E]][][2]uint64
 
 	infDcmpBound   map[uint64]*big.Int
 	infDcmpWitness map[uint64][]Witness[E]
@@ -51,7 +51,7 @@ func newContext[E bignum.Uint[E]](rank int, walker *walker[E]) *Context[E] {
 
 		circType: walker.circuitType,
 
-		linCheckConstraints: make(map[LinearTransformer[E]][][2]uint64),
+		linCheckConstraints: make(map[LinearChecker[E]][][2]uint64),
 
 		infDcmpBound:   make(map[uint64]*big.Int),
 		infDcmpWitness: make(map[uint64][]Witness[E]),
@@ -82,18 +82,18 @@ func (ctx *Context[E]) AddSumCheckConstraintBig(c ArithmeticConstraint[E], sum *
 }
 
 // AddLinearConstraint adds a linear constraint to the context.
-func (ctx *Context[E]) AddLinearConstraint(wOut, wIn Witness[E], transformer LinearTransformer[E]) {
+func (ctx *Context[E]) AddLinearConstraint(wOut, wIn Witness[E], chker LinearChecker[E]) {
 	if ctx.arithCheckMaxRank < 2*ctx.rank-1 {
 		ctx.arithCheckMaxRank = 2*ctx.rank - 1
 	}
 
-	if _, ok := ctx.linCheckConstraints[transformer]; !ok {
-		ctx.linTransformers = append(ctx.linTransformers, transformer)
+	if _, ok := ctx.linCheckConstraints[chker]; !ok {
+		ctx.linCheckers = append(ctx.linCheckers, chker)
 	}
 
 	wInID := witnessToID(wIn)
 	wOutID := witnessToID(wOut)
-	ctx.linCheckConstraints[transformer] = append(ctx.linCheckConstraints[transformer], [2]uint64{wOutID, wInID})
+	ctx.linCheckConstraints[chker] = append(ctx.linCheckConstraints[chker], [2]uint64{wOutID, wInID})
 }
 
 // AddInfNormConstraint adds an infinity-norm constraint to the context.

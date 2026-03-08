@@ -229,7 +229,7 @@ func (v *Verifier[E]) linCheck(batchConst, linCheckConst, linCheckMaskEval, eval
 	linCheckEcdTr := v.polyEval.NewPoly(false)
 
 	eval, term, termMul := z.New(), z.New(), z.New()
-	for _, tr := range v.ctx.linTransformers {
+	for _, tr := range v.ctx.linCheckers {
 		tr.TransposeTo(linCheckVecTr, linCheckVec)
 		v.ecd.EncodeTo(linCheckEcdTr, linCheckVecTr)
 		linCheckTrEval := linCheckEcdTr.Evaluate(evalPoint)

@@ -10,7 +10,7 @@
 This library consists of two parts:
 
 1. **Jindo** [[HLSS25](https://eprint.iacr.org/2026/044)], a lattice-based PCS (Polynomial Commitment Scheme) with post-quantum security and transparent setup. More importantly, Jindo naturally supports polynomials over very large prime fields, making it a suitable candidate for proving relations over typical FHE parameters.
-2. **Buckler** [[HLSS24](https://eprint.iacr.org/2024/1879)], a zero-knowledge PIOP (Polynomial Interactive Oracle Proof) toolkit for relationships over power-of-two cyclotomic rings, which is commonly used in lattice-based cryptography.
+2. **Buckler** [[HLSS24](https://eprint.iacr.org/2024/1879)], a zero-knowledge PIOP (Polynomial Interactive Oracle Proof) toolkit for relationships over cyclotomic rings, which is commonly used in lattice-based cryptography.
 
 ## Usage
 
@@ -27,7 +27,7 @@ Then, define a circuit that holds the witnesses.
 ```go
 // Just like gnark, we define a circuit type.
 type MultCircuit[E bignum.Uint[E]] struct {
-	NTTTransformer buckler.LinearTransformer[E]
+	NTTChecker buckler.LinearChecker[E]
 
 	YNTT buckler.PublicWitness[E]
 
@@ -46,9 +46,9 @@ func (c *MultCircuit[E]) Define(ctx *buckler.Context[E]) {
 	var z E
 
 	// XNTT = NTT(X)
-	ctx.AddLinearConstraint(c.XNTT, c.XCoeffs, c.NTTTransformer)
+	ctx.AddLinearConstraint(c.XNTT, c.XCoeffs, c.NTTChecker)
 	// // ZNTT = NTT(Z)
-	ctx.AddLinearConstraint(c.ZNTT, c.ZCoeffs, c.NTTTransformer)
+	ctx.AddLinearConstraint(c.ZNTT, c.ZCoeffs, c.NTTChecker)
 
 	// XNTT * YNTT - ZNTT = 0
 	var multConstraint buckler.ArithmeticConstraint[E]
@@ -71,7 +71,7 @@ crand.Read(crs)
 // We compile an empty circuit, and get prover and verifier.
 // Ideally, this should be done by the prover and verifier, respectively.
 c := MultCircuit[*zp.Uint]{
-	NTTTransformer: buckler.NewNTTTransformer[*zp.Uint](rank),
+	NTTChecker: buckler.NewNTTChecker[*zp.Uint](rank),
 }
 prover, verifier, err := buckler.Compile(rank, &c, crs)
 if err != nil {

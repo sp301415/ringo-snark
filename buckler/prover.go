@@ -361,7 +361,7 @@ func (p *Prover[E]) linCheck(batchConst, linCheckConst E, linCheckMask *bigpoly.
 
 	eval := p.polyEval.NewPoly(true)
 	term := p.polyEval.NewPoly(true)
-	for _, tr := range p.ctx.linTransformers {
+	for _, tr := range p.ctx.linCheckers {
 		tr.TransposeTo(linCheckVecTr, linCheckVec)
 		p.ecd.EncodeTo(linCheckEcdTr, linCheckVecTr)
 		p.polyEval.NTTTo(linCheckEcdTr, linCheckEcdTr)
