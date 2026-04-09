@@ -119,7 +119,7 @@ fmt.Println("Estimated Proof Size:", prover.JindoParams.Size()/math.Exp2(23), "M
 - [x] Arbitrary Linear Constraints
 - [x] Sumcheck
 - [x] Two-Norm Constraints
-- [ ] Approximate Infinite-Norm Constraints (via Modular J-L)
+- [x] Approximate Infinite-Norm Constraints (via Modular J-L)
 - [ ] Approximate Two-Norm Constraints (via Modular J-L)
 - [x] Strong Fiat-Shamir Transform
 - [x] Automatic Parameter Selection

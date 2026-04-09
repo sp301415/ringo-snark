@@ -196,13 +196,13 @@ func (ctx *Context[E]) AddSqNormConstraintBig(w Witness[E], bound *big.Int) {
 }
 
 // AddApproxInfNormConstraint adds a approximate inf-norm constraint to the context.
-// The slack is around 19.5 * sqrt(rank).
+// The slack is around rank.
 func (ctx *Context[E]) AddApproxInfNormConstraint(w Witness[E], bound uint64) {
 	ctx.AddApproxInfNormConstraintBig(w, big.NewInt(0).SetUint64(bound))
 }
 
 // AddApproxInfNormConstraint adds a approximate inf-norm constraint to the context.
-// The slack is around 19.5 * sqrt(rank).
+// The slack is around rank.
 func (ctx *Context[E]) AddApproxInfNormConstraintBig(w Witness[E], bound *big.Int) {
 	if ctx.projChecker == nil {
 		ctx.projChecker = newProjChecker[E](ctx.rank)
