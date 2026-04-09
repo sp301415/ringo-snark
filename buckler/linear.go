@@ -1,6 +1,8 @@
 package buckler
 
 import (
+	"math/big"
+
 	"github.com/sp301415/ringo-snark/math/bignum"
 	"github.com/sp301415/ringo-snark/math/bigpoly"
 )
@@ -86,4 +88,93 @@ func modInverse(x, m uint64) uint64 {
 	}
 
 	return u % m
+}
+
+// projChecker computes the random projection on coefficients.
+type projChecker[E bignum.Uint[E]] struct {
+	proj [][]bool
+}
+
+func newProjChecker[E bignum.Uint[E]](rank int) LinearChecker[E] {
+	proj := make([][]bool, 128)
+	for i := range proj {
+		proj[i] = make([]bool, rank)
+	}
+	return &projChecker[E]{
+		proj: proj,
+	}
+}
+
+func (c *projChecker[E]) TransformTo(vOut, v []E) {
+	for i := range c.proj {
+		vOut[i].SetUint64(0)
+	}
+
+	for i := range c.proj {
+		for j := range c.proj[i] {
+			if c.proj[i][j] {
+				vOut[i].Add(vOut[i], v[j])
+			}
+		}
+	}
+	for i := len(c.proj); i < len(vOut); i++ {
+		vOut[i].SetUint64(0)
+	}
+}
+
+func (c *projChecker[E]) TransposeTo(vOut, v []E) {
+	for i := range c.proj[0] {
+		vOut[i].SetUint64(0)
+	}
+
+	for i := range c.proj {
+		for j := range c.proj[i] {
+			if c.proj[i][j] {
+				vOut[j].Add(vOut[j], v[i])
+			}
+		}
+	}
+}
+
+// projRecomposeChecker recomposes the decomposed projection result.
+type projRecomposeChecker[E bignum.Uint[E]] struct {
+	dcmpBase []E
+}
+
+func newProjRecomposeChecker[E bignum.Uint[E]](bound *big.Int) LinearChecker[E] {
+	dcmpBaseBig := decomposeBase(bound)
+	dcmpBase := make([]E, len(dcmpBaseBig))
+	for i := range dcmpBaseBig {
+		dcmpBase[i] = dcmpBase[i].New().SetBigInt(dcmpBaseBig[i])
+	}
+	return &projRecomposeChecker[E]{
+		dcmpBase: dcmpBase,
+	}
+}
+
+func (c *projRecomposeChecker[E]) TransformTo(vOut, v []E) {
+	var mul E
+	mul = mul.New()
+
+	for i := 0; i < len(vOut)/len(c.dcmpBase); i++ {
+		vOut[i].SetUint64(0)
+		for j := 0; j < len(c.dcmpBase); j++ {
+			mul.Mul(c.dcmpBase[j], v[i*len(c.dcmpBase)+j])
+			vOut[i].Add(vOut[i], mul)
+		}
+	}
+	for i := len(vOut) / len(c.dcmpBase); i < len(vOut); i++ {
+		vOut[i].SetUint64(0)
+	}
+}
+
+func (c *projRecomposeChecker[E]) TransposeTo(vOut, v []E) {
+	for i := 0; i < len(vOut)/len(c.dcmpBase); i++ {
+		for j := 0; j < len(c.dcmpBase); j++ {
+			vOut[i*len(c.dcmpBase)+j].Mul(c.dcmpBase[j], v[i])
+		}
+	}
+	for i := (len(vOut) / len(c.dcmpBase)) * len(c.dcmpBase); i < len(vOut); i++ {
+		vOut[i].SetUint64(0)
+	}
 }

@@ -3,6 +3,7 @@ package buckler
 import (
 	"bytes"
 	"crypto/sha256"
+	"crypto/sha3"
 	"fmt"
 	"math/big"
 	"reflect"
@@ -103,12 +104,14 @@ func (p *Prover[E]) Prove(c Circuit[E]) (*Proof[E], error) {
 		sqNm.Mod(sqNm, mod)
 
 		dcmp := decomposeBig(sqNm, base, mod)
+		wDcmpID := witnessToID(p.ctx.twoDcmpWitness[id])
 		for i := range dcmp {
-			wData.w[witnessToID(p.ctx.twoDcmpWitness[id])][i].SetInt64(dcmp[i])
+			wData.w[wDcmpID][i].SetInt64(dcmp[i])
 		}
 	}
 
 	chalNames := []string{
+		"projConst",
 		"arithBatchConst",
 		"linCheckBatchConst",
 		"linCheckConst",
@@ -131,6 +134,66 @@ func (p *Prover[E]) Prove(c Circuit[E]) (*Proof[E], error) {
 	opens := make([]*jindo.Opening, p.ctx.batch())
 	comPolys := make([][]E, p.ctx.batch())
 	for i := range wData.w {
+		isFirstRound := true
+		for j := range p.ctx.wSecond {
+			if witnessToID(p.ctx.wSecond[j]) == uint64(i) {
+				isFirstRound = false
+				break
+			}
+		}
+
+		if !isFirstRound {
+			continue
+		}
+
+		wData.wEcd[i] = p.ecd.RandEncode(wData.w[i])
+		wData.wEcdNTT[i] = p.polyEval.NTT(wData.wEcd[i])
+
+		comPolys[i] = wData.wEcd[i].Coeffs[:p.ctx.rank+1]
+		coms[i], opens[i] = p.polyProver.Commit(comPolys[i])
+
+		coms[i].WriteRawTo(&oracleBuf)
+		oracle.Bind("projConst", oracleBuf.Bytes())
+		oracleBuf.Reset()
+	}
+
+	projConstBytes, err := oracle.ComputeChallenge("projConst")
+	if err != nil {
+		return nil, err
+	}
+
+	xofProj := sha3.NewSHAKE128()
+	xofProj.Write(projConstBytes)
+
+	if p.ctx.projChecker != nil {
+		chk := p.ctx.projChecker.(*projChecker[E])
+		var projBuf [32]byte
+		for j := 0; j < p.ctx.rank; j++ {
+			xofProj.Read(projBuf[:])
+			for i := range 128 {
+				chk.proj[i][j] = (projBuf[i/8]>>(i%8))&1 == 0
+			}
+		}
+
+		for id, wProj := range p.ctx.projWitness {
+			chk.TransformTo(wData.w[witnessToID(wProj)], wData.w[id])
+		}
+
+		for id, wDcmp := range p.ctx.projInfDcmpWitness {
+			base := decomposeBase(p.ctx.projInfDcmpBound[id])
+			wDcmpID := witnessToID(wDcmp)
+			for i := range 128 {
+				wData.w[id][i].BigInt(bigCoeff)
+				dcmp := decomposeBig(bigCoeff, base, mod)
+				for j := range base {
+					wData.w[wDcmpID][i*len(base)+j].SetInt64(dcmp[j])
+				}
+			}
+		}
+	}
+
+	for _, w := range p.ctx.wSecond {
+		i := witnessToID(w)
 		wData.wEcd[i] = p.ecd.RandEncode(wData.w[i])
 		wData.wEcdNTT[i] = p.polyEval.NTT(wData.wEcd[i])
 

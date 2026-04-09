@@ -3,6 +3,7 @@ package buckler
 import (
 	"bytes"
 	"crypto/sha256"
+	"crypto/sha3"
 	"reflect"
 
 	fiatshamir "github.com/consensys/gnark-crypto/fiat-shamir"
@@ -57,6 +58,7 @@ func (v *Verifier[E]) Verify(c Circuit[E], pf *Proof[E]) bool {
 	}
 
 	chalNames := []string{
+		"projConst",
 		"arithBatchConst",
 		"linCheckBatchConst",
 		"linCheckConst",
@@ -72,6 +74,44 @@ func (v *Verifier[E]) Verify(c Circuit[E], pf *Proof[E]) bool {
 	}
 
 	for i := range v.ctx.wCnt {
+		isFirstRound := true
+		for j := range v.ctx.wSecond {
+			if witnessToID(v.ctx.wSecond[j]) == uint64(i) {
+				isFirstRound = false
+				break
+			}
+		}
+
+		if !isFirstRound {
+			continue
+		}
+
+		pf.Witness[i].WriteRawTo(&oracleBuf)
+		oracle.Bind("projConst", oracleBuf.Bytes())
+		oracleBuf.Reset()
+	}
+
+	projConstBytes, err := oracle.ComputeChallenge("projConst")
+	if err != nil {
+		return false
+	}
+
+	xofProj := sha3.NewSHAKE128()
+	xofProj.Write(projConstBytes)
+
+	if v.ctx.projChecker != nil {
+		chk := v.ctx.projChecker.(*projChecker[E])
+		var projBuf [32]byte
+		for j := 0; j < v.ctx.rank; j++ {
+			xofProj.Read(projBuf[:])
+			for i := range 128 {
+				chk.proj[i][j] = (projBuf[i/8]>>(i%8))&1 == 0
+			}
+		}
+	}
+
+	for _, w := range v.ctx.wSecond {
+		i := witnessToID(w)
 		pf.Witness[i].WriteRawTo(&oracleBuf)
 		oracle.Bind("arithBatchConst", oracleBuf.Bytes())
 		oracleBuf.Reset()

@@ -17,6 +17,9 @@ type Context[E bignum.Uint[E]] struct {
 	// wCnt is the number of witnesses.
 	wCnt uint64
 
+	// wSecond are the witnesses in the second round.
+	wSecond []Witness[E]
+
 	// circType is the [reflect.Type] of the underlying circuit.
 	circType reflect.Type
 	// arithMaxRank is the maximum rank of arithmetic constraints.
@@ -39,6 +42,11 @@ type Context[E bignum.Uint[E]] struct {
 	twoDcmpBase    map[uint64]PublicWitness[E]
 	twoDcmpMask    map[uint64]PublicWitness[E]
 	twoDcmpWitness map[uint64]Witness[E]
+
+	projChecker        LinearChecker[E]
+	projWitness        map[uint64]Witness[E]
+	projInfDcmpBound   map[uint64]*big.Int
+	projInfDcmpWitness map[uint64]Witness[E]
 }
 
 // newContext creates a new [Context].
@@ -60,6 +68,10 @@ func newContext[E bignum.Uint[E]](rank int, walker *walker[E]) *Context[E] {
 		twoDcmpBase:    make(map[uint64]PublicWitness[E]),
 		twoDcmpMask:    make(map[uint64]PublicWitness[E]),
 		twoDcmpWitness: make(map[uint64]Witness[E]),
+
+		projWitness:        make(map[uint64]Witness[E]),
+		projInfDcmpBound:   make(map[uint64]*big.Int),
+		projInfDcmpWitness: make(map[uint64]Witness[E]),
 	}
 }
 
@@ -181,6 +193,38 @@ func (ctx *Context[E]) AddSqNormConstraintBig(w Witness[E], bound *big.Int) {
 	dcmpConstraint.AddTermWithConst(z.New().SetInt64(1), nil, w, w)
 	dcmpConstraint.AddTermWithConst(z.New().SetInt64(-1), pwBase, wDcmp)
 	ctx.AddSumCheckConstraint(dcmpConstraint, 0)
+}
+
+// AddApproxInfNormConstraint adds a approximate inf-norm constraint to the context.
+// The slack is around 19.5 * sqrt(rank).
+func (ctx *Context[E]) AddApproxInfNormConstraint(w Witness[E], bound uint64) {
+	ctx.AddApproxInfNormConstraintBig(w, big.NewInt(0).SetUint64(bound))
+}
+
+// AddApproxInfNormConstraint adds a approximate inf-norm constraint to the context.
+// The slack is around 19.5 * sqrt(rank).
+func (ctx *Context[E]) AddApproxInfNormConstraintBig(w Witness[E], bound *big.Int) {
+	if ctx.projChecker == nil {
+		ctx.projChecker = newProjChecker[E](ctx.rank)
+	}
+
+	wProj := idToWitness[E, Witness[E]](ctx.wCnt)
+	ctx.wCnt++
+
+	ctx.AddLinearConstraint(wProj, w, ctx.projChecker)
+	ctx.projWitness[witnessToID(w)] = wProj
+
+	wProjDcmp := idToWitness[E, Witness[E]](ctx.wCnt)
+	ctx.wCnt++
+
+	slackBound := new(big.Int).SetUint64(uint64(ctx.rank))
+	slackBound.Mul(slackBound, bound)
+	ctx.projInfDcmpBound[witnessToID(wProj)] = slackBound
+	ctx.projInfDcmpWitness[witnessToID(wProj)] = wProjDcmp
+	ctx.AddLinearConstraint(wProj, wProjDcmp, newProjRecomposeChecker[E](slackBound))
+	// ctx.AddInfNormConstraint(wProjDcmp, 1)
+
+	ctx.wSecond = append(ctx.wSecond, wProj, wProjDcmp)
 }
 
 // batch returns the number of polynomials to commit.

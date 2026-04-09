@@ -172,8 +172,6 @@ func Compile[E bignum.Uint[E]](witnessRank int, c Circuit[E], crs []byte) (*Prov
 	}
 
 	ctx := newContext(witnessRank, w)
-	ctx.pwCnt = w.pwCnt
-	ctx.wCnt = w.wCnt
 
 	c.Define(ctx)
 
