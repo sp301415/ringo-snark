@@ -41,7 +41,7 @@ type MultCircuit[E bignum.Uint[E]] struct {
 ```
 
 Now, add constraints to the circuit by defining the `Define` method.
-```go 
+```go
 func (c *MultCircuit[E]) Define(ctx *buckler.Context[E]) {
 	// "Empty" element for initialization
 	var z E
@@ -129,7 +129,7 @@ To cite Ringo-SNARK, please use the following BibTeX entry:
 ```tex
 @misc{Ringo-SNARK,
   title={{Ringo-SNARK}},
-  author={Intak Hwang, Seonhong Min},
+  author={Intak Hwang},
   year={2025},
   howpublished = {Online: \url{https://github.com/sp301415/ringo-snark}},
 }
