@@ -62,17 +62,23 @@ func (p *Poly[E]) CopyFrom(p0 *Poly[E]) {
 
 // Evaluate evaluates p at x.
 func (p *Poly[E]) Evaluate(x E) E {
+	var y E
+	y = y.New()
+	p.EvaluateTo(y, x)
+	return y
+}
+
+// EvaluateTo evaluates p at x to y.
+func (p *Poly[E]) EvaluateTo(y, x E) {
 	if p.IsNTT {
 		panic("Evaluate: p is in NTT form")
 	}
 
-	var z E
-	z = z.New().SetUint64(0)
+	y.SetUint64(0)
 	for i := len(p.Coeffs) - 1; i >= 0; i-- {
-		z.Mul(z, x)
-		z.Add(z, p.Coeffs[i])
+		y.Mul(y, x)
+		y.Add(y, p.Coeffs[i])
 	}
-	return z
 }
 
 // Clear clears the polynomial.
@@ -117,17 +123,5 @@ func checkBinaryOperable[E bignum.Uint[E]](rank int, pOut, p0, p1 *Poly[E]) {
 		panic("inconsistent input(s)")
 	case p0.IsNTT != p1.IsNTT:
 		panic("inconsistent input(s)")
-	}
-}
-
-// evaluatorBuffer is a buffer for polynomial evaluators.
-type evaluatorBuffer[E bignum.Uint[E]] struct {
-	p *Poly[E]
-}
-
-// newEvaluatorBuffer creates a new [evaluatorBuffer].
-func newEvaluatorBuffer[E bignum.Uint[E]](rank int) evaluatorBuffer[E] {
-	return evaluatorBuffer[E]{
-		p: NewPoly[E](rank, false),
 	}
 }

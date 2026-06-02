@@ -13,5 +13,5 @@ type Proof[E bignum.Uint[E]] struct {
 	SumCheckMaskSum E
 
 	Evals     []E
-	EvalProof *jindo.Proof
+	EvalProof *jindo.Proof[E]
 }

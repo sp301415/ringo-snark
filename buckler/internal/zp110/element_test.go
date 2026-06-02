@@ -194,8 +194,8 @@ func BenchmarkUintSqrt(b *testing.B) {
 
 func BenchmarkUintMul(b *testing.B) {
 	x := Uint{
-		13879880837785790825,
-		13698196895891,
+		2358314647410245741,
+		2137089541884,
 	}
 	benchResUint.SetOne()
 	b.ResetTimer()
@@ -206,8 +206,8 @@ func BenchmarkUintMul(b *testing.B) {
 
 func BenchmarkUintCmp(b *testing.B) {
 	x := Uint{
-		13879880837785790825,
-		13698196895891,
+		2358314647410245741,
+		2137089541884,
 	}
 	benchResUint = x
 	benchResUint[0] = 0

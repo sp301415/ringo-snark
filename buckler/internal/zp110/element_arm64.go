@@ -54,8 +54,8 @@ func MulBy5(x *Uint) {
 // MulBy13 x *= 13 (mod q)
 func MulBy13(x *Uint) {
 	var y = Uint{
-		14781150427581278322,
-		7304965095100,
+		4623821736278229167,
+		34022179403283,
 	}
 	x.Mul(x, &y)
 }

@@ -3,234 +3,219 @@ package jindo
 import (
 	"math"
 	"math/big"
+	"math/bits"
+	"sync"
 
 	"github.com/sp301415/ringo-snark/math/bignum"
-	"github.com/sp301415/ringo-snark/math/csprng"
-	"github.com/tuneinsight/lattigo/v6/ring"
+	"github.com/sp301415/ringo-snark/math/crt"
+	"github.com/sp301415/ringo-snark/math/num"
 )
 
 // Encoder encodes large integer vector to small ring elements.
 type Encoder[E bignum.Uint[E]] struct {
-	params Parameters
+	op        *crt.Operator
+	ecdParams EncodeParameters[E]
 
-	twinCDT *csprng.TwinCDTGaussianSampler
-	cosac   *csprng.COSACSampler
-	rounded *csprng.RoundedGaussianSampler
+	rns *RNSReconstructor[E]
 
-	rns *RNSReconstructor
+	baseSq    uint64
+	baseDivHi uint64
 
-	// deltaInv is a constnat used in randomized encoding.
-	// Equals to [-1/p, -b/p, ..., -b^(r-1)/p].
-	deltaInv []float64
-
-	buf encoderBuffer[E]
+	pool64El *sync.Pool
+	pool64   *sync.Pool
+	poolE    *sync.Pool
+	poolEEl  *sync.Pool
+	poolBig  *sync.Pool
 }
 
-// encoderBuffer is a buffer for [Encoder].
-type encoderBuffer[E bignum.Uint[E]] struct {
-	// coeff is a buffer for E.
-	coeff []uint64
-	// fpSample is a buffer for Gaussian samples.
-	fpSample []float64
-	// pSample is an embedding of fpSample.
-	pSample ring.Poly
-	// pSampleShift is a buffer for pSample * X^d.
-	pSampleShift ring.Poly
-	// coeffBig is a buffer for big.Int coefficients.
-	coeffBig []*big.Int
+// NewEncoder creates a new [Encoder].
+func NewEncoder[E bignum.Uint[E]](op *crt.Operator, ecdParams EncodeParameters[E]) *Encoder[E] {
+	var z E
+	l := z.New().Limb()
 
-	// baseE is a buffer for base in E.
-	baseE E
-	// coeffE is a buffer for coefficient in E.
-	coeffE E
-}
-
-// newEncoder creates a new [Encoder].
-func newEncoder[E bignum.Uint[E]](params Parameters) *Encoder[E] {
-	pBig := new(big.Int).Exp(new(big.Int).SetUint64(params.ecd.base), new(big.Int).SetUint64(uint64(params.ecd.exp)), nil)
-	bFloat := new(big.Float).SetPrec(uint(pBig.BitLen())).SetUint64(params.ecd.base)
-	pBig.Add(pBig, big.NewInt(1))
-	pFloat := new(big.Float).SetPrec(uint(pBig.BitLen())).SetInt(pBig)
-	pFloatInv := new(big.Float).Quo(big.NewFloat(1), pFloat)
-	pFloatInv.Neg(pFloatInv)
-
-	threshold := math.Exp2(-50) / (float64(params.ecd.base) * float64(params.ecd.exp))
-
-	deltaInv := make([]float64, 0, params.ecd.exp)
-	for i := 0; i < params.ecd.exp; i++ {
-		deltaInv64, _ := pFloatInv.Float64()
-		pFloatInv.Mul(pFloatInv, bFloat)
-		if math.Abs(deltaInv64) < threshold {
-			deltaInv64 = 0
-		}
-		deltaInv = append(deltaInv, deltaInv64)
-	}
+	baseMod := num.NewModulus(ecdParams.base)
+	baseDivHi, _ := baseMod.Div()
 
 	return &Encoder[E]{
-		params: params,
+		op:        op,
+		ecdParams: ecdParams,
 
-		twinCDT: csprng.NewTwinCDTGaussianSampler(params.ecdStdDev),
-		cosac:   csprng.NewCOSACSampler(),
-		rounded: csprng.NewRoundedGaussianSampler(),
+		rns: NewRNSReconstructor[E](op),
 
-		rns: newRNSReconstructor(params.ringQ),
+		baseSq:    ecdParams.base * ecdParams.base,
+		baseDivHi: baseDivHi,
 
-		deltaInv: deltaInv,
+		pool64: &sync.Pool{
+			New: func() any {
+				v := make([]uint64, l)
+				return &v
+			},
+		},
+		poolE: &sync.Pool{
+			New: func() any {
+				var z E
+				return z.New()
+			},
+		},
+		poolEEl: &sync.Pool{
+			New: func() any {
+				v := make([]E, op.Rank())
+				for i := range v {
+					v[i] = v[i].New()
+				}
+				return &v
+			},
+		},
+		poolBig: &sync.Pool{
+			New: func() any {
+				modBits := 0.0
+				for _, ql := range op.Modulus() {
+					modBits += num.Log2(ql.Value())
+				}
 
-		buf: newEncoderBuffer[E](params.ringQ),
+				coeffs := make([]*big.Int, op.Rank())
+				for i := range coeffs {
+					b := make([]byte, int(math.Ceil(modBits/8)))
+					coeffs[i] = new(big.Int).SetBytes(b)
+				}
+				return &coeffs
+			},
+		},
 	}
 }
 
-// newEncoderBuffer creates a new [encoderBuffer].
-func newEncoderBuffer[E bignum.Uint[E]](ringQ *ring.Ring) encoderBuffer[E] {
-	var z E
-
-	coeffBig := make([]*big.Int, ringQ.N())
-	for i := range coeffBig {
-		coeffBig[i] = new(big.Int).Set(ringQ.Modulus())
-	}
-
-	return encoderBuffer[E]{
-		coeff:        make([]uint64, z.New().Limb()),
-		fpSample:     make([]float64, ringQ.N()),
-		pSample:      ringQ.NewPoly(),
-		pSampleShift: ringQ.NewPoly(),
-		coeffBig:     coeffBig,
-
-		baseE:  z.New(),
-		coeffE: z.New(),
-	}
-}
-
-// encode returns an encoding of v.
-func (e *Encoder[E]) encode(v []E) ring.Poly {
-	pOut := e.params.ringQ.NewPoly()
-	e.encodeTo(pOut, v)
+// Encode returns an encoding of v.
+func (e *Encoder[E]) Encode(v []E) *crt.Element {
+	pOut := e.op.NewPoly()
+	e.EncodeTo(pOut, v)
 	return pOut
 }
 
-// encodeTo encodes v to pOut.
-func (e *Encoder[E]) encodeTo(pOut ring.Poly, v []E) {
-	e.baseEncodeTo(pOut, v)
-	e.params.ringQ.MFormLazy(pOut, pOut)
-	e.params.ringQ.NTT(pOut, pOut)
-}
+// EncodeRawTo encodes v to uint64 slice.
+func (e *Encoder[E]) EncodeRawTo(pOut []uint64, v []E) {
+	slots := e.op.Rank() / e.ecdParams.exp
 
-// baseEncodeTo encodes v to pOut without NTT and MForm.
-func (e *Encoder[E]) baseEncodeTo(pOut ring.Poly, v []E) {
-	if len(v) > e.params.slots {
-		panic("len(v) > slots")
+	if len(v) > slots {
+		panic("inconsistent input(s)")
 	}
+
+	clear(pOut)
+
+	vBufPtr := e.pool64.Get().(*[]uint64)
+	vBuf := *vBufPtr
+	defer e.pool64.Put(vBufPtr)
 
 	for i := range v {
-		v[i].Slice(e.buf.coeff)
-		for j := 0; j < e.params.ecd.exp-1; j++ {
-			r := divMod64(e.buf.coeff, e.params.ecd.base)
-			for k := 0; k <= pOut.Level(); k++ {
-				pOut.Coeffs[k][j*e.params.slots+i] = r
+		v[i].Slice(vBuf)
+		for j := 0; j < e.ecdParams.exp; j += 2 {
+			rSq := divMod64(vBuf, e.baseSq)
+			q, _ := bits.Mul64(rSq, e.baseDivHi)
+			r := rSq - q*e.ecdParams.base
+			if r >= e.ecdParams.base {
+				r -= e.ecdParams.base
+				q += 1
 			}
+			pOut[j*slots+i] = r
+			pOut[(j+1)*slots+i] = q
 		}
-		r := e.buf.coeff[0]
-		for k := 0; k <= pOut.Level(); k++ {
-			pOut.Coeffs[k][(e.params.ecd.exp-1)*e.params.slots+i] = r
-		}
-	}
-
-	for i := len(v); i < e.params.slots; i++ {
-		for j := 0; j < e.params.ecd.exp; j++ {
-			for k := 0; k <= pOut.Level(); k++ {
-				pOut.Coeffs[k][j*e.params.slots+i] = 0
-			}
-		}
+		pOut[(e.ecdParams.exp-1)*slots+i] += vBuf[0] * e.ecdParams.base
 	}
 }
 
-// randEncodeTo randomized encodes v to pOut.
-func (e *Encoder[E]) randEncodeTo(pOut ring.Poly, v []E, stdDev float64) {
-	e.baseEncodeTo(pOut, v)
+// EncodeTo encodes v to pOut.
+func (e *Encoder[E]) EncodeTo(pOut *crt.Element, v []E) {
+	e.EncodeRawTo(pOut.Coeffs[0], v)
 
-	clear(e.buf.fpSample)
-	for i := 0; i < e.params.ecd.exp; i++ {
-		if e.deltaInv[i] == 0 {
-			continue
-		}
-		d := e.params.ringQ.N() - (i+1)*e.params.slots
-		for j, jj := 0, d; jj < e.params.ringQ.N(); j, jj = j+1, jj+1 {
-			e.buf.fpSample[jj] += e.deltaInv[i] * float64(pOut.Coeffs[0][j])
-		}
-		for j, jj := e.params.ringQ.N()-d, 0; j < e.params.ringQ.N(); j, jj = j+1, jj+1 {
-			e.buf.fpSample[jj] -= e.deltaInv[i] * float64(pOut.Coeffs[0][j])
-		}
+	for l := 1; l < pOut.ModLen(); l++ {
+		copy(pOut.Coeffs[l], pOut.Coeffs[0])
 	}
 
-	for i := 0; i < e.params.ringQ.N(); i++ {
-		var c int64
-		if stdDev == e.twinCDT.StdDev() {
-			c = e.twinCDT.Sample(-e.buf.fpSample[i])
-		} else {
-			c = e.cosac.Sample(-e.buf.fpSample[i], stdDev)
-		}
-		if c >= 0 {
-			for k := 0; k <= pOut.Level(); k++ {
-				e.buf.pSample.Coeffs[k][i] = uint64(c)
-			}
-		} else {
-			for k := 0; k <= pOut.Level(); k++ {
-				qi := int64(e.params.ringQ.SubRings[k].Modulus)
-				e.buf.pSample.Coeffs[k][i] = uint64(c%qi + qi)
-			}
-		}
-	}
-	e.params.ringQ.MForm(e.buf.pSample, e.buf.pSample)
+	pOut.IsNTT = false
+	e.op.FwdNTTTo(pOut, pOut)
+}
 
-	for i, ii := 0, e.params.slots; ii < e.params.ringQ.N(); i, ii = i+1, ii+1 {
-		for k := 0; k <= pOut.Level(); k++ {
-			e.buf.pSampleShift.Coeffs[k][ii] = e.buf.pSample.Coeffs[k][i]
-		}
-	}
-	for i, ii := e.params.ringQ.N()-e.params.slots, 0; i < e.params.ringQ.N(); i, ii = i+1, ii+1 {
-		for k := 0; k <= pOut.Level(); k++ {
-			e.buf.pSampleShift.Coeffs[k][ii] = e.params.ringQ.SubRings[k].Modulus - e.buf.pSample.Coeffs[k][i]
-		}
-	}
-	e.params.ringQ.MulScalarThenSub(e.buf.pSample, e.params.ecd.base, e.buf.pSampleShift)
+// DecodeConstRawSignedTo decodes uint64 slice to vOut.
+func (e *Encoder[E]) DecodeConstRawTo(vOut E, p []uint64) {
+	slots := e.op.Rank() / e.ecdParams.exp
 
-	e.params.ringQ.MForm(pOut, pOut)
-	e.params.ringQ.Add(pOut, e.buf.pSampleShift, pOut)
-	e.params.ringQ.NTT(pOut, pOut)
+	baseE := e.poolE.Get().(E)
+	defer e.poolE.Put(baseE)
+	coeffE := e.poolE.Get().(E)
+	defer e.poolE.Put(coeffE)
+
+	baseE.SetUint64(e.ecdParams.base)
+	vOut.SetUint64(0)
+	for j := e.ecdParams.exp - 1; j >= 0; j-- {
+		vOut.Mul(vOut, baseE)
+		coeffE.SetUint64(p[j*slots])
+		vOut.Add(vOut, coeffE)
+	}
+}
+
+// DecodeConstRawSignedTo decodes uint64 slice to vOut.
+func (e *Encoder[E]) DecodeConstRawSignedTo(vOut E, p []int64) {
+	slots := e.op.Rank() / e.ecdParams.exp
+
+	baseE := e.poolE.Get().(E)
+	defer e.poolE.Put(baseE)
+	coeffE := e.poolE.Get().(E)
+	defer e.poolE.Put(coeffE)
+
+	baseE.SetUint64(e.ecdParams.base)
+	vOut.SetUint64(0)
+	for j := e.ecdParams.exp - 1; j >= 0; j-- {
+		vOut.Mul(vOut, baseE)
+		coeffE.SetInt64(p[j*slots])
+		vOut.Add(vOut, coeffE)
+	}
+}
+
+// DecodeRawTo decodes uint64 slice to vOut.
+func (e *Encoder[E]) DecodeRawTo(vOut []E, p []uint64) {
+	slots := e.op.Rank() / e.ecdParams.exp
+
+	if len(vOut) > slots {
+		panic("inconsistent input(s)")
+	}
+
+	baseE := e.poolE.Get().(E)
+	defer e.poolE.Put(baseE)
+	coeffE := e.poolE.Get().(E)
+	defer e.poolE.Put(coeffE)
+
+	baseE.SetUint64(e.ecdParams.base)
+	for i := 0; i < slots; i++ {
+		vOut[i].SetUint64(0)
+		for j := e.ecdParams.exp - 1; j >= 0; j-- {
+			vOut[i].Mul(vOut[i], baseE)
+			coeffE.SetInt64(int64(p[j*slots+i]))
+			vOut[i].Add(vOut[i], coeffE)
+		}
+	}
 }
 
 // DecodeTo decodes p to vOut.
-func (e *Encoder[E]) DecodeTo(vOut []E, p ring.Poly) {
-	if len(vOut) > e.params.slots {
-		panic("len(vOut) > slots")
+func (e *Encoder[E]) DecodeTo(vOut []E, p *crt.Element) {
+	slots := e.op.Rank() / e.ecdParams.exp
+
+	if p.IsNTT == true || len(vOut) > slots {
+		panic("inconsistent input(s)")
 	}
 
-	e.rns.reconstructTo(e.buf.coeffBig, p)
-	e.buf.baseE.SetUint64(e.params.ecd.base)
-	for i := 0; i < e.params.slots; i++ {
+	coeffEPtr := e.poolEEl.Get().(*[]E)
+	coeffE := *coeffEPtr
+	defer e.poolEEl.Put(coeffEPtr)
+
+	baseE := e.poolE.Get().(E)
+	defer e.poolE.Put(baseE)
+
+	e.rns.ReconstructToE(coeffE, p)
+	baseE.SetUint64(e.ecdParams.base)
+	for i := 0; i < slots; i++ {
 		vOut[i].SetUint64(0)
-		for j := e.params.ecd.exp - 1; j >= 0; j-- {
-			vOut[i].Mul(vOut[i], e.buf.baseE)
-			e.buf.coeffE.SetBigInt(e.buf.coeffBig[j*e.params.slots+i])
-			vOut[i].Add(vOut[i], e.buf.coeffE)
+		for j := e.ecdParams.exp - 1; j >= 0; j-- {
+			vOut[i].Mul(vOut[i], baseE)
+			vOut[i].Add(vOut[i], coeffE[j*slots+i])
 		}
-	}
-}
-
-// safeCopy returns a thread-safe copy.
-func (e *Encoder[E]) safeCopy() *Encoder[E] {
-	return &Encoder[E]{
-		params: e.params,
-
-		twinCDT: e.twinCDT.SafeCopy(),
-		cosac:   csprng.NewCOSACSampler(),
-		rounded: csprng.NewRoundedGaussianSampler(),
-
-		rns: e.rns.safeCopy(),
-
-		deltaInv: e.deltaInv,
-
-		buf: newEncoderBuffer[E](e.params.ringQ),
 	}
 }

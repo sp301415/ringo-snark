@@ -2,126 +2,274 @@ package jindo
 
 import (
 	"math/big"
+	"slices"
+	"sync"
 
-	"github.com/tuneinsight/lattigo/v6/ring"
+	"github.com/sp301415/ringo-snark/math/bignum"
+	"github.com/sp301415/ringo-snark/math/crt"
+	"github.com/sp301415/ringo-snark/math/num"
+	"github.com/sp301415/ringo-snark/math/vec"
 )
 
 // RNSReconstructor reconstructs ring polynomials to int64.
-type RNSReconstructor struct {
-	ringQ *ring.Ring
-	qHalf *big.Int
+type RNSReconstructor[E bignum.Uint[E]] struct {
+	op *crt.Operator
 
-	qBig []*big.Int
-	gad  []*big.Int
+	qBig   []*big.Int
+	qProd  *big.Int
+	qProdE E
 
-	buf rnsReconstructorBuffer
+	// modInSorted is the sorted modIn.
+	modInSorted []*num.Modulus
+	// modInMap is the mapping between modIn and modInSorted.
+	modInMap []int
+
+	// modInHalf is half of modIn.
+	modInHalf []uint64
+
+	// modInv is the inverse of modIn.
+	modInv [][]uint64
+	// modInvS is the Shoup form of modIn.
+	modInvS [][]uint64
+
+	// baseBig is the basis of MRS.
+	baseBig []*big.Int
+	// baseE is the basis of MRS.
+	baseE []E
+
+	poolBig *sync.Pool
+	poolE   *sync.Pool
+	pool    *sync.Pool
+	pool64  *sync.Pool
 }
 
-// rnsReconstructorBuffer is a buffer for [RNSReconstructor].
-type rnsReconstructorBuffer struct {
-	// coeff is a buffer for coeffiecients.
-	coeff *big.Int
-	// mul is a buffer for coeff * gadget.
-	mul *big.Int
-	// acc is the accumulator.
-	acc *big.Int
-	// accTmp is the temporary buffer for the accumulator.
-	accTmp *big.Int
-}
+// NewRNSReconstructor creates a new [RNSReconstructor].
+func NewRNSReconstructor[E bignum.Uint[E]](op *crt.Operator) *RNSReconstructor[E] {
+	var z E
 
-// newRNSReconstructor creates a new [RNSReconstructor].
-func newRNSReconstructor(ringQ *ring.Ring) *RNSReconstructor {
-	gad := make([]*big.Int, len(ringQ.SubRings))
-	qBig := make([]*big.Int, len(ringQ.SubRings))
-	for i := range ringQ.SubRings {
-		qi := new(big.Int).SetUint64(ringQ.SubRings[i].Modulus)
-		qDiv := new(big.Int).Div(ringQ.Modulus(), qi)
-		qInv := new(big.Int).ModInverse(qDiv, qi)
-		gad[i] = new(big.Int).Mul(qDiv, qInv)
-		gad[i].Mod(gad[i], ringQ.Modulus())
-		qBig[i] = qi
+	qBig := make([]*big.Int, len(op.Modulus()))
+	qProd := big.NewInt(1)
+	for i := range op.Modulus() {
+		qBig[i] = new(big.Int).SetUint64(op.Modulus()[i].Value())
+		qProd.Mul(qProd, qBig[i])
 	}
 
-	return &RNSReconstructor{
-		ringQ: ringQ,
-		qHalf: new(big.Int).Rsh(ringQ.Modulus(), 1),
+	modInSorted := make([]*num.Modulus, len(op.Modulus()))
+	copy(modInSorted, op.Modulus())
+	slices.SortFunc(modInSorted, num.CmpModulus)
 
-		qBig: qBig,
-		gad:  gad,
-
-		buf: newRNSReconstructorBuffer(ringQ),
-	}
-}
-
-// newRNSReconstructorBuffer creates a new [rnsReconstructorBuffer].
-func newRNSReconstructorBuffer(ringQ *ring.Ring) rnsReconstructorBuffer {
-	limb := len(ringQ.Modulus().Bits())
-	return rnsReconstructorBuffer{
-		coeff:  big.NewInt(0).SetBits(make([]big.Word, 2*limb)),
-		mul:    big.NewInt(0).SetBits(make([]big.Word, 2*limb)),
-		acc:    big.NewInt(0).SetBits(make([]big.Word, 2*limb)),
-		accTmp: big.NewInt(0).SetBits(make([]big.Word, 2*limb)),
-	}
-}
-
-// toBalanced returns the balanced form of x.
-func toBalanced(x uint64, q uint64) int64 {
-	if x > q>>1 {
-		return int64(x) - int64(q)
-	}
-	return int64(x)
-}
-
-// reconstructTo reconstructs a polynomial in RNS form to [*big.Int].
-func (r *RNSReconstructor) reconstructTo(vOut []*big.Int, p ring.Poly) {
-	for i := 0; i < r.ringQ.N(); i++ {
-		isSmall := true
-		cSigned := toBalanced(p.Coeffs[0][i], r.ringQ.SubRings[0].Modulus)
-		for j := 1; j < len(r.ringQ.SubRings); j++ {
-			if cSigned != toBalanced(p.Coeffs[j][i], r.ringQ.SubRings[j].Modulus) {
-				isSmall = false
+	modInMap := make([]int, len(modInSorted))
+	for i := range modInSorted {
+		for j, ql := range op.Modulus() {
+			if modInSorted[i].Value() == ql.Value() {
+				modInMap[i] = j
 				break
 			}
 		}
+	}
 
-		if isSmall {
-			vOut[i].SetInt64(cSigned)
-			continue
-		}
+	modInHalf := make([]uint64, len(modInSorted))
+	for i := 0; i < len(modInSorted); i++ {
+		modInHalf[i] = modInSorted[i].Value() >> 1
+	}
 
-		r.buf.acc.SetUint64(0)
-		for j := 0; j < len(r.ringQ.SubRings); j++ {
-			r.buf.coeff.SetUint64(p.Coeffs[j][i])
-			r.buf.mul.Mul(r.buf.coeff, r.gad[j])
-			r.buf.acc.Add(r.buf.acc, r.buf.mul)
+	modInv := make([][]uint64, len(modInSorted))
+	modInvS := make([][]uint64, len(modInSorted))
+	for i := 0; i < len(modInSorted); i++ {
+		modInv[i] = make([]uint64, len(modInSorted)-i-1)
+		modInvS[i] = make([]uint64, len(modInSorted)-i-1)
+		for j := 0; j < len(modInSorted)-i-1; j++ {
+			modInv[i][j] = num.Inv(modInSorted[i].Value(), modInSorted[i+j+1])
+			modInvS[i][j] = num.SForm(modInv[i][j], modInSorted[i+j+1])
 		}
-		r.buf.accTmp.DivMod(r.buf.acc, r.ringQ.Modulus(), r.buf.acc)
+	}
 
-		if r.buf.acc.Cmp(r.qHalf) >= 0 {
-			r.buf.acc.Sub(r.buf.acc, r.ringQ.Modulus())
-		}
-		vOut[i].Set(r.buf.acc)
+	baseBig := make([]*big.Int, len(modInSorted))
+	baseBig[0] = big.NewInt(1)
+	for i := 1; i < len(modInSorted); i++ {
+		baseBig[i] = new(big.Int).SetUint64(modInSorted[i-1].Value())
+		baseBig[i].Mul(baseBig[i], baseBig[i-1])
+	}
+
+	baseE := make([]E, len(modInSorted))
+	for i := 0; i < len(modInSorted); i++ {
+		baseE[i] = baseE[i].New().SetBigInt(baseBig[i])
+	}
+
+	return &RNSReconstructor[E]{
+		op: op,
+
+		qBig:   qBig,
+		qProd:  qProd,
+		qProdE: z.New().SetBigInt(qProd),
+
+		modInSorted: modInSorted,
+		modInMap:    modInMap,
+
+		modInHalf: modInHalf,
+
+		modInv:  modInv,
+		modInvS: modInvS,
+
+		baseBig: baseBig,
+		baseE:   baseE,
+
+		pool64: &sync.Pool{
+			New: func() any {
+				v := make([]uint64, op.Rank())
+				return &v
+			},
+		},
+		pool: &sync.Pool{
+			New: func() any {
+				return op.NewPoly()
+			},
+		},
+		poolBig: &sync.Pool{
+			New: func() any {
+				b := make([]byte, (qProd.BitLen()>>8)+1)
+				x := big.NewInt(0).SetBytes(b)
+				return x
+			},
+		},
+		poolE: &sync.Pool{
+			New: func() any {
+				var z E
+				return z.New()
+			},
+		},
 	}
 }
 
-// setBigCoeffTo sets the coefficient of pOut as v.
-func (r *RNSReconstructor) setBigCoeffTo(pOut ring.Poly, v []*big.Int) {
-	for i := 0; i < r.ringQ.N(); i++ {
-		for l := range r.ringQ.SubRings {
-			pOut.Coeffs[l][i] = r.buf.accTmp.Mod(v[i], r.qBig[l]).Uint64()
+// ReconstructTo reconstructs a polynomial in RNS form to [*big.Int].
+func (r *RNSReconstructor[E]) ReconstructTo(vOut []*big.Int, p *crt.Element) {
+	M := (r.op.Rank() >> 3) << 3
+
+	eBuf := r.pool.Get().(*crt.Element)
+	defer r.pool.Put(eBuf)
+
+	for i := 0; i < len(r.modInSorted); i++ {
+		copy(eBuf.Coeffs[i], p.Coeffs[r.modInMap[i]])
+	}
+
+	vBoolPtr := r.pool64.Get().(*[]uint64)
+	vBool := *vBoolPtr
+	defer r.pool64.Put(vBoolPtr)
+
+	for i := 0; i < len(r.modInSorted); i++ {
+		for j := i + 1; j < len(r.modInSorted); j++ {
+			vec.SubTo(eBuf.Coeffs[j], eBuf.Coeffs[j], eBuf.Coeffs[i], r.modInSorted[j])
+			vec.SMulScalarTo(eBuf.Coeffs[j], eBuf.Coeffs[j], r.modInv[i][j-i-1], r.modInvS[i][j-i-1], r.modInSorted[j])
+		}
+	}
+
+	clear(vBool)
+	for i := 0; i < M; i += 8 {
+		vBool[i+0] = isMixedRadixNegative(eBuf.Coeffs, i+0, r.modInHalf)
+		vBool[i+1] = isMixedRadixNegative(eBuf.Coeffs, i+1, r.modInHalf)
+		vBool[i+2] = isMixedRadixNegative(eBuf.Coeffs, i+2, r.modInHalf)
+		vBool[i+3] = isMixedRadixNegative(eBuf.Coeffs, i+3, r.modInHalf)
+
+		vBool[i+4] = isMixedRadixNegative(eBuf.Coeffs, i+4, r.modInHalf)
+		vBool[i+5] = isMixedRadixNegative(eBuf.Coeffs, i+5, r.modInHalf)
+		vBool[i+6] = isMixedRadixNegative(eBuf.Coeffs, i+6, r.modInHalf)
+		vBool[i+7] = isMixedRadixNegative(eBuf.Coeffs, i+7, r.modInHalf)
+	}
+	for i := M; i < r.op.Rank(); i++ {
+		vBool[i] = isMixedRadixNegative(eBuf.Coeffs, i, r.modInHalf)
+	}
+
+	coeff := r.poolBig.Get().(*big.Int)
+	defer r.poolBig.Put(coeff)
+
+	for j := 0; j < r.op.Rank(); j++ {
+		vOut[j].SetUint64(eBuf.Coeffs[0][j])
+	}
+
+	for i := 1; i < len(r.modInSorted); i++ {
+		for j := 0; j < r.op.Rank(); j++ {
+			coeff.SetUint64(eBuf.Coeffs[i][j])
+			coeff.Mul(coeff, r.baseBig[i])
+			vOut[j].Add(vOut[j], coeff)
+		}
+	}
+
+	for j := 0; j < r.op.Rank(); j++ {
+		if vBool[j] == 1 {
+			vOut[j].Sub(vOut[j], r.qProd)
 		}
 	}
 }
 
-// safeCopy returns a thread-safe copy.
-func (r *RNSReconstructor) safeCopy() *RNSReconstructor {
-	return &RNSReconstructor{
-		ringQ: r.ringQ,
-		qHalf: r.qHalf,
+// ReconstructToE reconstructs a polynomial in RNS form to E.
+// It should be guranteed that E > Q, which in our case, is almost certainly true.
+func (r *RNSReconstructor[E]) ReconstructToE(vOut []E, p *crt.Element) {
+	M := (r.op.Rank() >> 3) << 3
 
-		gad:  r.gad,
-		qBig: r.qBig,
+	eBuf := r.pool.Get().(*crt.Element)
+	defer r.pool.Put(eBuf)
 
-		buf: newRNSReconstructorBuffer(r.ringQ),
+	for i := 0; i < len(r.modInSorted); i++ {
+		copy(eBuf.Coeffs[i], p.Coeffs[r.modInMap[i]])
+	}
+
+	vBoolPtr := r.pool64.Get().(*[]uint64)
+	vBool := *vBoolPtr
+	defer r.pool64.Put(vBoolPtr)
+
+	for i := 0; i < len(r.modInSorted); i++ {
+		for j := i + 1; j < len(r.modInSorted); j++ {
+			vec.SubTo(eBuf.Coeffs[j], eBuf.Coeffs[j], eBuf.Coeffs[i], r.modInSorted[j])
+			vec.SMulScalarTo(eBuf.Coeffs[j], eBuf.Coeffs[j], r.modInv[i][j-i-1], r.modInvS[i][j-i-1], r.modInSorted[j])
+		}
+	}
+
+	clear(vBool)
+	for i := 0; i < M; i += 8 {
+		vBool[i+0] = isMixedRadixNegative(eBuf.Coeffs, i+0, r.modInHalf)
+		vBool[i+1] = isMixedRadixNegative(eBuf.Coeffs, i+1, r.modInHalf)
+		vBool[i+2] = isMixedRadixNegative(eBuf.Coeffs, i+2, r.modInHalf)
+		vBool[i+3] = isMixedRadixNegative(eBuf.Coeffs, i+3, r.modInHalf)
+
+		vBool[i+4] = isMixedRadixNegative(eBuf.Coeffs, i+4, r.modInHalf)
+		vBool[i+5] = isMixedRadixNegative(eBuf.Coeffs, i+5, r.modInHalf)
+		vBool[i+6] = isMixedRadixNegative(eBuf.Coeffs, i+6, r.modInHalf)
+		vBool[i+7] = isMixedRadixNegative(eBuf.Coeffs, i+7, r.modInHalf)
+	}
+	for i := M; i < r.op.Rank(); i++ {
+		vBool[i] = isMixedRadixNegative(eBuf.Coeffs, i, r.modInHalf)
+	}
+
+	coeffE := r.poolE.Get().(E)
+	defer r.poolE.Put(coeffE)
+
+	for j := 0; j < r.op.Rank(); j++ {
+		vOut[j].SetUint64(eBuf.Coeffs[0][j])
+	}
+
+	for i := 1; i < len(r.modInSorted); i++ {
+		for j := 0; j < r.op.Rank(); j++ {
+			coeffE.SetUint64(eBuf.Coeffs[i][j])
+			coeffE.Mul(coeffE, r.baseE[i])
+			vOut[j].Add(vOut[j], coeffE)
+		}
+	}
+
+	for j := 0; j < r.op.Rank(); j++ {
+		if vBool[j] == 1 {
+			vOut[j].Sub(vOut[j], r.qProdE)
+		}
+	}
+}
+
+// SetBigCoeffTo sets the coefficient of pOut as v.
+func (r *RNSReconstructor[E]) SetBigCoeffTo(pOut *crt.Element, v []*big.Int) {
+	accTmp := r.poolBig.Get().(*big.Int)
+	defer r.poolBig.Put(accTmp)
+
+	for i := 0; i < r.op.Rank(); i++ {
+		for l := range r.op.Modulus() {
+			pOut.Coeffs[l][i] = accTmp.Mod(v[i], r.qBig[l]).Uint64()
+		}
 	}
 }

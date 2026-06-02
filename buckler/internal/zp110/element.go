@@ -28,8 +28,8 @@ import (
 //
 // Modulus q =
 //
-//	q[base10] = 651593272302216031082905600000001
-//	q[base16] = 0x2020436a1e4e12ff610000000001
+//	q[base10] = 649053680239135388817191449133057
+//	q[base16] = 0x2000358ccccd2018fa5100000001
 //
 // # Warning
 //
@@ -44,8 +44,8 @@ const (
 
 // Field modulus q
 const (
-	q0 = 1368919464371814401
-	q1 = 35322942070350
+	q0 = 2312873634454044673
+	q1 = 35185270508749
 )
 
 var qElement = Uint{
@@ -57,18 +57,18 @@ var _modulus big.Int // q stored as big.Int
 
 // Modulus returns q as a big.Int
 //
-//	q[base10] = 651593272302216031082905600000001
-//	q[base16] = 0x2020436a1e4e12ff610000000001
+//	q[base10] = 649053680239135388817191449133057
+//	q[base16] = 0x2000358ccccd2018fa5100000001
 func Modulus() *big.Int {
 	return new(big.Int).Set(&_modulus)
 }
 
 // q + r'.r = 1, i.e., qInvNeg = - q⁻¹ mod r
 // used for Montgomery reduction
-const qInvNeg = 1368919464371814399
+const qInvNeg = 2312873634454044671
 
 func init() {
-	_modulus.SetString("2020436a1e4e12ff610000000001", 16)
+	_modulus.SetString("2000358ccccd2018fa5100000001", 16)
 }
 
 // NewUint returns a new Uint from a uint64 value
@@ -182,8 +182,8 @@ func (z *Uint) SetZero() *Uint {
 
 // SetOne z = 1 (in Montgomery form)
 func (z *Uint) SetOne() *Uint {
-	z[0] = 11385778256666429449
-	z[1] = 8713368562011
+	z[0] = 17209855537558585358
+	z[1] = 21563005612655
 	return z
 }
 
@@ -212,7 +212,7 @@ func (z *Uint) IsZero() bool {
 
 // IsOne returns z == 1
 func (z *Uint) IsOne() bool {
-	return ((z[1] ^ 8713368562011) | (z[0] ^ 11385778256666429449)) == 0
+	return ((z[1] ^ 21563005612655) | (z[0] ^ 17209855537558585358)) == 0
 }
 
 // IsUint64 reports whether z can be represented as an uint64.
@@ -265,8 +265,8 @@ func (z *Uint) LexicographicallyLargest() bool {
 	_z := z.Bits()
 
 	var b uint64
-	_, b = bits.Sub64(_z[0], 684459732185907201, 0)
-	_, b = bits.Sub64(_z[1], 17661471035175, b)
+	_, b = bits.Sub64(_z[0], 10379808854081798145, 0)
+	_, b = bits.Sub64(_z[1], 17592635254374, b)
 
 	return b == 0
 }
@@ -645,8 +645,8 @@ func (z *Uint) Exp(x Uint, k *big.Int) *Uint {
 // see section 2.3.2 of Tolga Acar's thesis
 // https://www.microsoft.com/en-us/research/wp-content/uploads/1998/06/97Acar.pdf
 var rSquare = Uint{
-	13879880837785790825,
-	13698196895891,
+	2358314647410245741,
+	2137089541884,
 }
 
 // toMont converts z to Montgomery form
@@ -987,8 +987,8 @@ var (
 )
 
 func init() {
-	_bLegendreExponentUint, _ = new(big.Int).SetString("101021b50f27097fb08000000000", 16)
-	const sqrtExponentUint = "101021b50f27097fb0"
+	_bLegendreExponentUint, _ = new(big.Int).SetString("10001ac66666900c7d2880000000", 16)
+	const sqrtExponentUint = "10001ac66666900c7d28"
 	_bSqrtExponentUint, _ = new(big.Int).SetString(sqrtExponentUint, 16)
 }
 
@@ -1172,10 +1172,10 @@ func (z *Uint) Sqrt(x *Uint) *Uint {
 
 	// g = nonResidue ^ s
 	var g = Uint{
-		2825088085054109920,
-		17690853887682,
+		14885021613748530235,
+		16033748898492,
 	}
-	r := uint64(40)
+	r := uint64(32)
 
 	// compute legendre symbol
 	// t = x^((q-1)/2) = r-1 squaring of xˢ
@@ -1226,8 +1226,8 @@ const (
 )
 
 const (
-	inversionCorrectionFactorWord0 = 5899112762588679200
-	inversionCorrectionFactorWord1 = 5293977088306
+	inversionCorrectionFactorWord0 = 15694049874782811992
+	inversionCorrectionFactorWord1 = 17586601659187
 	invIterationsN                 = 8
 )
 

@@ -330,18 +330,22 @@ func genVector(size int) gopter.Gen {
 		mixer := Uint{
 			genParams.NextUint64(),
 			genParams.NextUint64(),
+			genParams.NextUint64(),
+			genParams.NextUint64(),
 		}
-		if qElement[1] != ^uint64(0) {
-			mixer[1] %= (qElement[1] + 1)
+		if qElement[3] != ^uint64(0) {
+			mixer[3] %= (qElement[3] + 1)
 		}
 
 		for !mixer.smallerThanModulus() {
 			mixer = Uint{
 				genParams.NextUint64(),
 				genParams.NextUint64(),
+				genParams.NextUint64(),
+				genParams.NextUint64(),
 			}
-			if qElement[1] != ^uint64(0) {
-				mixer[1] %= (qElement[1] + 1)
+			if qElement[3] != ^uint64(0) {
+				mixer[3] %= (qElement[3] + 1)
 			}
 		}
 

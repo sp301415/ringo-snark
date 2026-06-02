@@ -118,19 +118,3 @@ func mulVecTo[E bignum.Uint[E]](xOut, x0, x1 []E) {
 		xOut[i].Mul(x0[i], x1[i])
 	}
 }
-
-// bitReverseInPlace reorders v into bit-reversal order in-place.
-func bitReverseInPlace[T any](v []T) {
-	var bit, j int
-	for i := 1; i < len(v); i++ {
-		bit = len(v) >> 1
-		for j >= bit {
-			j -= bit
-			bit >>= 1
-		}
-		j += bit
-		if i < j {
-			v[i], v[j] = v[j], v[i]
-		}
-	}
-}

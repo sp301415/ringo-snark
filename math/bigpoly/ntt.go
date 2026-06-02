@@ -5,6 +5,7 @@ import (
 	"unsafe"
 
 	"github.com/sp301415/ringo-snark/math/bignum"
+	"github.com/sp301415/ringo-snark/math/vec"
 )
 
 // transformer computes NTT.
@@ -61,8 +62,8 @@ func NewCyclicTransformer[E bignum.Uint[E]](rank int) *CyclicTransformer[E] {
 		twRef[i] = z.New().Mul(twRef[i-1], g)
 		twInvRef[i] = z.New().Mul(twInvRef[i-1], gInv)
 	}
-	bitReverseInPlace(twRef)
-	bitReverseInPlace(twInvRef)
+	vec.BitReverseInPlace(twRef)
+	vec.BitReverseInPlace(twInvRef)
 
 	tw := make([]E, rank)
 	twInv := make([]E, rank)
@@ -188,8 +189,8 @@ func NewCyclotomicTransformer[E bignum.Uint[E]](rank int) *CyclotomicTransformer
 		tw[i] = z.New().Mul(tw[i-1], g)
 		twInv[i] = z.New().Mul(twInv[i-1], gInv)
 	}
-	bitReverseInPlace(tw)
-	bitReverseInPlace(twInv)
+	vec.BitReverseInPlace(tw)
+	vec.BitReverseInPlace(twInv)
 
 	rankInv := z.New().SetUint64(uint64(rank))
 	rankInv.Inverse(rankInv)

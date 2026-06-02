@@ -14,7 +14,7 @@ import (
 
 // Verifier verifies the given circuit.
 type Verifier[E bignum.Uint[E]] struct {
-	JindoParams jindo.Parameters
+	JindoParams jindo.Parameters[E]
 
 	polyEval *bigpoly.CyclicEvaluator[E]
 
@@ -86,7 +86,7 @@ func (v *Verifier[E]) Verify(c Circuit[E], pf *Proof[E]) bool {
 			continue
 		}
 
-		pf.Witness[i].WriteRawTo(&oracleBuf)
+		pf.Witness[i].WriteToBuf(&oracleBuf)
 		oracle.Bind("projConst", oracleBuf.Bytes())
 		oracleBuf.Reset()
 	}
@@ -112,7 +112,7 @@ func (v *Verifier[E]) Verify(c Circuit[E], pf *Proof[E]) bool {
 
 	for _, w := range v.ctx.wSecond {
 		i := witnessToID(w)
-		pf.Witness[i].WriteRawTo(&oracleBuf)
+		pf.Witness[i].WriteToBuf(&oracleBuf)
 		oracle.Bind("arithBatchConst", oracleBuf.Bytes())
 		oracleBuf.Reset()
 	}
@@ -122,7 +122,7 @@ func (v *Verifier[E]) Verify(c Circuit[E], pf *Proof[E]) bool {
 	var linCheckMaskEval E
 	if v.ctx.HasLinearCheck() {
 		linCheckMaskEval = pf.Evals[roundComIdx]
-		pf.Witness[roundComIdx].WriteRawTo(&oracleBuf)
+		pf.Witness[roundComIdx].WriteToBuf(&oracleBuf)
 		oracle.Bind("arithBatchConst", oracleBuf.Bytes())
 		oracle.Bind("arithBatchConst", pf.LinCheckMaskSum.Marshal())
 		oracleBuf.Reset()
@@ -132,7 +132,7 @@ func (v *Verifier[E]) Verify(c Circuit[E], pf *Proof[E]) bool {
 	var sumCheckMaskEval E
 	if v.ctx.HasSumCheck() {
 		sumCheckMaskEval = pf.Evals[roundComIdx]
-		pf.Witness[roundComIdx].WriteRawTo(&oracleBuf)
+		pf.Witness[roundComIdx].WriteToBuf(&oracleBuf)
 		oracle.Bind("arithBatchConst", oracleBuf.Bytes())
 		oracle.Bind("arithBatchConst", pf.SumCheckMaskSum.Marshal())
 		oracleBuf.Reset()
@@ -160,7 +160,7 @@ func (v *Verifier[E]) Verify(c Circuit[E], pf *Proof[E]) bool {
 	}
 
 	for i := int(roundComIdx); i < len(pf.Witness); i++ {
-		pf.Witness[i].WriteRawTo(&oracleBuf)
+		pf.Witness[i].WriteToBuf(&oracleBuf)
 		oracle.Bind("evalPoint", oracleBuf.Bytes())
 		oracleBuf.Reset()
 	}
@@ -171,7 +171,7 @@ func (v *Verifier[E]) Verify(c Circuit[E], pf *Proof[E]) bool {
 	}
 	evalPoint := z.New().SetBytes(evalPointBytes)
 
-	if !v.polyVerifier.Verify(evalPoint, pf.Witness, pf.Evals, pf.EvalProof) {
+	if !v.polyVerifier.Verify(evalPoint, pf.Evals, pf.Witness, pf.EvalProof) {
 		return false
 	}
 

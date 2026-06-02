@@ -5,17 +5,18 @@ import (
 	"math/big"
 
 	"github.com/sp301415/ringo-snark/math/bignum"
-	"github.com/tuneinsight/lattigo/v6/ring"
+	"github.com/sp301415/ringo-snark/math/crt"
+	"github.com/sp301415/ringo-snark/math/num"
 )
 
-// encodeParameters is the parameters of input modulus.
-type encodeParameters struct {
+// EncodeParameters is the parameters of input modulus.
+type EncodeParameters[E bignum.Uint[E]] struct {
 	base uint64
 	exp  int
 }
 
-// newEncodeParameters creates a new [encodeParameters].
-func newEncodeParameters[E bignum.Uint[E]]() encodeParameters {
+// NewEncodeParameters creates a new [encodeParameters].
+func NewEncodeParameters[E bignum.Uint[E]]() EncodeParameters[E] {
 	var z E
 
 	logExp := 0
@@ -33,21 +34,37 @@ func newEncodeParameters[E bignum.Uint[E]]() encodeParameters {
 		panic("newEncodeParameters: modulus not jindo-friendly")
 	}
 
-	return encodeParameters{
+	return EncodeParameters[E]{
 		base: baseBig.Uint64(),
 		exp:  1 << logExp,
 	}
 }
 
+// Base is the base for encoding.
+func (p EncodeParameters[E]) Base() uint64 {
+	return p.base
+}
+
+// Exp is the exponent for encoding.
+func (p EncodeParameters[E]) Exp() int {
+	return p.exp
+}
+
 const (
-	// rlweRank is secure for stdDev = 2sqrt(2)eta.
-	rlweRank = 1 << 13
-	// maxLogQ is secure for stdDev = 2sqrt(2)eta.
-	maxLogQ = 240
-	// eta is the smoothing parameter.
-	eta = 6
+	// rlweRank is secure for stdDev = ~ b with q = maxLogQ.
+	rlweRank = 1 << 12
+	// maxMSISRank is the maximum mlwe rank possible.
+	maxMSISRank = 1 << 12
+	// maxLogQ is the maximum possible q.
+	maxLogQ = 150
 	// tailCut is the tail cut bound for Gaussian distribution.
 	tailCut = 5
+	// rejRate is the rate for rejection sampling
+	rejRate = 1.2
+	// chalWeight is the hamming weight of the challenge.
+	chalWeight = 35
+	// maxCutOff is the maximum possible cutoff.
+	maxCutOff = 1 << (num.MaxModulusBits - 1)
 )
 
 func findMSISRank(d, q, beta float64) int {
@@ -61,9 +78,11 @@ func findMSISRank(d, q, beta float64) int {
 }
 
 // Parameters is the parameters for the Jindo polynomial commitment scheme.
-type Parameters struct {
+type Parameters[E bignum.Uint[E]] struct {
 	// batch is the number of polynomials to be committed.
 	batch int
+	// split is the number of sub-polynomials.
+	split int
 
 	// rank is the number of cofficients in the committing polynomial.
 	rank int
@@ -73,7 +92,7 @@ type Parameters struct {
 	cols int
 
 	// ecd is the encoding parameters.
-	ecd encodeParameters
+	ecd EncodeParameters[E]
 	// slots is the number of slots.
 	slots int
 
@@ -89,32 +108,20 @@ type Parameters struct {
 	// logOutCutOff is the cutoff for the outer commitment.
 	logOutCutOff uint64
 
-	// inComDcmpLen is the length of the decomposed inner commitment.
-	inComDcmpLen int
+	// op is the commitment operator.
+	op *crt.Operator
+	// opOut is the outer commitment operator.
+	opOut *crt.Operator
+	// opAmb is the ambient commitment operator.
+	opAmb *crt.Operator
 
-	// ringQ is the commitment ring.
-	ringQ *ring.Ring
-	// ringQOut is the outer commitment ring.
-	ringQOut *ring.Ring
-
-	// ecdStdDev is the standard deviation for encoding.
-	ecdStdDev float64
-	// ecdBlindStdDev is the standard deviation for encoding blinding terms.
-	ecdBlindStdDev float64
 	// maskStdDev is the standard deviation for masking.
 	maskStdDev float64
-	// maskBlindStdDev is the standard deviation for masking blinding terms.
-	maskBlindStdDev float64
-
-	// mlweStdDev is the standard deviation for MLWE.
-	mlweStdDev float64
-	// maskMLWEStdDev is the standard deviation for MLWE masking.
-	maskMLWEStdDev float64
 
 	// resTwoNm is the two-norm bound of the response.
 	resTwoNm float64
-	// inComDcmpTwoNm is the two-norm bound of the decomposed inner commitment.
-	inComDcmpTwoNm float64
+	// outOpenTwoNm is the two-norm bound of the outer commitment.
+	outOpenTwoNm float64
 
 	// comSize is the size of outer commitment.
 	comSize float64
@@ -123,7 +130,7 @@ type Parameters struct {
 }
 
 // NewParameters creates a new [Parameters].
-func NewParameters[E bignum.Uint[E]](targetN, batch int) Parameters {
+func NewParameters[E bignum.Uint[E]](targetN, batch int) Parameters[E] {
 	switch {
 	case targetN < 1:
 		panic("NewParameters: targetN must be >= 1")
@@ -131,188 +138,165 @@ func NewParameters[E bignum.Uint[E]](targetN, batch int) Parameters {
 		panic("NewParameters: batch must be >= 1")
 	}
 
-	params := Parameters{}
-	ecd := newEncodeParameters[E]()
+	params := Parameters[E]{}
+	ecd := NewEncodeParameters[E]()
 
-	t := float64(batch)
+	rejSlack := 14 / math.Log(rejRate)
+
 	b := float64(ecd.base)
 	k := float64(ecd.exp)
-	d := float64(max(k, 256))
+	d := float64(max(k, 1024))
 	l := d / k
 
 	nu := rlweRank / d
 
-	maxCols := int(math.Ceil(float64(targetN) / l))
+	xOp := k * b
+	cOp := float64(chalWeight)
+	dOp := float64(chalWeight)
+
+	maxSplit := int(math.Ceil(float64(targetN) / l))
 	minSize := math.Inf(1)
-	for nn := 1; nn <= maxCols; nn <<= 1 {
-		n := float64(nn)
-		m := math.Ceil(float64(targetN) / (n * l))
+	for ss := 1; ss <= maxSplit; ss <<= 1 {
+		split := float64(ss)
+		maxCols := int(math.Ceil(float64(targetN) / (split * l)))
+		t := split * float64(batch)
+		for nn := 1; nn <= maxCols; nn <<= 1 {
+			n := float64(nn)
+			m := math.Ceil(float64(targetN) / (split * n * l))
 
-		xOne := math.Sqrt(k) * b
-		cOne := math.Sqrt(k) * min(b, math.Exp2(120/k)) / 2
+			ecdInf := b
 
-		ecdStdDev := 2 / (b - 1) * (b + 1) * eta
-		ecdBlindStdDev := 2 * xOne / (b - 1) * (b + 1) * eta
-		maskStdDev := 2 * cOne / (b - 1) * (b + 1) * eta
-		maskBlindStdDev := 2 * cOne * xOne / (b - 1) * (b + 1) * eta
-
-		mlweStdDev := 2 * math.Sqrt2 * eta
-		maskMLWEStdDev := 2 * cOne * math.Sqrt2 * eta
-
-		fijInf := tailCut * (b + 1) * ecdStdDev
-		f0jInf := tailCut * (b + 1) * math.Sqrt(m+1) * ecdBlindStdDev
-		finInf := tailCut * (b + 1) * math.Sqrt(n+1) * maskStdDev
-		f0nInf := tailCut * (b + 1) * math.Sqrt((m+1)*n+1) * maskBlindStdDev
-
-		resEcdiInf := math.Sqrt(n)*cOne*fijInf + finInf
-		resEcd0Inf := math.Sqrt(n)*cOne*f0jInf + f0nInf
-		prInf := math.Sqrt(m)*xOne*fijInf + f0jInf
-		if t > 1 {
-			resEcdiInf *= math.Sqrt(t) * cOne
-			resEcd0Inf *= math.Sqrt(t) * cOne
-			prInf *= math.Sqrt(t) * cOne
-		}
-
-		resEcdTwo := math.Sqrt(d * (m*resEcdiInf*resEcdiInf + resEcd0Inf*resEcd0Inf))
-
-		mlweInf := tailCut * mlweStdDev
-		maskMLWEInf := tailCut * math.Sqrt(n+1) * maskMLWEStdDev
-		resMLWEInf := math.Sqrt(n)*cOne*mlweInf + maskMLWEInf
-		if t > 1 {
-			resMLWEInf *= math.Sqrt(t) * cOne
-		}
-
-		var q, inMSISRank, inCutOffTwo float64
-		var resTwo, dExtOne float64
-		for mu := 1; ; mu++ {
-			resMLWETwo := math.Sqrt(d*(float64(mu)+nu)) * resMLWEInf
-			resTwo = math.Sqrt(resEcdTwo*resEcdTwo + resMLWETwo*resMLWETwo)
-			inCutOffTwo = resTwo
-
-			var extBeta, cExtOne float64
-			if t == 1 {
-				extBeta = 2 * (resTwo + inCutOffTwo)
-				cExtOne = 2 * cOne
-				dExtOne = 1
-			} else {
-				extBeta = 2 * (2 * cOne) * (resTwo + inCutOffTwo)
-				cExtOne = (2 * cOne) * (2 * cOne)
-				dExtOne = 2 * cOne
-			}
-
-			inMSISBeta := 2 * dExtOne * cExtOne * extBeta
-			logQ := math.Ceil(math.Log2(inMSISBeta))
-			qLimbs := int(math.Ceil(logQ / 60.0))
-			qBits := int(math.Ceil(logQ / float64(qLimbs)))
-			q = math.Exp2(float64(qBits * qLimbs))
-
-			if math.Log2(q) > maxLogQ {
-				continue
-			}
-
-			if findMSISRank(d, q, inMSISBeta) == mu {
+			var inMSISRank, maskStdDev, batchInf, resTwo, inCutOffTwo, logQ float64
+			for mu := 1; mu < maxMSISRank; mu++ {
 				inMSISRank = float64(mu)
-				break
-			}
-		}
 
-		inCutOffInf := inCutOffTwo / ((1 + math.Sqrt(n)*cOne) * math.Sqrt(inMSISRank*d))
-		if t > 1 {
-			inCutOffInf /= math.Sqrt(t) * cOne
-		}
+				numu := nu + inMSISRank
+				batchInf = t * dOp * ecdInf
 
-		inDcmpInf := q / inCutOffInf
-		if t > 1 {
-			inDcmpInf *= math.Sqrt(t) * cOne
-		}
+				ecdTwo := math.Sqrt(d*((m+1)+numu)*n) * batchInf
+				maskStdDev = rejSlack * ecdTwo
+				batchInf = tailCut * maskStdDev
+				batchTwo := math.Sqrt(d*((m+1)+numu)) * math.Sqrt2 * maskStdDev
 
-		inDcmpTwo := math.Sqrt((n+1)*inMSISRank*d) * inDcmpInf
-		outCutOffTwo := inDcmpTwo
+				if batchInf > math.Exp2(63) {
+					continue
+				}
 
-		outMSISBeta := 2 * dExtOne * (2 * (inDcmpTwo + outCutOffTwo))
+				resTwo = n * cOp * batchTwo
+				inCutOffTwo = min(resTwo, math.Sqrt(inMSISRank*d)*(1+t*dOp)*maxCutOff)
 
-		logQQ := math.Ceil(math.Log2(outMSISBeta))
-		qqLimbs := int(math.Ceil(logQQ / 60.0))
-		qqBits := int(math.Ceil(logQQ / float64(qqLimbs)))
-		qq := math.Exp2(float64(qqBits * qqLimbs))
-		if math.Log2(qq) > maxLogQ {
-			continue
-		}
-		outMSISRank := float64(findMSISRank(d, qq, outMSISBeta))
+				extBeta := (2 * cOp) * (2 * (resTwo + inCutOffTwo))
+				cExt := (2 * cOp) * (2 * cOp)
+				dExt := 2 * dOp
 
-		outCutOffInf := outCutOffTwo / (math.Sqrt(outMSISRank * d))
-		if t > 1 {
-			outCutOffInf /= math.Sqrt(t) * cOne
-		}
+				inMSISBeta := 2 * dExt * cExt * extBeta
+				logQ = math.Ceil(math.Log2(inMSISBeta))
+				if logQ > maxLogQ {
+					continue
+				}
 
-		comSize := t * outMSISRank * d * math.Log2(qq/outCutOffInf)
-
-		var pfSize float64
-		pfSize += n * d * math.Log2(prInf)                          // Partial
-		pfSize += d * math.Log2(q)                                  // Partial * Mask
-		pfSize += m * d * math.Log2(resEcdiInf)                     // Response 1 ~ m
-		pfSize += d * math.Log2(resEcd0Inf)                         // Response 0
-		pfSize += (inMSISRank + nu) * d * math.Log2(resMLWEInf)     // Response MLWE
-		pfSize += ((n + 1) * inMSISRank * d) * math.Log2(inDcmpInf) // Inner Commitments
-
-		if comSize+pfSize < minSize {
-			minSize = comSize + pfSize
-
-			params.batch = batch
-
-			params.rank = int(n) * int(m) * int(l)
-			params.rows = int(m) + 1
-			params.cols = int(n)
-
-			params.ecd = ecd
-			params.slots = int(d) / ecd.exp
-
-			params.inMSISRank = int(inMSISRank)
-			params.outMSISRank = int(outMSISRank)
-			params.mlweRank = int(nu)
-
-			params.logInCutOff = uint64(math.Floor(math.Log2(inCutOffInf)))
-			params.logOutCutOff = uint64(math.Floor(math.Log2(outCutOffInf)))
-
-			params.inComDcmpLen = int((n + 1) * inMSISRank)
-
-			qLimbs := int(math.Ceil(math.Log2(q) / 60))
-			qBits := int(math.Ceil(math.Log2(q) / float64(qLimbs)))
-			qGen := ring.NewNTTFriendlyPrimesGenerator(uint64(qBits), 2*uint64(d))
-			q, err := qGen.NextUpstreamPrimes(qLimbs)
-			if err != nil {
-				continue
-			}
-			params.ringQ, err = ring.NewRing(int(d), q)
-			if err != nil {
-				panic(err)
+				if findMSISRank(d, math.Exp2(logQ), inMSISBeta) == mu {
+					break
+				}
 			}
 
-			qqLimbs := int(math.Ceil(math.Log2(qq) / 60))
-			qqBits := int(math.Ceil(math.Log2(qq) / float64(qqLimbs)))
-			qqGen := ring.NewNTTFriendlyPrimesGenerator(uint64(qqBits), 2*uint64(d))
-			qq, err := qqGen.NextUpstreamPrimes(qqLimbs)
-			if err != nil {
-				continue
+			inCutOffInf := inCutOffTwo / (math.Sqrt(inMSISRank*d) * (1 + t*dOp) * (n * cOp))
+
+			var outMSISRank, outBeta, outCutOffTwo, logQOut float64
+			for muOut := 1; muOut < maxMSISRank; muOut++ {
+				outMSISRank = float64(muOut)
+
+				outBetaInf := (1 + t*dOp) * (math.Exp2(logQ) / inCutOffInf)
+				outBeta = math.Sqrt(n*float64(muOut)*d) * outBetaInf
+				outCutOffTwo = min(outBeta, math.Sqrt(outMSISRank*d)*(1+t*dOp)*maxCutOff)
+
+				dExt := 2 * dOp
+
+				outExtBeta := (2 * dExt) * (2 * (outBeta + outCutOffTwo))
+				logQOut = math.Ceil(math.Log2(outExtBeta))
+				if logQOut > maxLogQ {
+					continue
+				}
+
+				if findMSISRank(d, math.Exp2(logQOut), outExtBeta) == muOut {
+					break
+				}
 			}
-			params.ringQOut, err = ring.NewRing(int(d), qq)
-			if err != nil {
-				panic(err)
+			outCutOffInf := outCutOffTwo / (math.Sqrt(outMSISRank*d) * (1 + t*dOp))
+
+			comSize := t * outMSISRank * d * math.Log2(math.Exp2(logQOut)/outCutOffInf)
+
+			var pfSize float64
+			pfSize += outMSISRank * d * math.Log2(math.Exp2(logQOut)/outCutOffInf) // Mask Commitment
+			pfSize += n * d * math.Log2((m+1)*xOp*batchInf)                        // Partial Evaluation
+			pfSize += ((m + 1) + nu + inMSISRank) * d * math.Log2(n*cOp*batchInf)  // Response
+			pfSize += n * inMSISRank * d * math.Log2(math.Exp2(logQ)/inCutOffInf)  // Inner Commitment
+			pfSize += ((1 + split*l) * float64(batch)) * (k * math.Log2(b))        // Evaluation Point
+
+			if comSize+pfSize < minSize {
+				minSize = comSize + pfSize
+
+				params.batch = batch
+				params.split = int(split)
+
+				params.rank = int(split) * int(n) * int(m) * int(l)
+				params.rows = int(m)
+				params.cols = int(n)
+
+				params.ecd = ecd
+				params.slots = int(d) / ecd.exp
+
+				params.inMSISRank = int(inMSISRank)
+				params.outMSISRank = int(outMSISRank)
+				params.mlweRank = int(nu)
+
+				params.logInCutOff = uint64(math.Floor(math.Log2(inCutOffInf)))
+				params.logOutCutOff = uint64(math.Floor(math.Log2(outCutOffInf)))
+
+				qLimbs := int(math.Ceil(logQ / num.MaxModulusBits))
+				q := crt.MustFindNearestNTTPrimes(int(d), logQ/float64(qLimbs), qLimbs)
+				params.op = crt.NewOperator(int(d), q)
+
+				qOutLimbs := int(math.Ceil(logQOut / num.MaxModulusBits))
+				qOut := crt.MustFindNearestNTTPrimes(int(d), logQOut/float64(qOutLimbs), qOutLimbs)
+				params.opOut = crt.NewOperator(int(d), qOut)
+
+				qAmbFullBits := math.Log2(n) + math.Log2(m+1) + 2*math.Log2(k) + 2*math.Log2(b) + math.Log2(maskStdDev)
+				qAmbFullBits = max(qAmbFullBits, 1+2*math.Log2(maskStdDev))
+				qAmbBits := max(qAmbFullBits-logQ, 1+math.Log2(b))
+
+				if qAmbBits <= 0 {
+					params.opAmb = params.op
+				} else {
+					qAmbLimbs := int(math.Ceil(qAmbBits / num.MaxModulusBits))
+					var qAmb []*num.Modulus
+					for {
+						qAmb = crt.MustFindNearestNTTPrimes(int(d), qAmbBits/float64(qAmbLimbs), qAmbLimbs)
+						isEq := false
+						for i := range qAmb {
+							for j := range q {
+								if qAmb[i].Value() == q[j].Value() {
+									isEq = true
+								}
+							}
+						}
+
+						if !isEq {
+							break
+						}
+						qAmbBits += 1
+					}
+					params.opAmb = crt.NewOperator(int(d), append(q, qAmb...))
+				}
+
+				params.maskStdDev = maskStdDev
+
+				params.resTwoNm = resTwo + inCutOffTwo
+				params.outOpenTwoNm = outBeta + outCutOffTwo
+
+				params.comSize = comSize
+				params.pfSize = pfSize
 			}
-
-			params.ecdStdDev = ecdStdDev / math.Sqrt(2*math.Pi)
-			params.ecdBlindStdDev = ecdBlindStdDev / math.Sqrt(2*math.Pi)
-			params.maskStdDev = maskStdDev / math.Sqrt(2*math.Pi)
-			params.maskBlindStdDev = maskBlindStdDev / math.Sqrt(2*math.Pi)
-
-			params.mlweStdDev = mlweStdDev / math.Sqrt(2*math.Pi)
-			params.maskMLWEStdDev = maskMLWEStdDev / math.Sqrt(2*math.Pi)
-
-			params.resTwoNm = resTwo + inCutOffTwo
-			params.inComDcmpTwoNm = inDcmpTwo + outCutOffTwo
-
-			params.comSize = comSize
-			params.pfSize = pfSize
 		}
 	}
 
@@ -320,136 +304,116 @@ func NewParameters[E bignum.Uint[E]](targetN, batch int) Parameters {
 }
 
 // Batch is the number of polynomials to be committed.
-func (p Parameters) Batch() int {
+func (p Parameters[E]) Batch() int {
 	return p.batch
 }
 
+// Split is the number of sub-polynomials.
+func (p Parameters[E]) Split() int {
+	return p.split
+}
+
 // Rank is the number of cofficients in the committing polynomial.
-func (p Parameters) Rank() int {
+func (p Parameters[E]) Rank() int {
 	return p.rank
 }
 
 // Rows are the number of rows in the matrix form of polynomial.
-func (p Parameters) Rows() int {
+func (p Parameters[E]) Rows() int {
 	return p.rows
 }
 
 // Cols are the number of columns in the matrix form of polynomial.
-func (p Parameters) Cols() int {
+func (p Parameters[E]) Cols() int {
 	return p.cols
 }
 
+// EncodeParameters is the encoding parameters.
+func (p Parameters[E]) EncodeParameters() EncodeParameters[E] {
+	return p.ecd
+}
+
 // Base is the base for encoding.
-func (p Parameters) Base() uint64 {
+func (p Parameters[E]) Base() uint64 {
 	return p.ecd.base
 }
 
 // Exp is the exponent for encoding.
-func (p Parameters) Exp() int {
+func (p Parameters[E]) Exp() int {
 	return p.ecd.exp
 }
 
 // Slots is the number of slots.
-func (p Parameters) Slots() int {
+func (p Parameters[E]) Slots() int {
 	return p.slots
 }
 
-// ChallengeBound is the challenge bound.
-func (p Parameters) ChallengeBound() uint64 {
-	return min(p.ecd.base, 1<<(120/p.ecd.exp)) / 2
-}
-
 // InMSISRank is the rank of the inner MSIS commitment.
-func (p Parameters) InMSISRank() int {
+func (p Parameters[E]) InMSISRank() int {
 	return p.inMSISRank
 }
 
 // OutMSISRank is the rank of the outer MSIS commitment.
-func (p Parameters) OutMSISRank() int {
+func (p Parameters[E]) OutMSISRank() int {
 	return p.outMSISRank
 }
 
 // MLWERank is the rank of the MLWE hiding term.
-func (p Parameters) MLWERank() int {
+func (p Parameters[E]) MLWERank() int {
 	return p.mlweRank
 }
 
 // LogInCutOff is the cutoff for the inner commitment.
-func (p Parameters) LogInCutOff() uint64 {
+func (p Parameters[E]) LogInCutOff() uint64 {
 	return p.logInCutOff
 }
 
 // LogOutCutOff is the cutoff for the outer commitment.
-func (p Parameters) OutCutOff() uint64 {
+func (p Parameters[E]) OutCutOff() uint64 {
 	return p.logOutCutOff
 }
 
-// InCommitDecomposeLen is the length of the decomposed inner commitment.
-func (p Parameters) InCommitDecomposeLen() int {
-	return p.inComDcmpLen
+// Operator is the commitment [crt.Operator].
+func (p Parameters[E]) Operator() *crt.Operator {
+	return p.op
 }
 
-// RingQ is the commitment ring.
-func (p Parameters) RingQ() *ring.Ring {
-	return p.ringQ
+// OutOperator is the outer commitment [crt.Operator].
+func (p Parameters[E]) OutOperator() *crt.Operator {
+	return p.opOut
 }
 
-// RingQOut is the outer commitment ring.
-func (p Parameters) RingQOut() *ring.Ring {
-	return p.ringQOut
-}
-
-// EcdStdDev is the standard deviation for encoding.
-func (p Parameters) EcdStdDev() float64 {
-	return p.ecdStdDev
-}
-
-// EcdBlindStdDev is the standard deviation for encoding blinding terms.
-func (p Parameters) EcdBlindStdDev() float64 {
-	return p.ecdBlindStdDev
+// AmbOperator is the ambient commitment [crt.Operator].
+func (p Parameters[E]) AmbOperator() *crt.Operator {
+	return p.opAmb
 }
 
 // MaskStdDev is the standard deviation for masking.
-func (p Parameters) MaskStdDev() float64 {
+func (p Parameters[E]) MaskStdDev() float64 {
 	return p.maskStdDev
 }
 
-// MaskBlindStdDev is the standard deviation for masking blinding terms.
-func (p Parameters) MaskBlindStdDev() float64 {
-	return p.maskBlindStdDev
-}
-
-// MLWEStdDev is the standard deviation for MLWE.
-func (p Parameters) MLWEStdDev() float64 {
-	return p.mlweStdDev
-}
-
-// MaskMLWEStdDev is the standard deviation for MLWE masking.
-func (p Parameters) MaskMLWEStdDev() float64 {
-	return p.maskMLWEStdDev
-}
-
 // ResTwoNm is the two-norm bound of the response.
-func (p Parameters) ResTwoNm() float64 {
+func (p Parameters[E]) ResTwoNm() float64 {
 	return p.resTwoNm
 }
 
-// InComDcmpTwoNm is the two-norm bound of the decomposed inner commitment.
-func (p Parameters) InComDcmpTwoNm() float64 {
-	return p.inComDcmpTwoNm
+// OutOpenTwoNm is the two-norm bound of the outer commitment.
+func (p Parameters[E]) OutOpenTwoNm() float64 {
+	return p.outOpenTwoNm
 }
 
 // CommitmentSize is the size of outer commitment.
-func (p Parameters) CommitmentSize() float64 {
+func (p Parameters[E]) CommitmentSize() float64 {
 	return p.comSize
 }
 
 // ProofSize is the estimated size for proof.
-func (p Parameters) ProofSize() float64 {
+func (p Parameters[E]) ProofSize() float64 {
 	return p.pfSize
 }
 
 // Size is the estimated size for commitment and proof.
-func (p Parameters) Size() float64 {
+func (p Parameters[E]) Size() float64 {
 	return p.comSize + p.pfSize
 }

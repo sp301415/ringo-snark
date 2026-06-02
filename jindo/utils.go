@@ -1,82 +1,127 @@
 package jindo
 
 import (
+	"bytes"
 	"encoding/binary"
+	"io"
+	"math"
 	"math/bits"
+	"unsafe"
 
 	"github.com/sp301415/ringo-snark/math/bignum"
-	"github.com/tuneinsight/lattigo/v6/ring"
 )
 
 // divMod64 computes x = x / y and returns x mod y.
 func divMod64(x []uint64, y uint64) uint64 {
+	n := len(x) - 1
+	for n > 0 && x[n] == 0 {
+		n--
+	}
+
 	var r uint64
-	for i := len(x) - 1; i >= 0; i-- {
+	for i := n; i >= 0; i-- {
 		x[i], r = bits.Div64(r, x[i], y)
 	}
 	return r
 }
 
-// encodeChallengeTo encodes c to pOut.
-func encodeChallengeTo(params Parameters, ringQ *ring.Ring, pOut ring.Poly, chalBytes []byte) {
-	pOut.Zero()
+// sampleN samples uniformly random value from oracle.
+func sampleN(oracle io.Reader, N uint64) uint64 {
+	var buf [8]byte
+	bound := math.MaxUint64 - math.MaxUint64%N
+	for {
+		oracle.Read(buf[:])
+		x := binary.BigEndian.Uint64(buf[:])
+		if x < bound {
+			return x % N
+		}
+	}
+}
 
-	c := []uint64{
-		binary.BigEndian.Uint64(chalBytes[:8]),
-		binary.BigEndian.Uint64(chalBytes[8:]),
+// writeE writes x to buf.
+func writeE[E bignum.Uint[E]](buf *bytes.Buffer, buf64 []uint64, x []E) {
+	var buf8 [8]byte
+
+	for i := range x {
+		x[i].Slice(buf64)
+		for j := range buf64 {
+			binary.BigEndian.PutUint64(buf8[:], buf64[j])
+			buf.Write(buf8[:])
+		}
+	}
+}
+
+// write64 writes x to buf.
+func write64(buf *bytes.Buffer, x []uint64) {
+	M := (len(x) >> 3) << 3
+	L := unsafe.Sizeof(uint64(0))
+
+	var buf64 [64]byte
+
+	r := unsafe.Pointer(unsafe.SliceData(x))
+
+	for i := 0; i < M; i += 8 {
+		w := (*[8]uint64)(unsafe.Add(r, uintptr(i)*L))
+
+		binary.BigEndian.PutUint64(buf64[0*8:1*8], w[0])
+		binary.BigEndian.PutUint64(buf64[1*8:2*8], w[1])
+		binary.BigEndian.PutUint64(buf64[2*8:3*8], w[2])
+		binary.BigEndian.PutUint64(buf64[3*8:4*8], w[3])
+
+		binary.BigEndian.PutUint64(buf64[4*8:5*8], w[4])
+		binary.BigEndian.PutUint64(buf64[5*8:6*8], w[5])
+		binary.BigEndian.PutUint64(buf64[6*8:7*8], w[6])
+		binary.BigEndian.PutUint64(buf64[7*8:8*8], w[7])
+
+		buf.Write(buf64[:])
 	}
 
-	cInfNm := uint64(params.ChallengeBound())
-	for i := 0; i < params.ecd.exp; i++ {
-		r := divMod64(c, cInfNm)
-		if r > cInfNm/2 {
-			r = cInfNm - r
-			for k := 0; k <= pOut.Level(); k++ {
-				pOut.Coeffs[k][i*params.slots] = ringQ.SubRings[k].Modulus - r
+	for i := M; i < len(x); i++ {
+		binary.BigEndian.PutUint64(buf64[0:8], x[i])
+		buf.Write(buf64[0:8])
+	}
+}
+
+// encodeChalRawTo encodes challenge to pOut as int64 vector.
+func encodeChalRawTo(pOut []uint64, oracle io.Reader) {
+	clear(pOut)
+
+	var signByte [1]byte
+	var idxByte [8]byte
+	for i := len(pOut) - chalWeight; i < len(pOut); i++ {
+		oracle.Read(signByte[:])
+		jBound := math.MaxUint64 - math.MaxUint64%uint64(i)
+		var j uint64
+		for {
+			oracle.Read(idxByte[:])
+			j = binary.BigEndian.Uint64(idxByte[:])
+			if j < jBound {
+				j %= uint64(i)
+				break
 			}
+		}
+
+		pOut[i] = pOut[j]
+		if signByte[0]&1 == 0 {
+			pOut[j] = 1
 		} else {
-			for k := 0; k <= pOut.Level(); k++ {
-				pOut.Coeffs[k][i*params.slots] = r
-			}
-		}
-	}
-
-	ringQ.MForm(pOut, pOut)
-	ringQ.NTT(pOut, pOut)
-}
-
-// setCoeffSigned sets the i-th coefficient of pOut to c.
-func setCoeffSigned(ringQ *ring.Ring, pOut ring.Poly, c int64, i int) {
-	if c >= 0 {
-		for l := 0; l <= ringQ.Level(); l++ {
-			pOut.Coeffs[l][i] = uint64(c)
-		}
-	} else {
-		for l := 0; l <= ringQ.Level(); l++ {
-			qi := int64(ringQ.SubRings[l].Modulus)
-			pOut.Coeffs[l][i] = uint64(c%qi + qi)
+			pOut[j] = math.MaxUint64
 		}
 	}
 }
 
-// leftVec computes the left vector during the evaluation protocol.
-func leftVec[E bignum.Uint[E]](params Parameters, x E) []E {
-	skip := bignum.Exp(x, uint64(params.cols*params.slots))
-	left := make([]E, params.rows)
-	left[0] = x.New().SetUint64(1)
-	for i := 1; i < params.rows; i++ {
-		left[i] = x.New().Mul(left[i-1], skip)
-	}
-	left[params.rows-1] = x.New().Set(x)
-	return left
-}
+// isMixedRadixNegative checks if i-th index of v is negative in signed mixed radix representation.
+func isMixedRadixNegative(v [][]uint64, i int, modInHalf []uint64) uint64 {
+	for j := len(v) - 1; j >= 0; j-- {
+		x := v[j][i]
+		qHalf := modInHalf[j]
 
-// rightVec computes the right vector during the evaluation protocol.
-func rightVec[E bignum.Uint[E]](params Parameters, x E) []E {
-	right := make([]E, params.cols*params.slots)
-	right[0] = x.New().SetUint64(1)
-	for i := 1; i < params.cols*params.slots; i++ {
-		right[i] = x.New().Mul(right[i-1], x)
+		if x > qHalf {
+			return 1
+		}
+		if x < qHalf {
+			return 0
+		}
 	}
-	return right
+	return 0
 }

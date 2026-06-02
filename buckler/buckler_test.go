@@ -1,6 +1,8 @@
 package buckler_test
 
 import (
+	"fmt"
+	"math"
 	"math/rand"
 	"testing"
 
@@ -8,7 +10,6 @@ import (
 	"github.com/sp301415/ringo-snark/buckler/internal/zp110"
 	"github.com/sp301415/ringo-snark/buckler/internal/zp220"
 	"github.com/sp301415/ringo-snark/buckler/internal/zp440"
-	"github.com/sp301415/ringo-snark/buckler/internal/zp880"
 	"github.com/sp301415/ringo-snark/math/bignum"
 	"github.com/sp301415/ringo-snark/math/bigpoly"
 	"github.com/stretchr/testify/assert"
@@ -114,6 +115,10 @@ func BenchmarkPublicKey(b *testing.B) {
 			b.Fatal(err)
 		}
 
+		params := prv.JindoParams
+		fmt.Printf("%+v\n", params)
+		fmt.Println("Size:", params.Size()/math.Exp2(23))
+
 		pk := newPkCircuit[E](N)
 		b.Run("Prove", func(b *testing.B) {
 			for b.Loop() {
@@ -121,7 +126,7 @@ func BenchmarkPublicKey(b *testing.B) {
 			}
 		})
 
-		var ok bool
+		ok := true
 		b.Run("Verify", func(b *testing.B) {
 			for b.Loop() {
 				ok = vrf.Verify(pk, pf)
@@ -144,6 +149,10 @@ func BenchmarkPublicKey(b *testing.B) {
 			b.Fatal(err)
 		}
 
+		params := prv.JindoParams
+		fmt.Printf("%+v\n", params)
+		fmt.Println("Size:", params.Size()/math.Exp2(23))
+
 		pk := newPkCircuit[E](N)
 		b.Run("Prove", func(b *testing.B) {
 			for b.Loop() {
@@ -151,7 +160,7 @@ func BenchmarkPublicKey(b *testing.B) {
 			}
 		})
 
-		var ok bool
+		ok := true
 		b.Run("Verify", func(b *testing.B) {
 			for b.Loop() {
 				ok = vrf.Verify(pk, pf)
@@ -174,35 +183,9 @@ func BenchmarkPublicKey(b *testing.B) {
 			b.Fatal(err)
 		}
 
-		pk := newPkCircuit[E](N)
-		b.Run("Prove", func(b *testing.B) {
-			for b.Loop() {
-				pf, _ = prv.Prove(pk)
-			}
-		})
-
-		var ok bool
-		b.Run("Verify", func(b *testing.B) {
-			for b.Loop() {
-				ok = vrf.Verify(pk, pf)
-			}
-		})
-		assert.True(b, ok)
-	})
-
-	b.Run("LogN=15/LogQ=880", func(b *testing.B) {
-		N := 1 << 15
-		type E = *zp880.Uint
-
-		var pf *buckler.Proof[E]
-		c := PublicKeyCircuit[E]{
-			NTT: buckler.NewNTTChecker[E](N),
-		}
-
-		prv, vrf, err := buckler.Compile(N, &c, crs)
-		if err != nil {
-			b.Fatal(err)
-		}
+		params := prv.JindoParams
+		fmt.Printf("%+v\n", params)
+		fmt.Println("Size:", params.Size()/math.Exp2(23))
 
 		pk := newPkCircuit[E](N)
 		b.Run("Prove", func(b *testing.B) {
@@ -211,7 +194,7 @@ func BenchmarkPublicKey(b *testing.B) {
 			}
 		})
 
-		var ok bool
+		ok := true
 		b.Run("Verify", func(b *testing.B) {
 			for b.Loop() {
 				ok = vrf.Verify(pk, pf)

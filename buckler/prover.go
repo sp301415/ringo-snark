@@ -16,7 +16,7 @@ import (
 
 // Prover proves the given circuit.
 type Prover[E bignum.Uint[E]] struct {
-	JindoParams jindo.Parameters
+	JindoParams jindo.Parameters[E]
 
 	polyEval *bigpoly.CyclicEvaluator[E]
 
@@ -131,7 +131,7 @@ func (p *Prover[E]) Prove(c Circuit[E]) (*Proof[E], error) {
 	wData.wEcd = make([]*bigpoly.Poly[E], p.ctx.wCnt)
 	wData.wEcdNTT = make([]*bigpoly.Poly[E], p.ctx.wCnt)
 	coms := make([]*jindo.Commitment, p.ctx.batch())
-	opens := make([]*jindo.Opening, p.ctx.batch())
+	opens := make([]*jindo.Opening[E], p.ctx.batch())
 	comPolys := make([][]E, p.ctx.batch())
 	for i := range wData.w {
 		isFirstRound := true
@@ -152,7 +152,7 @@ func (p *Prover[E]) Prove(c Circuit[E]) (*Proof[E], error) {
 		comPolys[i] = wData.wEcd[i].Coeffs[:p.ctx.rank+1]
 		coms[i], opens[i] = p.polyProver.Commit(comPolys[i])
 
-		coms[i].WriteRawTo(&oracleBuf)
+		coms[i].WriteToBuf(&oracleBuf)
 		oracle.Bind("projConst", oracleBuf.Bytes())
 		oracleBuf.Reset()
 	}
@@ -200,7 +200,7 @@ func (p *Prover[E]) Prove(c Circuit[E]) (*Proof[E], error) {
 		comPolys[i] = wData.wEcd[i].Coeffs[:p.ctx.rank+1]
 		coms[i], opens[i] = p.polyProver.Commit(comPolys[i])
 
-		coms[i].WriteRawTo(&oracleBuf)
+		coms[i].WriteToBuf(&oracleBuf)
 		oracle.Bind("arithBatchConst", oracleBuf.Bytes())
 		oracleBuf.Reset()
 	}
@@ -215,7 +215,7 @@ func (p *Prover[E]) Prove(c Circuit[E]) (*Proof[E], error) {
 		comPolys[roundComIdx] = linCheckMask.Coeffs[:2*p.ctx.rank]
 		coms[roundComIdx], opens[roundComIdx] = p.polyProver.Commit(comPolys[roundComIdx])
 
-		coms[roundComIdx].WriteRawTo(&oracleBuf)
+		coms[roundComIdx].WriteToBuf(&oracleBuf)
 		oracle.Bind("arithBatchConst", oracleBuf.Bytes())
 		oracle.Bind("arithBatchConst", linCheckMaskSum.Marshal())
 		oracleBuf.Reset()
@@ -231,7 +231,7 @@ func (p *Prover[E]) Prove(c Circuit[E]) (*Proof[E], error) {
 		comPolys[roundComIdx] = sumCheckMask.Coeffs[:p.ctx.sumCheckMaxRank]
 		coms[roundComIdx], opens[roundComIdx] = p.polyProver.Commit(comPolys[roundComIdx])
 
-		coms[roundComIdx].WriteRawTo(&oracleBuf)
+		coms[roundComIdx].WriteToBuf(&oracleBuf)
 		oracle.Bind("arithBatchConst", oracleBuf.Bytes())
 		oracle.Bind("arithBatchConst", sumCheckMaskSum.Marshal())
 		oracleBuf.Reset()
@@ -252,7 +252,7 @@ func (p *Prover[E]) Prove(c Circuit[E]) (*Proof[E], error) {
 		comPolys[roundComIdx] = quo
 		coms[roundComIdx], opens[roundComIdx] = p.polyProver.Commit(quo)
 
-		coms[roundComIdx].WriteRawTo(&oracleBuf)
+		coms[roundComIdx].WriteToBuf(&oracleBuf)
 		oracle.Bind("evalPoint", oracleBuf.Bytes())
 		oracleBuf.Reset()
 
@@ -278,21 +278,21 @@ func (p *Prover[E]) Prove(c Circuit[E]) (*Proof[E], error) {
 		comPolys[roundComIdx] = quo
 		coms[roundComIdx], opens[roundComIdx] = p.polyProver.Commit(quo)
 
-		coms[roundComIdx].WriteRawTo(&oracleBuf)
+		coms[roundComIdx].WriteToBuf(&oracleBuf)
 		oracle.Bind("evalPoint", oracleBuf.Bytes())
 		oracleBuf.Reset()
 
 		comPolys[roundComIdx+1] = remLo
 		coms[roundComIdx+1], opens[roundComIdx+1] = p.polyProver.Commit(remLo)
 
-		coms[roundComIdx+1].WriteRawTo(&oracleBuf)
+		coms[roundComIdx+1].WriteToBuf(&oracleBuf)
 		oracle.Bind("evalPoint", oracleBuf.Bytes())
 		oracleBuf.Reset()
 
 		comPolys[roundComIdx+2] = remHi
 		coms[roundComIdx+2], opens[roundComIdx+2] = p.polyProver.Commit(remHi)
 
-		coms[roundComIdx+2].WriteRawTo(&oracleBuf)
+		coms[roundComIdx+2].WriteToBuf(&oracleBuf)
 		oracle.Bind("evalPoint", oracleBuf.Bytes())
 		oracleBuf.Reset()
 
@@ -312,21 +312,21 @@ func (p *Prover[E]) Prove(c Circuit[E]) (*Proof[E], error) {
 		comPolys[roundComIdx] = quo
 		coms[roundComIdx], opens[roundComIdx] = p.polyProver.Commit(quo)
 
-		coms[roundComIdx].WriteRawTo(&oracleBuf)
+		coms[roundComIdx].WriteToBuf(&oracleBuf)
 		oracle.Bind("evalPoint", oracleBuf.Bytes())
 		oracleBuf.Reset()
 
 		comPolys[roundComIdx+1] = remLo
 		coms[roundComIdx+1], opens[roundComIdx+1] = p.polyProver.Commit(remLo)
 
-		coms[roundComIdx+1].WriteRawTo(&oracleBuf)
+		coms[roundComIdx+1].WriteToBuf(&oracleBuf)
 		oracle.Bind("evalPoint", oracleBuf.Bytes())
 		oracleBuf.Reset()
 
 		comPolys[roundComIdx+2] = remHi
 		coms[roundComIdx+2], opens[roundComIdx+2] = p.polyProver.Commit(remHi)
 
-		coms[roundComIdx+2].WriteRawTo(&oracleBuf)
+		coms[roundComIdx+2].WriteToBuf(&oracleBuf)
 		oracle.Bind("evalPoint", oracleBuf.Bytes())
 		oracleBuf.Reset()
 
@@ -339,7 +339,12 @@ func (p *Prover[E]) Prove(c Circuit[E]) (*Proof[E], error) {
 	}
 	evalPoint := z.New().SetBytes(evalPointBytes)
 
-	evals, evalProof := p.polyProver.Evaluate(evalPoint, comPolys, coms, opens)
+	evals := make([]E, len(comPolys))
+	for i := range comPolys {
+		evals[i] = (&bigpoly.Poly[E]{Coeffs: comPolys[i]}).Evaluate(evalPoint)
+	}
+
+	evalProof := p.polyProver.Evaluate(evalPoint, evals, coms, opens)
 
 	return &Proof[E]{
 		Witness: coms,

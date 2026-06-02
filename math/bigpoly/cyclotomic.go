@@ -4,6 +4,7 @@ import (
 	"math/big"
 
 	"github.com/sp301415/ringo-snark/math/bignum"
+	"github.com/sp301415/ringo-snark/math/vec"
 )
 
 // CyclotomicEvaluator evaluates polynomial over power-of-two cyclotomic ring.
@@ -69,7 +70,7 @@ func (op *CyclotomicEvaluator[E]) autNTTTo(pOut, p *Poly[E], idx int) {
 	defer op.baseOperator.pool.Put(pBuf)
 
 	pBuf.CopyFrom(p)
-	bitReverseInPlace(pBuf.Coeffs)
+	vec.BitReverseInPlace(pBuf.Coeffs)
 
 	for i := 0; i < op.rank; i++ {
 		j := ((2*i + 1) * idx) % (2 * op.rank)
@@ -77,7 +78,7 @@ func (op *CyclotomicEvaluator[E]) autNTTTo(pOut, p *Poly[E], idx int) {
 		pOut.Coeffs[i].Set(pBuf.Coeffs[j])
 	}
 
-	bitReverseInPlace(pOut.Coeffs)
+	vec.BitReverseInPlace(pOut.Coeffs)
 	pOut.IsNTT = true
 }
 

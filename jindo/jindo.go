@@ -1,2 +1,2 @@
-// Package jindo implements the Jindo Polynomial Commitment Scheme.
+// Package jindo implements jindo: Jindo + Shred-to-Shine
 package jindo

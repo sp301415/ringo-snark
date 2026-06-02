@@ -186,7 +186,7 @@ func Compile[E bignum.Uint[E]](witnessRank int, c Circuit[E], crs []byte) (*Prov
 
 		ecd: newEncoder[E](witnessRank, embRank),
 
-		polyProver: jindo.NewProver[E](jindoParams, crs),
+		polyProver: jindo.NewProver(jindoParams, crs),
 
 		ctx: ctx,
 	}
@@ -198,7 +198,7 @@ func Compile[E bignum.Uint[E]](witnessRank int, c Circuit[E], crs []byte) (*Prov
 
 		ecd: newEncoder[E](witnessRank, embRank),
 
-		polyVerifier: jindo.NewVerifier[E](jindoParams, crs),
+		polyVerifier: jindo.NewVerifier(jindoParams, crs),
 
 		ctx: ctx,
 	}
