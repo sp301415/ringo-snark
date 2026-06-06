@@ -16,7 +16,7 @@ import (
 type Verifier[E bignum.Uint[E]] struct {
 	JindoParams jindo.Parameters[E]
 
-	polyEval *bigpoly.CyclicEvaluator[E]
+	polyEval *bigpoly.CyclicOperator[E]
 
 	ecd *Encoder[E]
 
@@ -220,6 +220,7 @@ func (v *Verifier[E]) evalCircuit(batchConst E, constraints []ArithmeticConstrai
 	var z E
 
 	out, eval, term := z.New(), z.New(), z.New()
+	batchConstPow := z.New().SetUint64(1)
 	for _, c := range constraints {
 		eval.SetUint64(0)
 		for i := range c.witness {
@@ -232,8 +233,9 @@ func (v *Verifier[E]) evalCircuit(batchConst E, constraints []ArithmeticConstrai
 			}
 			eval.Add(eval, term)
 		}
-		eval.Mul(eval, batchConst)
+		eval.Mul(eval, batchConstPow)
 		out.Add(out, eval)
+		batchConstPow.Mul(batchConstPow, batchConst)
 	}
 
 	return out
@@ -310,6 +312,19 @@ func (v *Verifier[E]) sumCheck(batchConst, sumCheckMaskEval, evalPoint, vanishEv
 	rem := z.New().Mul(remLoEval, evalPoint)
 	test.Add(test, rem)
 	test.Add(test, sumCheckMaskSum)
+
+	sum := z.New()
+	batchConstPow := z.New().Set(batchConst)
+	mul := z.New()
+	for i := range v.ctx.sumCheckSums {
+		mul.Mul(v.ctx.sumCheckSums[i], batchConstPow)
+		sum.Add(sum, mul)
+		batchConstPow.Mul(batchConstPow, batchConst)
+	}
+	rankInv := z.New().SetUint64(uint64(v.ctx.rank))
+	rankInv.Inverse(rankInv)
+	sum.Mul(sum, rankInv)
+	test.Add(test, sum)
 
 	return eval.Cmp(test) == 0
 }

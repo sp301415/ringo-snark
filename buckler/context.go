@@ -30,7 +30,7 @@ type Context[E bignum.Uint[E]] struct {
 	arithConstraints []ArithmeticConstraint[E]
 
 	sumCheckConstraints []ArithmeticConstraint[E]
-	sumCheckSums        []*big.Int
+	sumCheckSums        []E
 
 	linCheckers         []LinearChecker[E]
 	linCheckConstraints map[LinearChecker[E]][][2]uint64
@@ -88,8 +88,9 @@ func (ctx *Context[E]) AddSumCheckConstraint(c ArithmeticConstraint[E], sum uint
 
 // AddSumCheckConstraintBig adds a sumcheck constraint to the context.
 func (ctx *Context[E]) AddSumCheckConstraintBig(c ArithmeticConstraint[E], sum *big.Int) {
+	var z E
 	ctx.sumCheckConstraints = append(ctx.sumCheckConstraints, c)
-	ctx.sumCheckSums = append(ctx.sumCheckSums, sum)
+	ctx.sumCheckSums = append(ctx.sumCheckSums, z.New().SetBigInt(sum))
 	ctx.sumCheckMaxRank = max(ctx.sumCheckMaxRank, c.maxRank(ctx.rank))
 }
 
@@ -222,7 +223,7 @@ func (ctx *Context[E]) AddApproxInfNormConstraintBig(w Witness[E], bound *big.In
 	ctx.projInfDcmpBound[witnessToID(wProj)] = slackBound
 	ctx.projInfDcmpWitness[witnessToID(wProj)] = wProjDcmp
 	ctx.AddLinearConstraint(wProj, wProjDcmp, newProjRecomposeChecker[E](slackBound))
-	// ctx.AddInfNormConstraint(wProjDcmp, 1)
+	ctx.AddInfNormConstraint(wProjDcmp, 1)
 
 	ctx.wSecond = append(ctx.wSecond, wProj, wProjDcmp)
 }

@@ -112,7 +112,7 @@ func (ntt *CyclicTransformer[E]) FwdNTTTo(vOut, v []E) {
 		cOut[7].Set(c0[7])
 	}
 
-	nttInPlace(vOut, ntt.tw)
+	fwdNTTInPlace(vOut, ntt.tw)
 }
 
 // InvNTTTo computes vOut = INTT(v).
@@ -220,7 +220,7 @@ func (ntt *CyclotomicTransformer[E]) FwdNTTTo(vOut, v []E) {
 		cOut[7].Set(c0[7])
 	}
 
-	nttInPlace(vOut, ntt.tw)
+	fwdNTTInPlace(vOut, ntt.tw)
 }
 
 // InvNTTTo computes vOut = INTT(v).
@@ -244,12 +244,12 @@ func (ntt *CyclotomicTransformer[E]) InvNTTTo(vOut, v []E) {
 	scalarMulVecTo(vOut, vOut, ntt.rankInv)
 }
 
-func nttInPlace[E bignum.Uint[E]](p, tw []E) {
+func fwdNTTInPlace[E bignum.Uint[E]](p, tw []E) {
 	if len(p) < 32 {
-		nttInPlaceRef(p, tw)
+		fwdNTTInPlaceRef(p, tw)
 		return
 	}
-	nttInPlaceUnroll(p, tw)
+	fwdNTTInPlaceUnroll(p, tw)
 }
 
 func butterfly[E bignum.Uint[E]](u, v, w E) {
@@ -259,7 +259,7 @@ func butterfly[E bignum.Uint[E]](u, v, w E) {
 	v.Sub(u, v)
 }
 
-func nttInPlaceRef[E bignum.Uint[E]](p, tw []E) {
+func fwdNTTInPlaceRef[E bignum.Uint[E]](p, tw []E) {
 	N := len(p)
 
 	t := N
@@ -275,7 +275,7 @@ func nttInPlaceRef[E bignum.Uint[E]](p, tw []E) {
 	}
 }
 
-func nttInPlaceUnroll[E bignum.Uint[E]](p, tw []E) {
+func fwdNTTInPlaceUnroll[E bignum.Uint[E]](p, tw []E) {
 	N := len(p)
 
 	t := N / 2

@@ -7,27 +7,27 @@ import (
 	"github.com/sp301415/ringo-snark/math/vec"
 )
 
-// CyclotomicEvaluator evaluates polynomial over power-of-two cyclotomic ring.
-type CyclotomicEvaluator[E bignum.Uint[E]] struct {
+// CyclotomicOperator evaluates polynomial over power-of-two cyclotomic ring.
+type CyclotomicOperator[E bignum.Uint[E]] struct {
 	*baseOperator[E]
 }
 
-// NewCyclotomicEvaluator creates a new [CyclotomicEvaluator].
-func NewCyclotomicEvaluator[E bignum.Uint[E]](rank int) *CyclotomicEvaluator[E] {
-	return &CyclotomicEvaluator[E]{
+// NewCyclotomicEvaluator creates a new [CyclotomicOperator].
+func NewCyclotomicEvaluator[E bignum.Uint[E]](rank int) *CyclotomicOperator[E] {
+	return &CyclotomicOperator[E]{
 		baseOperator: newBaseOperator(rank, NewCyclotomicTransformer[E](rank)),
 	}
 }
 
 // Aut returns Aut(p, idx).
-func (op *CyclotomicEvaluator[E]) Aut(p *Poly[E], idx int) *Poly[E] {
+func (op *CyclotomicOperator[E]) Aut(p *Poly[E], idx int) *Poly[E] {
 	pOut := op.NewPoly(p.IsNTT)
 	op.AutTo(pOut, p, idx)
 	return pOut
 }
 
 // AutTo computes pOut = Aut(p, idx).
-func (op *CyclotomicEvaluator[E]) AutTo(pOut, p *Poly[E], idx int) {
+func (op *CyclotomicOperator[E]) AutTo(pOut, p *Poly[E], idx int) {
 	checkUnaryOperable(op.rank, pOut, p)
 
 	if idx%2 == 0 {
@@ -47,7 +47,7 @@ func (op *CyclotomicEvaluator[E]) AutTo(pOut, p *Poly[E], idx int) {
 }
 
 // autTo computes pOut = Aut(p, idx).
-func (op *CyclotomicEvaluator[E]) autTo(pOut, p *Poly[E], idx int) {
+func (op *CyclotomicOperator[E]) autTo(pOut, p *Poly[E], idx int) {
 	pBuf := op.baseOperator.pool.Get().(*Poly[E])
 	defer op.baseOperator.pool.Put(pBuf)
 
@@ -65,7 +65,7 @@ func (op *CyclotomicEvaluator[E]) autTo(pOut, p *Poly[E], idx int) {
 }
 
 // autNTTTo computes pOut = Aut(p, idx).
-func (op *CyclotomicEvaluator[E]) autNTTTo(pOut, p *Poly[E], idx int) {
+func (op *CyclotomicOperator[E]) autNTTTo(pOut, p *Poly[E], idx int) {
 	pBuf := op.baseOperator.pool.Get().(*Poly[E])
 	defer op.baseOperator.pool.Put(pBuf)
 
@@ -82,22 +82,22 @@ func (op *CyclotomicEvaluator[E]) autNTTTo(pOut, p *Poly[E], idx int) {
 	pOut.IsNTT = true
 }
 
-// NTT returns NTT(p).
-func (op *CyclotomicEvaluator[E]) NTT(p *Poly[E]) *Poly[E] {
+// FwdNTT returns FwdNTT(p).
+func (op *CyclotomicOperator[E]) FwdNTT(p *Poly[E]) *Poly[E] {
 	pOut := op.NewPoly(true)
-	op.NTTTo(pOut, p)
+	op.FwdNTTTo(pOut, p)
 	return pOut
 }
 
 // ModSwitch switches the modulus of pBig of modulus qBig.
-func (op *CyclotomicEvaluator[E]) ModSwitch(pBig []*big.Int, qBig *big.Int) *Poly[E] {
+func (op *CyclotomicOperator[E]) ModSwitch(pBig []*big.Int, qBig *big.Int) *Poly[E] {
 	pOut := op.NewPoly(false)
 	op.ModSwitchTo(pOut, pBig, qBig)
 	return pOut
 }
 
 // ModSwitchTo switches the modulus of pBig of modulus q and writes to pOut.
-func (op *CyclotomicEvaluator[E]) ModSwitchTo(pOut *Poly[E], pBig []*big.Int, qBig *big.Int) {
+func (op *CyclotomicOperator[E]) ModSwitchTo(pOut *Poly[E], pBig []*big.Int, qBig *big.Int) {
 	if len(pBig) != op.rank {
 		panic("input size not consistent")
 	}

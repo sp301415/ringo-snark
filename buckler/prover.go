@@ -18,7 +18,7 @@ import (
 type Prover[E bignum.Uint[E]] struct {
 	JindoParams jindo.Parameters[E]
 
-	polyEval *bigpoly.CyclicEvaluator[E]
+	polyEval *bigpoly.CyclicOperator[E]
 
 	ecd *Encoder[E]
 
@@ -362,6 +362,7 @@ func (p *Prover[E]) evalCircuit(batchConst E, constraints []ArithmeticConstraint
 
 	eval := p.polyEval.NewPoly(true)
 	term := p.polyEval.NewPoly(true)
+	batchConstPow := batchConst.New().SetUint64(1)
 	for _, c := range constraints {
 		eval.Clear()
 		for i := range c.witness {
@@ -376,8 +377,9 @@ func (p *Prover[E]) evalCircuit(batchConst E, constraints []ArithmeticConstraint
 			}
 			p.polyEval.AddTo(eval, eval, term)
 		}
-		p.polyEval.ScalarMulTo(eval, eval, batchConst)
+		p.polyEval.ScalarMulTo(eval, eval, batchConstPow)
 		p.polyEval.AddTo(pOut, pOut, eval)
+		batchConstPow.Mul(batchConstPow, batchConst)
 	}
 
 	return pOut
@@ -423,7 +425,7 @@ func (p *Prover[E]) linCheck(batchConst, linCheckConst E, linCheckMask *bigpoly.
 	}
 
 	linCheckEcd := p.ecd.Encode(linCheckVec)
-	p.polyEval.NTTTo(linCheckEcd, linCheckEcd)
+	p.polyEval.FwdNTTTo(linCheckEcd, linCheckEcd)
 
 	linCheckEcdTr := p.polyEval.NewPoly(false)
 
@@ -432,7 +434,7 @@ func (p *Prover[E]) linCheck(batchConst, linCheckConst E, linCheckMask *bigpoly.
 	for _, tr := range p.ctx.linCheckers {
 		tr.TransposeTo(linCheckVecTr, linCheckVec)
 		p.ecd.EncodeTo(linCheckEcdTr, linCheckVecTr)
-		p.polyEval.NTTTo(linCheckEcdTr, linCheckEcdTr)
+		p.polyEval.FwdNTTTo(linCheckEcdTr, linCheckEcdTr)
 		for _, wIDs := range p.ctx.linCheckConstraints[tr] {
 			wOut, wIn := wData.wEcdNTT[wIDs[0]], wData.wEcdNTT[wIDs[1]]
 			p.polyEval.MulTo(term, linCheckEcdTr, wIn)

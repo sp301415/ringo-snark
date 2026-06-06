@@ -173,12 +173,12 @@ func (op *baseOperator[E]) MulSubTo(pOut, p0, p1 *Poly[E]) {
 // NTT returns NTT(p).
 func (op *baseOperator[E]) NTT(p *Poly[E]) *Poly[E] {
 	pOut := op.NewPoly(true)
-	op.NTTTo(pOut, p)
+	op.FwdNTTTo(pOut, p)
 	return pOut
 }
 
-// NTTTo computes pOut = NTT(p).
-func (op *baseOperator[E]) NTTTo(pOut, p *Poly[E]) {
+// FwdNTTTo computes pOut = NTT(p).
+func (op *baseOperator[E]) FwdNTTTo(pOut, p *Poly[E]) {
 	checkUnaryOperable(op.rank, pOut, p)
 	if p.IsNTT {
 		panic("input already in NTT domain")

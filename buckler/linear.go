@@ -44,14 +44,14 @@ func (ntt *nttChecker[E]) TransposeTo(vOut, v []E) {
 
 // autChecker computes the automrophism on coefficients.
 type autChecker[E bignum.Uint[E]] struct {
-	eval   *bigpoly.CyclotomicEvaluator[E]
+	eval   *bigpoly.CyclotomicOperator[E]
 	isNTT  bool
 	idx    int
 	idxInv int
 }
 
 // NewAutChecker creates a new [autChecker].
-func NewAutChecker[E bignum.Uint[E]](eval *bigpoly.CyclotomicEvaluator[E], idx int, isNTT bool) LinearChecker[E] {
+func NewAutChecker[E bignum.Uint[E]](eval *bigpoly.CyclotomicOperator[E], idx int, isNTT bool) LinearChecker[E] {
 	return &autChecker[E]{
 		eval:   eval,
 		isNTT:  isNTT,

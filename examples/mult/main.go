@@ -77,8 +77,8 @@ func main() {
 		Y.Coeffs[i].SetInt64(rand.Int63())
 	}
 
-	XNTT := ringQ.NTT(X)
-	YNTT := ringQ.NTT(Y)
+	XNTT := ringQ.FwdNTT(X)
+	YNTT := ringQ.FwdNTT(Y)
 	ZNTT := ringQ.Mul(XNTT, YNTT)
 	Z := ringQ.InvNTT(ZNTT)
 

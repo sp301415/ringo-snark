@@ -137,7 +137,7 @@ func main() {
 	for i := range bigringQ.Rank() {
 		skCoeffs.Coeffs[i].SetBigInt(bufBig[i])
 	}
-	skNTT := bigringQ.NTT(skCoeffs)
+	skNTT := bigringQ.FwdNTT(skCoeffs)
 
 	// ptT lives in R_t, so again we simply move it to zp.
 	ringT.PolyToBigintCentered(ptT, 1, bufBig)
@@ -145,7 +145,7 @@ func main() {
 	for i := range bigringQ.Rank() {
 		ptCoeffs.Coeffs[i].SetBigInt(bufBig[i])
 	}
-	ptNTT := bigringQ.NTT(ptCoeffs)
+	ptNTT := bigringQ.FwdNTT(ptCoeffs)
 
 	// Finally, we modulus switch the ciphertext.
 	ctCoeffs := [2]*bigpoly.Poly[*zp.Uint]{}
@@ -153,7 +153,7 @@ func main() {
 	ctCoeffs[0] = bigringQ.ModSwitch(bufBig, bfvQ)
 	ringQ.PolyToBigintCentered(ct.Value[1], 1, bufBig)
 	ctCoeffs[1] = bigringQ.ModSwitch(bufBig, bfvQ)
-	ctNTT := [2]*bigpoly.Poly[*zp.Uint]{bigringQ.NTT(ctCoeffs[0]), bigringQ.NTT(ctCoeffs[1])}
+	ctNTT := [2]*bigpoly.Poly[*zp.Uint]{bigringQ.FwdNTT(ctCoeffs[0]), bigringQ.FwdNTT(ctCoeffs[1])}
 
 	// We need to recompute the error so that we can generate aritmetic contraints.
 	// Recall that c0 = -c1*s + (q/t)*m + e.
