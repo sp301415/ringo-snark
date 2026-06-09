@@ -96,6 +96,7 @@ func (p *Prover[E]) Prove(c Circuit[E]) (*Proof[E], error) {
 			wData.pw[pwMaskID][i].SetInt64(1)
 		}
 
+		sqNm.SetUint64(0)
 		for i := range p.ctx.rank {
 			wData.w[id][i].BigInt(bigCoeff)
 			mul.Mul(bigCoeff, bigCoeff)
