@@ -88,26 +88,6 @@ func (p *Poly[E]) Clear() {
 	}
 }
 
-// isUnaryOperable checks if pOut, p is operable.
-func isUnaryOperable[E bignum.Uint[E]](rank int, pOut, p *Poly[E]) bool {
-	switch {
-	case len(pOut.Coeffs) != rank || len(p.Coeffs) != rank:
-		return false
-	}
-	return true
-}
-
-// isBinaryOperable checks if pOut, p0, p1 is operable.
-func isBinaryOperable[E bignum.Uint[E]](rank int, pOut, p0, p1 *Poly[E]) bool {
-	switch {
-	case len(pOut.Coeffs) != rank || len(p0.Coeffs) != rank || len(p1.Coeffs) != rank:
-		return false
-	case pOut.IsNTT != p1.IsNTT:
-		return false
-	}
-	return true
-}
-
 // checkUnaryOperable checks if pOut, p is operable.
 func checkUnaryOperable[E bignum.Uint[E]](rank int, pOut, p *Poly[E]) {
 	switch {

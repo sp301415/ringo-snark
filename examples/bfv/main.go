@@ -21,6 +21,7 @@ import (
 // Simply, put, for a ciphertext (c0 = -c1*s + (q/t)*m + e, c1), we should prove:
 //
 // c0 = -c1*s + (q/t)*m + e
+// |s| <= 1
 // |m| < t
 // |e| <= B_e
 //
@@ -36,7 +37,8 @@ type CiphertextCircuit[E bignum.Uint[E]] struct {
 
 	CiphertextNTT [2]buckler.PublicWitness[E]
 
-	SecretKeyNTT buckler.Witness[E]
+	SecretKeyCoeffs buckler.Witness[E]
+	SecretKeyNTT    buckler.Witness[E]
 
 	Delta         *big.Int
 	MessageNTT    buckler.Witness[E]
@@ -50,6 +52,7 @@ func (c *CiphertextCircuit[E]) Define(ctx *buckler.Context[E]) {
 	// "Empty" element for initialization
 	var z E
 
+	ctx.AddLinearConstraint(c.SecretKeyNTT, c.SecretKeyCoeffs, c.NTTChecker)
 	ctx.AddLinearConstraint(c.MessageNTT, c.MessageCoeffs, c.NTTChecker)
 	ctx.AddLinearConstraint(c.ErrorNTT, c.ErrorCoeffs, c.NTTChecker)
 
@@ -61,6 +64,8 @@ func (c *CiphertextCircuit[E]) Define(ctx *buckler.Context[E]) {
 	ctConstraint.AddTermWithConst(z.New().SetInt64(-1), nil, c.ErrorNTT)
 	ctx.AddArithmeticConstraint(ctConstraint)
 
+	// |s| <= 1
+	ctx.AddInfNormConstraint(c.SecretKeyCoeffs, 1)
 	// |m| < t
 	ctx.AddInfNormConstraint(c.MessageCoeffs, c.PlaintextModulus-1)
 	// |e| <= B_e
@@ -194,7 +199,8 @@ func main() {
 	assignment := CiphertextCircuit[*zp.Uint]{
 		CiphertextNTT: [2]buckler.PublicWitness[*zp.Uint]{ctNTT[0].Coeffs, ctNTT[1].Coeffs},
 
-		SecretKeyNTT: skNTT.Coeffs,
+		SecretKeyCoeffs: skCoeffs.Coeffs,
+		SecretKeyNTT:    skNTT.Coeffs,
 
 		MessageNTT:    ptNTT.Coeffs,
 		MessageCoeffs: ptCoeffs.Coeffs,
