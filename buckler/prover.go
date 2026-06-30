@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"math/big"
 	"reflect"
+	"sync"
 
 	fiatshamir "github.com/consensys/gnark-crypto/fiat-shamir"
 	"github.com/sp301415/ringo-snark/jindo"
@@ -122,36 +123,60 @@ func (p *Prover[E]) Prove(c Circuit[E]) (*Proof[E], error) {
 	oracle := fiatshamir.NewTranscript(sha256.New(), chalNames...)
 	var oracleBuf bytes.Buffer
 
+	wIsFirstRound := make([]bool, p.ctx.wCnt)
+	for i := range wData.w {
+		wIsFirstRound[i] = true
+		for j := range p.ctx.wSecond {
+			if witnessToID(p.ctx.wSecond[j]) == uint64(i) {
+				wIsFirstRound[i] = false
+				break
+			}
+		}
+	}
+
 	wData.pwEcd = make([]*bigpoly.Poly[E], p.ctx.pwCnt)
 	wData.pwEcdNTT = make([]*bigpoly.Poly[E], p.ctx.pwCnt)
-	for i := range wData.pw {
-		wData.pwEcd[i] = p.ecd.Encode(wData.pw[i])
-		wData.pwEcdNTT[i] = p.polyEval.NTT(wData.pwEcd[i])
-	}
 
 	wData.wEcd = make([]*bigpoly.Poly[E], p.ctx.wCnt)
 	wData.wEcdNTT = make([]*bigpoly.Poly[E], p.ctx.wCnt)
 	coms := make([]*jindo.Commitment, p.ctx.batch())
 	opens := make([]*jindo.Opening[E], p.ctx.batch())
 	comPolys := make([][]E, p.ctx.batch())
-	for i := range wData.w {
-		isFirstRound := true
-		for j := range p.ctx.wSecond {
-			if witnessToID(p.ctx.wSecond[j]) == uint64(i) {
-				isFirstRound = false
-				break
-			}
-		}
 
-		if !isFirstRound {
+	var wg sync.WaitGroup
+
+	for i := range wData.pw {
+		wg.Add(1)
+		go func(i int) {
+			wData.pwEcd[i] = p.ecd.Encode(wData.pw[i])
+			wData.pwEcdNTT[i] = p.polyEval.NTT(wData.pwEcd[i])
+			wg.Done()
+		}(i)
+	}
+
+	for i := range wData.w {
+		if !wIsFirstRound[i] {
 			continue
 		}
 
-		wData.wEcd[i] = p.ecd.RandEncode(wData.w[i])
-		wData.wEcdNTT[i] = p.polyEval.NTT(wData.wEcd[i])
+		wg.Add(1)
+		go func(i int) {
+			wData.wEcd[i] = p.ecd.RandEncode(wData.w[i])
+			wData.wEcdNTT[i] = p.polyEval.NTT(wData.wEcd[i])
 
-		comPolys[i] = wData.wEcd[i].Coeffs[:p.ctx.rank+1]
-		coms[i], opens[i] = p.polyProver.Commit(comPolys[i])
+			comPolys[i] = wData.wEcd[i].Coeffs[:p.ctx.rank+1]
+			coms[i], opens[i] = p.polyProver.Commit(comPolys[i])
+
+			wg.Done()
+		}(i)
+	}
+
+	wg.Wait()
+
+	for i := range wData.w {
+		if !wIsFirstRound[i] {
+			continue
+		}
 
 		coms[i].WriteToBuf(&oracleBuf)
 		oracle.Bind("projConst", oracleBuf.Bytes())
@@ -177,8 +202,13 @@ func (p *Prover[E]) Prove(c Circuit[E]) (*Proof[E], error) {
 		}
 
 		for id, wProj := range p.ctx.projWitness {
-			chk.TransformTo(wData.w[witnessToID(wProj)], wData.w[id])
+			wg.Add(1)
+			go func(id uint64, wProj Witness[E]) {
+				chk.TransformTo(wData.w[witnessToID(wProj)], wData.w[id])
+				wg.Done()
+			}(id, wProj)
 		}
+		wg.Wait()
 
 		for id, wDcmp := range p.ctx.projInfDcmpWitness {
 			base := decomposeBase(p.ctx.projInfDcmpBound[id])
@@ -194,13 +224,23 @@ func (p *Prover[E]) Prove(c Circuit[E]) (*Proof[E], error) {
 	}
 
 	for _, w := range p.ctx.wSecond {
+		wg.Add(1)
+
+		go func(w Witness[E]) {
+			i := witnessToID(w)
+			wData.wEcd[i] = p.ecd.RandEncode(wData.w[i])
+			wData.wEcdNTT[i] = p.polyEval.NTT(wData.wEcd[i])
+
+			comPolys[i] = wData.wEcd[i].Coeffs[:p.ctx.rank+1]
+			coms[i], opens[i] = p.polyProver.Commit(comPolys[i])
+
+			wg.Done()
+		}(w)
+	}
+	wg.Wait()
+
+	for _, w := range p.ctx.wSecond {
 		i := witnessToID(w)
-		wData.wEcd[i] = p.ecd.RandEncode(wData.w[i])
-		wData.wEcdNTT[i] = p.polyEval.NTT(wData.wEcd[i])
-
-		comPolys[i] = wData.wEcd[i].Coeffs[:p.ctx.rank+1]
-		coms[i], opens[i] = p.polyProver.Commit(comPolys[i])
-
 		coms[i].WriteToBuf(&oracleBuf)
 		oracle.Bind("arithBatchConst", oracleBuf.Bytes())
 		oracleBuf.Reset()

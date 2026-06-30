@@ -32,16 +32,16 @@ type Prover[E bignum.Uint[E]] struct {
 
 	ck *CommitKey
 
-	uniformSampler *csprng.UniformSampler
 	roundedSampler *csprng.RoundedGaussianSampler
 
-	pool     *sync.Pool
-	poolS    *sync.Pool
-	poolAmb  *sync.Pool
-	poolAmbS *sync.Pool
-	poolOut  *sync.Pool
-	poolOutS *sync.Pool
-	pool64   *sync.Pool
+	pool        *sync.Pool
+	poolS       *sync.Pool
+	poolAmb     *sync.Pool
+	poolAmbS    *sync.Pool
+	poolOut     *sync.Pool
+	poolOutS    *sync.Pool
+	pool64      *sync.Pool
+	poolUniform *sync.Pool
 }
 
 // NewProver creates a new [Prover].
@@ -65,7 +65,6 @@ func NewProver[E bignum.Uint[E]](params Parameters[E], crs []byte) *Prover[E] {
 
 		ck: NewCommitKey(params, crs),
 
-		uniformSampler: csprng.NewUniformSampler(),
 		roundedSampler: csprng.NewRoundedGaussianSampler(),
 
 		pool: &sync.Pool{
@@ -104,6 +103,11 @@ func NewProver[E bignum.Uint[E]](params Parameters[E], crs []byte) *Prover[E] {
 				return &v
 			},
 		},
+		poolUniform: &sync.Pool{
+			New: func() any {
+				return csprng.NewUniformSampler()
+			},
+		},
 	}
 }
 
@@ -131,10 +135,13 @@ func (p *Prover[E]) CommitTo(com *Commitment, open *Opening[E], v []E) {
 	pRaw := *pRawPtr
 	defer p.pool64.Put(pRawPtr)
 
+	uniformSampler := p.poolUniform.Get().(*csprng.UniformSampler)
+	defer p.poolUniform.Put(uniformSampler)
+
 	for t := range p.params.split {
 		for i := range p.params.cols {
 			for j := range p.params.op.Rank() {
-				pRaw[j] = p.uniformSampler.SampleN(p.params.ecd.base)
+				pRaw[j] = uniformSampler.SampleN(p.params.ecd.base)
 			}
 
 			p.ecd.DecodeRawTo(open.Blinder[t][i*p.params.slots:(i+1)*p.params.slots], pRaw)
@@ -166,6 +173,9 @@ func (p *Prover[E]) commitColTo(t, i int, open *Opening[E], v []E) {
 	pRaw := *pRawPtr
 	defer p.pool64.Put(pRawPtr)
 
+	uniformSampler := p.poolUniform.Get().(*csprng.UniformSampler)
+	defer p.poolUniform.Put(uniformSampler)
+
 	rowStart := i * p.params.slots
 	rowEnd := (i + 1) * p.params.slots
 
@@ -188,7 +198,7 @@ func (p *Prover[E]) commitColTo(t, i int, open *Opening[E], v []E) {
 
 	for j := range p.params.inMSISRank + p.params.mlweRank {
 		for k := range p.params.op.Rank() {
-			pRaw[k] = p.uniformSampler.SampleN(2*p.params.ecd.base) - p.params.ecd.base
+			pRaw[k] = uniformSampler.SampleN(2*p.params.ecd.base) - p.params.ecd.base
 		}
 
 		for l, ql := range p.params.op.Modulus() {
@@ -250,6 +260,9 @@ func (p *Prover[E]) Evaluate(x E, y []E, com []*Commitment, open []*Opening[E]) 
 // Evaluate batch evaluates v at x using batch randomness batch and returns the result with proof.
 func (p *Prover[E]) EvaluateTo(pf *Proof[E], x E, y []E, com []*Commitment, open []*Opening[E]) {
 	qLen := len(p.params.op.Modulus())
+
+	uniformSampler := p.poolUniform.Get().(*csprng.UniformSampler)
+	defer p.poolUniform.Put(uniformSampler)
 
 	var z E
 
@@ -585,7 +598,7 @@ func (p *Prover[E]) EvaluateTo(pf *Proof[E], x E, y []E, com []*Commitment, open
 			}
 		}
 
-		if !p.reject(ecdBatchAmbInvNTT, mlweBatchAmbInvNTT, ecdBatchNoMask, mlweBatchNoMask) {
+		if !p.reject(uniformSampler, ecdBatchAmbInvNTT, mlweBatchAmbInvNTT, ecdBatchNoMask, mlweBatchNoMask) {
 			break
 		}
 	}
@@ -692,7 +705,7 @@ func (p *Prover[E]) EvaluateTo(pf *Proof[E], x E, y []E, com []*Commitment, open
 	}
 }
 
-func (p *Prover[E]) reject(ecdMaskInvNTT, mlweMaskInvNTT, ecdBatchNoMask, mlweBatchNoMask [][]*crt.Element) bool {
+func (p *Prover[E]) reject(uniformSampler *csprng.UniformSampler, ecdMaskInvNTT, mlweMaskInvNTT, ecdBatchNoMask, mlweBatchNoMask [][]*crt.Element) bool {
 	eRej := p.poolAmb.Get().(*crt.Element)
 	defer p.poolAmb.Put(eRej)
 
@@ -776,5 +789,5 @@ func (p *Prover[E]) reject(ecdMaskInvNTT, mlweMaskInvNTT, ecdBatchNoMask, mlweBa
 
 	pRej64, _ := pRej.Float64()
 
-	return p.uniformSampler.SampleFloat() > math.Exp(pRej64)/rejRate
+	return uniformSampler.SampleFloat() > math.Exp(pRej64)/rejRate
 }

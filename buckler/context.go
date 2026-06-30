@@ -44,6 +44,7 @@ type Context[E bignum.Uint[E]] struct {
 	twoDcmpWitness map[uint64]Witness[E]
 
 	projChecker        LinearChecker[E]
+	projRecomposer     map[*big.Int]LinearChecker[E]
 	projWitness        map[uint64]Witness[E]
 	projInfDcmpBound   map[uint64]*big.Int
 	projInfDcmpWitness map[uint64]Witness[E]
@@ -69,6 +70,7 @@ func newContext[E bignum.Uint[E]](rank int, walker *walker[E]) *Context[E] {
 		twoDcmpMask:    make(map[uint64]PublicWitness[E]),
 		twoDcmpWitness: make(map[uint64]Witness[E]),
 
+		projRecomposer:     make(map[*big.Int]LinearChecker[E]),
 		projWitness:        make(map[uint64]Witness[E]),
 		projInfDcmpBound:   make(map[uint64]*big.Int),
 		projInfDcmpWitness: make(map[uint64]Witness[E]),
@@ -222,8 +224,22 @@ func (ctx *Context[E]) AddApproxInfNormConstraintBig(w Witness[E], bound *big.In
 	slackBound.Mul(slackBound, bound)
 	ctx.projInfDcmpBound[witnessToID(wProj)] = slackBound
 	ctx.projInfDcmpWitness[witnessToID(wProj)] = wProjDcmp
-	ctx.AddLinearConstraint(wProj, wProjDcmp, newProjRecomposeChecker[E](slackBound))
 	ctx.AddInfNormConstraint(wProjDcmp, 1)
+
+	projRecomposerCached := false
+	for b, projRecomposer := range ctx.projRecomposer {
+		if slackBound.Cmp(b) == 0 {
+			ctx.AddLinearConstraint(wProj, wProjDcmp, projRecomposer)
+			projRecomposerCached = true
+			break
+		}
+	}
+
+	if !projRecomposerCached {
+		projRecomposer := newProjRecomposeChecker[E](slackBound)
+		ctx.AddLinearConstraint(wProj, wProjDcmp, projRecomposer)
+		ctx.projRecomposer[slackBound] = projRecomposer
+	}
 
 	ctx.wSecond = append(ctx.wSecond, wProj, wProjDcmp)
 }
