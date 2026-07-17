@@ -28,8 +28,8 @@ import (
 //
 // Modulus q =
 //
-//	q[base10] = 883432763251654599010761898764851430459193304618330214702356889600000001
-//	q[base16] = 0x800057a6fbd02b02fedf063f30e8e14e90c19b7cceccaae1000000000001
+//	q[base10] = 907720728193388676174032015609668945673929339161088914959807723786469377
+//	q[base16] = 0x83853bab35deae9e6a84b1aa615063fb9e6895b744b58381000000000001
 //
 // # Warning
 //
@@ -44,10 +44,10 @@ const (
 
 // Field modulus q
 const (
-	q0 = 12313122856207646721
-	q1 = 16235072867928952524
-	q2 = 3099319727420289256
-	q3 = 140738958916560
+	q0 = 9475855090964234241
+	q1 = 7204526200934843573
+	q2 = 12582611527068705104
+	q3 = 144608254965214
 )
 
 var qElement = Uint{
@@ -61,21 +61,21 @@ var _modulus big.Int // q stored as big.Int
 
 // Modulus returns q as a big.Int
 //
-//	q[base10] = 883432763251654599010761898764851430459193304618330214702356889600000001
-//	q[base16] = 0x800057a6fbd02b02fedf063f30e8e14e90c19b7cceccaae1000000000001
+//	q[base10] = 907720728193388676174032015609668945673929339161088914959807723786469377
+//	q[base16] = 0x83853bab35deae9e6a84b1aa615063fb9e6895b744b58381000000000001
 func Modulus() *big.Int {
 	return new(big.Int).Set(&_modulus)
 }
 
 // q + r'.r = 1, i.e., qInvNeg = - q⁻¹ mod r
 // used for Montgomery reduction
-const qInvNeg = 12313122856207646719
+const qInvNeg = 9475855090964234239
 
 // mu = 2^288 / q needed for partial Barrett reduction
-const mu uint64 = 562944071237846
+const mu uint64 = 547881326230805
 
 func init() {
-	_modulus.SetString("800057a6fbd02b02fedf063f30e8e14e90c19b7cceccaae1000000000001", 16)
+	_modulus.SetString("83853bab35deae9e6a84b1aa615063fb9e6895b744b58381000000000001", 16)
 }
 
 // NewUint returns a new Uint from a uint64 value
@@ -193,10 +193,10 @@ func (z *Uint) SetZero() *Uint {
 
 // SetOne z = 1 (in Montgomery form)
 func (z *Uint) SetOne() *Uint {
-	z[0] = 6179501638705610754
-	z[1] = 11608567391228807127
-	z[2] = 6361318254432788276
-	z[3] = 88728516010394
+	z[0] = 9742693368885808565
+	z[1] = 4260726432120292609
+	z[2] = 12421114150275980019
+	z[3] = 81245581871122
 	return z
 }
 
@@ -225,7 +225,7 @@ func (z *Uint) IsZero() bool {
 
 // IsOne returns z == 1
 func (z *Uint) IsOne() bool {
-	return ((z[3] ^ 88728516010394) | (z[2] ^ 6361318254432788276) | (z[1] ^ 11608567391228807127) | (z[0] ^ 6179501638705610754)) == 0
+	return ((z[3] ^ 81245581871122) | (z[2] ^ 12421114150275980019) | (z[1] ^ 4260726432120292609) | (z[0] ^ 9742693368885808565)) == 0
 }
 
 // IsUint64 reports whether z can be represented as an uint64.
@@ -288,10 +288,10 @@ func (z *Uint) LexicographicallyLargest() bool {
 	_z := z.Bits()
 
 	var b uint64
-	_, b = bits.Sub64(_z[0], 6156561428103823361, 0)
-	_, b = bits.Sub64(_z[1], 8117536433964476262, b)
-	_, b = bits.Sub64(_z[2], 1549659863710144628, b)
-	_, b = bits.Sub64(_z[3], 70369479458280, b)
+	_, b = bits.Sub64(_z[0], 13961299582336892929, 0)
+	_, b = bits.Sub64(_z[1], 3602263100467421786, b)
+	_, b = bits.Sub64(_z[2], 6291305763534352552, b)
+	_, b = bits.Sub64(_z[3], 72304127482607, b)
 
 	return b == 0
 }
@@ -782,10 +782,10 @@ func (z *Uint) Exp(x Uint, k *big.Int) *Uint {
 // see section 2.3.2 of Tolga Acar's thesis
 // https://www.microsoft.com/en-us/research/wp-content/uploads/1998/06/97Acar.pdf
 var rSquare = Uint{
-	7041894709881355999,
-	5792366920934912285,
-	11062417329208870237,
-	15333412627706,
+	13561933690638694040,
+	221061142821177300,
+	15249735559512729963,
+	139249034768994,
 }
 
 // toMont converts z to Montgomery form
@@ -1136,8 +1136,8 @@ var (
 )
 
 func init() {
-	_bLegendreExponentUint, _ = new(big.Int).SetString("40002bd37de815817f6f831f987470a74860cdbe67665570800000000000", 16)
-	const sqrtExponentUint = "40002bd37de815817f6f831f987470a74860cdbe67665570"
+	_bLegendreExponentUint, _ = new(big.Int).SetString("41c29dd59aef574f354258d530a831fdcf344adba25ac1c0800000000000", 16)
+	const sqrtExponentUint = "41c29dd59aef574f354258d530a831fdcf344adba25ac1c0"
 	_bSqrtExponentUint, _ = new(big.Int).SetString(sqrtExponentUint, 16)
 }
 
@@ -1327,10 +1327,10 @@ func (z *Uint) Sqrt(x *Uint) *Uint {
 
 	// g = nonResidue ^ s
 	var g = Uint{
-		15198368814546234002,
-		8795483121664398213,
-		4848617606623913056,
-		9161566026539,
+		14655322046178210321,
+		8600732898892329216,
+		13052992573875837226,
+		144451123493959,
 	}
 	r := uint64(48)
 
@@ -1383,10 +1383,10 @@ const (
 )
 
 const (
-	inversionCorrectionFactorWord0 = 7325310692275831110
-	inversionCorrectionFactorWord1 = 16924181904546845169
-	inversionCorrectionFactorWord2 = 8708569871717617513
-	inversionCorrectionFactorWord3 = 73049757852580
+	inversionCorrectionFactorWord0 = 7140521946332423399
+	inversionCorrectionFactorWord1 = 12000885919126429708
+	inversionCorrectionFactorWord2 = 11078770210265367807
+	inversionCorrectionFactorWord3 = 42300068453621
 	invIterationsN                 = 16
 )
 

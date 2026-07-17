@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"math/big"
 	"reflect"
+	"runtime"
 	"sync"
 
 	fiatshamir "github.com/consensys/gnark-crypto/fiat-shamir"
@@ -143,32 +144,41 @@ func (p *Prover[E]) Prove(c Circuit[E]) (*Proof[E], error) {
 	opens := make([]*jindo.Opening[E], p.ctx.batch())
 	comPolys := make([][]E, p.ctx.batch())
 
-	var wg sync.WaitGroup
+	worksize := runtime.GOMAXPROCS(0)
 
-	for i := range wData.pw {
-		wg.Add(1)
-		go func(i int) {
-			wData.pwEcd[i] = p.ecd.Encode(wData.pw[i])
-			wData.pwEcdNTT[i] = p.polyEval.NTT(wData.pwEcd[i])
-			wg.Done()
-		}(i)
-	}
-
-	for i := range wData.w {
-		if !wIsFirstRound[i] {
-			continue
+	jobs := make(chan uint64)
+	go func() {
+		defer close(jobs)
+		for i := range p.ctx.wCnt + p.ctx.pwCnt {
+			jobs <- i
 		}
+	}()
 
-		wg.Add(1)
-		go func(i int) {
-			wData.wEcd[i] = p.ecd.RandEncode(wData.w[i])
-			wData.wEcdNTT[i] = p.polyEval.NTT(wData.wEcd[i])
+	var wg sync.WaitGroup
+	wg.Add(worksize)
 
-			comPolys[i] = wData.wEcd[i].Coeffs[:p.ctx.rank+1]
-			coms[i], opens[i] = p.polyProver.Commit(comPolys[i])
+	for range worksize {
+		go func() {
+			defer wg.Done()
+			for i := range jobs {
+				if i < p.ctx.pwCnt {
+					idx := i
+					wData.pwEcd[idx] = p.ecd.Encode(wData.pw[idx])
+					wData.pwEcdNTT[idx] = p.polyEval.NTT(wData.pwEcd[idx])
+				} else {
+					idx := i - p.ctx.pwCnt
+					if !wIsFirstRound[idx] {
+						continue
+					}
 
-			wg.Done()
-		}(i)
+					wData.wEcd[idx] = p.ecd.RandEncode(wData.w[idx])
+					wData.wEcdNTT[idx] = p.polyEval.NTT(wData.wEcd[idx])
+
+					comPolys[idx] = wData.wEcd[idx].Coeffs[:p.ctx.rank+1]
+					coms[idx], opens[idx] = p.polyProver.Commit(comPolys[idx])
+				}
+			}
+		}()
 	}
 
 	wg.Wait()

@@ -231,7 +231,7 @@ func NewParameters[E bignum.Uint[E]](targetN, batch int) Parameters[E] {
 			pfSize += n * d * math.Log2((m+1)*xOp*batchInf)                        // Partial Evaluation
 			pfSize += ((m + 1) + nu + inMSISRank) * d * math.Log2(n*cOp*batchInf)  // Response
 			pfSize += n * inMSISRank * d * math.Log2(math.Exp2(logQ)/inCutOffInf)  // Inner Commitment
-			pfSize += ((1 + split*l) * float64(batch)) * (k * math.Log2(b))        // Evaluation Point
+			pfSize += (l + (1+split*l)*float64(batch)) * (k * math.Log2(b))        // Evaluation Point
 
 			if comSize+pfSize < minSize {
 				minSize = comSize + pfSize
@@ -244,7 +244,7 @@ func NewParameters[E bignum.Uint[E]](targetN, batch int) Parameters[E] {
 				params.cols = int(n)
 
 				params.ecd = ecd
-				params.slots = int(d) / ecd.exp
+				params.slots = int(l)
 
 				params.inMSISRank = int(inMSISRank)
 				params.outMSISRank = int(outMSISRank)

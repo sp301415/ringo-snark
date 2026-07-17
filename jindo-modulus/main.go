@@ -25,7 +25,7 @@ var (
 
 const (
 	maxRank   = 1 << 30
-	baseBound = 1 << 32
+	baseBound = 1 << 20
 )
 
 func findModulus(bitStart, bitEnd int) (p *big.Int, b uint64, k uint64) {
@@ -37,12 +37,12 @@ func findModulus(bitStart, bitEnd int) (p *big.Int, b uint64, k uint64) {
 		kBig := big.NewInt(int64(k))
 
 		bStart := uint64(math.Floor(math.Exp2((float64(bitStart) - 1) / float64(k))))
-		bEnd := uint64(math.Ceil(math.Exp2(float64(bitEnd) / float64(k))))
-		if bStart > baseBound {
+		bEnd := min(baseBound, uint64(math.Ceil(math.Exp2(float64(bitEnd)/float64(k)))))
+		if bStart > bEnd {
 			continue
 		}
 
-		for b := bStart; b <= min(math.MaxUint64, bEnd); b++ {
+		for b := bStart; b <= bEnd; b++ {
 			bBig := big.NewInt(int64(b))
 			bExpBig := new(big.Int).Exp(bBig, kBig, nil)
 			p.Add(bExpBig, big.NewInt(1))
@@ -56,10 +56,6 @@ func findModulus(bitStart, bitEnd int) (p *big.Int, b uint64, k uint64) {
 			}
 
 			if new(big.Int).Mod(bExpBig, big.NewInt(2*maxRank)).Sign() != 0 {
-				continue
-			}
-
-			if b > baseBound {
 				continue
 			}
 
