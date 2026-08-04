@@ -170,8 +170,8 @@ func (op *baseOperator[E]) MulSubTo(pOut, p0, p1 *Poly[E]) {
 	pOut.IsNTT = true
 }
 
-// NTT returns NTT(p).
-func (op *baseOperator[E]) NTT(p *Poly[E]) *Poly[E] {
+// FwdNTT returns FwdNTT(p).
+func (op *baseOperator[E]) FwdNTT(p *Poly[E]) *Poly[E] {
 	pOut := op.NewPoly(true)
 	op.FwdNTTTo(pOut, p)
 	return pOut

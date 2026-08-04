@@ -129,7 +129,7 @@ func main() {
 	ringQ.INTT(ct.Value[0], ct.Value[0])
 	ringQ.INTT(ct.Value[1], ct.Value[1])
 
-	bigringQ := bigpoly.NewCyclotomicEvaluator[*zp.Uint](bfvParamsLogN13LogQ240.N())
+	bigringQ := bigpoly.NewCyclotomicOperator[*zp.Uint](bfvParamsLogN13LogQ240.N())
 	bufBig := make([]*big.Int, bigringQ.Rank())
 	for i := range bufBig {
 		bufBig[i] = new(big.Int)

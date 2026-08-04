@@ -69,7 +69,7 @@ func main() {
 	rank := 1 << 13
 
 	// Now, generate the witness.
-	ringQ := bigpoly.NewCyclotomicEvaluator[*zp.Uint](rank)
+	ringQ := bigpoly.NewCyclotomicOperator[*zp.Uint](rank)
 	X := ringQ.NewPoly(false)
 	Y := ringQ.NewPoly(false)
 	for i := 0; i < ringQ.Rank(); i++ {

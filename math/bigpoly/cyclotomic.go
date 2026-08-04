@@ -12,8 +12,8 @@ type CyclotomicOperator[E bignum.Uint[E]] struct {
 	*baseOperator[E]
 }
 
-// NewCyclotomicEvaluator creates a new [CyclotomicOperator].
-func NewCyclotomicEvaluator[E bignum.Uint[E]](rank int) *CyclotomicOperator[E] {
+// NewCyclotomicOperator creates a new [CyclotomicOperator].
+func NewCyclotomicOperator[E bignum.Uint[E]](rank int) *CyclotomicOperator[E] {
 	return &CyclotomicOperator[E]{
 		baseOperator: newBaseOperator(rank, NewCyclotomicTransformer[E](rank)),
 	}

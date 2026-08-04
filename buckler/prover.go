@@ -164,7 +164,7 @@ func (p *Prover[E]) Prove(c Circuit[E]) (*Proof[E], error) {
 				if i < p.ctx.pwCnt {
 					idx := i
 					wData.pwEcd[idx] = p.ecd.Encode(wData.pw[idx])
-					wData.pwEcdNTT[idx] = p.polyEval.NTT(wData.pwEcd[idx])
+					wData.pwEcdNTT[idx] = p.polyEval.FwdNTT(wData.pwEcd[idx])
 				} else {
 					idx := i - p.ctx.pwCnt
 					if !wIsFirstRound[idx] {
@@ -172,7 +172,7 @@ func (p *Prover[E]) Prove(c Circuit[E]) (*Proof[E], error) {
 					}
 
 					wData.wEcd[idx] = p.ecd.RandEncode(wData.w[idx])
-					wData.wEcdNTT[idx] = p.polyEval.NTT(wData.wEcd[idx])
+					wData.wEcdNTT[idx] = p.polyEval.FwdNTT(wData.wEcd[idx])
 
 					comPolys[idx] = wData.wEcd[idx].Coeffs[:p.ctx.rank+1]
 					coms[idx], opens[idx] = p.polyProver.Commit(comPolys[idx])
@@ -239,7 +239,7 @@ func (p *Prover[E]) Prove(c Circuit[E]) (*Proof[E], error) {
 		go func(w Witness[E]) {
 			i := witnessToID(w)
 			wData.wEcd[i] = p.ecd.RandEncode(wData.w[i])
-			wData.wEcdNTT[i] = p.polyEval.NTT(wData.wEcd[i])
+			wData.wEcdNTT[i] = p.polyEval.FwdNTT(wData.wEcd[i])
 
 			comPolys[i] = wData.wEcd[i].Coeffs[:p.ctx.rank+1]
 			coms[i], opens[i] = p.polyProver.Commit(comPolys[i])

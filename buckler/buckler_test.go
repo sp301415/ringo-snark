@@ -45,19 +45,19 @@ func (c *PublicKeyCircuit[E]) Define(ctx *buckler.Context[E]) {
 }
 
 func newPkCircuit[E bignum.Uint[E]](rank int) *PublicKeyCircuit[E] {
-	polyEval := bigpoly.NewCyclotomicEvaluator[E](rank)
+	polyEval := bigpoly.NewCyclotomicOperator[E](rank)
 
 	sk := polyEval.NewPoly(false)
 	for i := range rank {
 		sk.Coeffs[i].SetInt64(rand.Int63()%3 - 1)
 	}
-	skNTT := polyEval.NTT(sk)
+	skNTT := polyEval.FwdNTT(sk)
 
 	noise := polyEval.NewPoly(false)
 	for i := range rank {
 		noise.Coeffs[i].SetInt64(rand.Int63()%3 - 1)
 	}
-	noiseNTT := polyEval.NTT(noise)
+	noiseNTT := polyEval.FwdNTT(noise)
 
 	pkNTT := [2]*bigpoly.Poly[E]{polyEval.NewPoly(true), polyEval.NewPoly(true)}
 	for i := range rank {
