@@ -268,9 +268,8 @@ func (ctx *Context[E]) commitRank() int {
 		rank = ctx.rank + 1
 	}
 
-	for i := range ctx.arithConstraints {
-		quoRank := ctx.arithConstraints[i].maxRank(ctx.rank) - ctx.rank
-		rank = max(rank, quoRank)
+	if len(ctx.arithConstraints) > 0 {
+		rank = max(rank, ctx.arithCheckMaxRank-ctx.rank)
 	}
 
 	if len(ctx.linCheckConstraints) > 0 {
@@ -278,9 +277,8 @@ func (ctx *Context[E]) commitRank() int {
 		rank = max(rank, maskRank)
 	}
 
-	for i := range ctx.sumCheckConstraints {
-		maskRank := ctx.sumCheckConstraints[i].maxRank(ctx.rank) + ctx.rank + 1
-		rank = max(rank, maskRank)
+	if len(ctx.sumCheckConstraints) > 0 {
+		rank = max(rank, ctx.sumCheckMaxRank)
 	}
 
 	return rank

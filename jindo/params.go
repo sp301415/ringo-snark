@@ -200,14 +200,15 @@ func NewParameters[E bignum.Uint[E]](targetN, batch int) Parameters[E] {
 				}
 			}
 
-			inCutOffInf := inCutOffTwo / (math.Sqrt(inMSISRank*d) * (1 + t*dOp) * (n * cOp))
+			logInCutOffInf := math.Floor(math.Log2(inCutOffTwo / (math.Sqrt(inMSISRank*d) * (1 + t*dOp) * (n * cOp))))
+			inCutOffInf := math.Exp2(logInCutOffInf)
 
 			var outMSISRank, outBeta, outCutOffTwo, logQOut float64
 			for muOut := 1; muOut < maxMSISRank; muOut++ {
 				outMSISRank = float64(muOut)
 
 				outBetaInf := (1 + t*dOp) * (math.Exp2(logQ) / inCutOffInf)
-				outBeta = math.Sqrt(n*float64(muOut)*d) * outBetaInf
+				outBeta = math.Sqrt(n*inMSISRank*d) * outBetaInf
 				outCutOffTwo = min(outBeta, math.Sqrt(outMSISRank*d)*(1+t*dOp)*maxCutOff)
 
 				dExt := 2 * dOp
@@ -222,16 +223,18 @@ func NewParameters[E bignum.Uint[E]](targetN, batch int) Parameters[E] {
 					break
 				}
 			}
-			outCutOffInf := outCutOffTwo / (math.Sqrt(outMSISRank*d) * (1 + t*dOp))
+
+			logOutCutOffInf := math.Floor(math.Log2(outCutOffTwo / (math.Sqrt(outMSISRank*d) * (1 + t*dOp))))
+			outCutOffInf := math.Exp2(logOutCutOffInf)
 
 			comSize := t * outMSISRank * d * math.Log2(math.Exp2(logQOut)/outCutOffInf)
 
 			var pfSize float64
-			pfSize += outMSISRank * d * math.Log2(math.Exp2(logQOut)/outCutOffInf) // Mask Commitment
-			pfSize += n * d * math.Log2((m+1)*xOp*batchInf)                        // Partial Evaluation
-			pfSize += ((m + 1) + nu + inMSISRank) * d * math.Log2(n*cOp*batchInf)  // Response
-			pfSize += n * inMSISRank * d * math.Log2(math.Exp2(logQ)/inCutOffInf)  // Inner Commitment
-			pfSize += (l + (1+split*l)*float64(batch)) * (k * math.Log2(b))        // Evaluation Point
+			pfSize += outMSISRank * d * math.Log2(math.Exp2(logQOut)/outCutOffInf)            // Mask Commitment
+			pfSize += n * d * math.Log2((m+1)*xOp*batchInf)                                   // Partial Evaluation
+			pfSize += ((m + 1) + nu + inMSISRank) * d * math.Log2(n*cOp*batchInf)             // Response
+			pfSize += n * inMSISRank * d * math.Log2((1+t*dOp)*(math.Exp2(logQ)/inCutOffInf)) // Inner Commitment
+			pfSize += (l + (1+split*l)*float64(batch)) * (k * math.Log2(b))                   // Evaluation Point
 
 			if comSize+pfSize < minSize {
 				minSize = comSize + pfSize
